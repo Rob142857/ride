@@ -137,6 +137,7 @@ Object.assign(App, {
 
   async uploadJournalAttachment(entryId, file) {
     if (!this.currentTrip || !this.ensureEditable('upload attachments')) return;
+    this._activeUploads++;
     try {
       UI.showToast('Uploading attachment...', 'info');
       const attachment = await API.attachments.upload(this.currentTrip.id, file, { journal_entry_id: entryId });
@@ -146,6 +147,8 @@ Object.assign(App, {
       console.error('Attachment upload failed', err);
       UI.showToast('Attachment upload failed', 'error');
       return;
+    } finally {
+      this._activeUploads = Math.max(0, this._activeUploads - 1);
     }
     UI.renderJournal(this.currentTrip.journal);
     const entry = (this.currentTrip.journal || []).find(e => e.id === entryId);
@@ -222,6 +225,7 @@ Object.assign(App, {
       UI.showToast('Could not create note for photo.', 'error');
       return;
     }
+    this._activeUploads++;
     try {
       UI.showToast('Uploading photo...', 'info');
       const attachment = await API.attachments.upload(this.currentTrip.id, file, { journal_entry_id: entry.id });
@@ -230,6 +234,8 @@ Object.assign(App, {
     } catch (err) {
       console.error('Photo upload failed', err);
       UI.showToast('Photo upload failed', 'error');
+    } finally {
+      this._activeUploads = Math.max(0, this._activeUploads - 1);
     }
     UI.renderJournal(this.currentTrip.journal);
     this.renderNoteAttachments(entry);

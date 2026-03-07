@@ -18,7 +18,7 @@ import { cors, jsonResponse, errorResponse, requireAuth, optionalAuth, BASE_URL 
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-02-15T21';
+const BUILD_ID = '2026-03-07T07';
 
 const router = new Router();
 
@@ -108,14 +108,88 @@ router.all('/api/*', () => errorResponse('Not found', 404));
 // Regex for valid 6-char short codes (alphanumeric only)
 const SHORT_CODE_REGEX = /^\/([a-zA-Z0-9]{6})$/;
 
+/**
+ * Escape a string for safe inclusion in HTML attribute values
+ */
+function escapeAttr(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/**
+ * Fetch lightweight trip metadata for OG tag injection (title, description, cover image).
+ * Runs a single cheap query — no waypoints/journal/route.
+ */
+async function getTripMeta(env, shortCode) {
+  try {
+    const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      `SELECT t.id, t.name, t.description, t.public_title, t.public_description,
+              t.cover_image_url, t.cover_focus_x, t.cover_focus_y,
+              (SELECT COUNT(*) FROM waypoints WHERE trip_id = t.id) AS waypoint_count,
+              (SELECT a.id FROM attachments a WHERE a.trip_id = t.id AND a.is_private = 0
+                ORDER BY a.is_cover DESC, a.created_at DESC LIMIT 1) AS cover_attachment_id,
+              rd.distance
+       FROM trips t
+       LEFT JOIN route_data rd ON rd.trip_id = t.id
+       WHERE t.short_code = ? AND t.is_public = 1`
+    ).bind(shortCode).first();
+    if (!trip) return null;
+
+    const title = trip.public_title || trip.name || 'Trip';
+    const description = trip.public_description || trip.description || '';
+    const coverUrl = trip.cover_image_url
+      || (trip.cover_attachment_id ? `${BASE_URL}/api/attachments/${trip.cover_attachment_id}` : null);
+
+    // Build a short summary line for OG description
+    const parts = [];
+    if (trip.waypoint_count > 0) parts.push(`${trip.waypoint_count} stops`);
+    if (trip.distance > 0) {
+      const km = (trip.distance / 1000).toFixed(0);
+      parts.push(`${km} km`);
+    }
+    const summary = parts.length ? parts.join(' · ') : '';
+    const ogDescription = description
+      ? (summary ? `${description.slice(0, 200)} — ${summary}` : description.slice(0, 300))
+      : (summary || 'Explore this trip on Ride');
+
+    return { title, ogDescription, coverUrl };
+  } catch (err) {
+    console.error('getTripMeta error:', err);
+    return null;
+  }
+}
+
+/**
+ * Inject trip-specific OG/Twitter meta tags into the static trip.html so social
+ * crawlers (which don't execute JS) see the real title, description, and cover image.
+ */
+function injectMetaTags(html, meta, shortCode) {
+  const title = escapeAttr(meta.title);
+  const desc = escapeAttr(meta.ogDescription);
+  const image = meta.coverUrl || `${BASE_URL}/icons/og-ride.png`;
+  const pageUrl = `${BASE_URL}/${shortCode}`;
+
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${title} | Ride</title>`);
+  html = html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/,  `$1${desc}$2`);
+  html = html.replace(/(<meta\s+property="og:title"\s+content=")[^"]*(")/,  `$1${title}$2`);
+  html = html.replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/,  `$1${desc}$2`);
+  html = html.replace(/(<meta\s+property="og:image"\s+content=")[^"]*(")/,  `$1${image}$2`);
+  html = html.replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/,  `$1${pageUrl}$2`);
+  html = html.replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*(")/,  `$1${title}$2`);
+  html = html.replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*(")/,  `$1${desc}$2`);
+  html = html.replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*(")/,  `$1${image}$2`);
+
+  return html;
+}
+
 // Content Security Policy for HTML responses
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' https://unpkg.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://server.arcgisonline.com https://ride.incitat.io https://lh3.googleusercontent.com https://*.microsoft.com",
-  "connect-src 'self' https://ride.incitat.io https://maps.incitat.io https://router.project-osrm.org https://nominatim.openstreetmap.org",
+  "connect-src 'self' https://ride.incitat.io https://maps.incitat.io https://router.project-osrm.org https://nominatim.openstreetmap.org https://unpkg.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self' https://accounts.google.com https://login.microsoftonline.com"
@@ -158,19 +232,22 @@ export default {
     if (shortCodeMatch) {
       const shortCode = shortCodeMatch[1];
       
-      // Verify this short code exists in DB before serving the page
-      // This prevents serving trip.html for random 6-char paths
+      // Fetch trip metadata for OG tags + existence check in one query
       try {
-        const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
-          'SELECT id FROM trips WHERE short_code = ? AND is_public = 1'
-        ).bind(shortCode).first();
+        const meta = await getTripMeta(env, shortCode);
         
-        if (trip) {
-          // Valid short code - serve the trip page, passing short code as query param
-          const newUrl = new URL('/trip.html', url.origin);
+        if (meta) {
+          // Valid short code - serve the trip page with injected OG meta tags
+          // Use /trip not /trip.html — Cloudflare assets redirects .html to pretty URLs
+          const newUrl = new URL('/trip', url.origin);
           newUrl.searchParams.set('trip', shortCode);
           const resp = await env.ASSETS.fetch(new Request(newUrl, request));
-          return addSecurityHeaders(resp);
+          let html = await resp.text();
+          html = injectMetaTags(html, meta, shortCode);
+          return addSecurityHeaders(new Response(html, {
+            status: resp.status,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' }
+          }));
         }
       } catch (error) {
         console.error('Short code lookup error:', error);

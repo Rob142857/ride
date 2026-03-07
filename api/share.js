@@ -70,7 +70,7 @@ export const ShareHandler = {
 
     // Public attachments only
     const attachments = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT id, filename, original_name, mime_type, caption, is_cover FROM attachments WHERE trip_id = ? AND is_private = 0 ORDER BY is_cover DESC, created_at DESC'
+      'SELECT id, filename, original_name, mime_type, caption, is_cover, journal_entry_id FROM attachments WHERE trip_id = ? AND is_private = 0 ORDER BY is_cover DESC, created_at DESC'
     ).bind(trip.id).all();
 
     // Route data
@@ -104,7 +104,8 @@ export const ShareHandler = {
           .filter(a => a.id !== coverId)
           .map(a => ({
             id: a.id, name: a.original_name, type: a.mime_type,
-            caption: a.caption, url: `${BASE_URL}/api/attachments/${a.id}`
+            caption: a.caption, url: `${BASE_URL}/api/attachments/${a.id}`,
+            journal_entry_id: a.journal_entry_id || null
           })),
         route: routeData ? {
           coordinates: JSON.parse(routeData.coordinates || '[]'),

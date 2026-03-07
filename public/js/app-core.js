@@ -10,6 +10,7 @@ const App = {
   isSharedView: false,
   isRiding: false,
   isRefreshing: false,
+  _activeUploads: 0,
   rideVisitedWaypoints: null,
   rideRerouting: false,
   offRouteCounter: 0,
@@ -51,6 +52,12 @@ const App = {
 
     window.addEventListener('ride:auth-expired', () => this.handleAuthExpired());
     window.addEventListener('ride:connection-lost', (e) => this.handleConnectionLost(e?.detail));
+    window.addEventListener('beforeunload', (e) => {
+      if (this._activeUploads > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
 
     this.configureLoginLinks();
     if (!this.isSharedView) this.showLoginPromptIfNeeded();

@@ -470,12 +470,61 @@
       border-radius: 0;
       font-size: 12px;
     }
+
+    /* Journal images */
+    .journal-images {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      padding: 4px 0 16px;
+    }
+
+    .journal-images.single-image {
+      grid-template-columns: 1fr;
+      max-width: 600px;
+    }
+
+    .journal-image {
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+      aspect-ratio: 4 / 3;
+      background: var(--bg-tertiary);
+    }
+
+    .journal-images.single-image .journal-image {
+      aspect-ratio: 16 / 10;
+    }
+
+    .journal-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.3s ease;
+    }
+
+    .journal-image:hover img {
+      transform: scale(1.03);
+    }
+
+    .journal-image-caption {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 24px 10px 8px;
+      font-size: 12px;
+      color: #fff;
+      background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 100%);
+    }
     
     /* Gallery */
     .gallery-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
       margin-bottom: 48px;
     }
     
@@ -485,6 +534,15 @@
       overflow: hidden;
       position: relative;
       cursor: pointer;
+      background: var(--bg-tertiary);
+    }
+
+    .gallery-grid.few-items {
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    }
+
+    .gallery-grid.few-items .gallery-item {
+      aspect-ratio: 4 / 3;
     }
     
     .gallery-item img {
@@ -712,6 +770,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-direction: column;
       opacity: 0;
       visibility: hidden;
       transition: all 0.3s ease;
@@ -728,7 +787,7 @@
       right: 20px;
       width: 48px;
       height: 48px;
-      background: var(--bg-tertiary);
+      background: rgba(255, 255, 255, 0.1);
       border: none;
       border-radius: 50%;
       color: white;
@@ -736,12 +795,27 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: background 0.2s ease;
+      z-index: 1;
+    }
+
+    .lightbox-close:hover {
+      background: rgba(255, 255, 255, 0.2);
     }
     
     .lightbox-image {
       max-width: 90%;
-      max-height: 90%;
+      max-height: 85vh;
       object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .lightbox-caption {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      margin-top: 12px;
+      text-align: center;
+      max-width: 80%;
     }
     
 
@@ -863,7 +937,24 @@
       
       .gallery-grid {
         grid-template-columns: repeat(2, 1fr);
-        gap: 8px;
+        gap: 6px;
+      }
+
+      .journal-images {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .journal-images.single-image {
+        grid-template-columns: 1fr;
+      }
+
+      .stat-item {
+        padding: 10px 12px;
+      }
+
+      .stat-value {
+        font-size: 20px;
       }
     }
   </style>
@@ -1008,6 +1099,7 @@
       </svg>
     </button>
     <img id="lightbox-image" class="lightbox-image" src="" alt="">
+    <div id="lightbox-caption" class="lightbox-caption"></div>
   </div>
 
   <!-- Login Modal (reused flow from main app) -->
@@ -1204,32 +1296,60 @@
       const images = trip.attachments?.filter(a => a.type?.startsWith('image/'));
       if (images?.length) {
         const galleryHtml = images.map(img => `
-          <div class="gallery-item" onclick="openLightbox('${img.url}')">
+          <div class="gallery-item" onclick="openLightbox('${img.url}', '${escapeHtml(img.caption || img.name || '').replace(/'/g, "\\'")}')"> 
             <img src="${img.url}" alt="${escapeHtml(img.caption || img.name)}" loading="lazy">
             <div class="gallery-item-overlay"></div>
             ${img.caption ? `<div class="gallery-caption">${escapeHtml(img.caption)}</div>` : ''}
           </div>
         `).join('');
-        document.getElementById('gallery-grid').innerHTML = galleryHtml;
+        const galleryGrid = document.getElementById('gallery-grid');
+        galleryGrid.innerHTML = galleryHtml;
+        if (images.length <= 4) galleryGrid.classList.add('few-items');
         document.getElementById('gallery-section').style.display = 'block';
       }
       
       // Journal entries
       if (trip.journal?.length) {
-        const journalHtml = trip.journal.map(entry => `
-          <article class="journal-card">
-            <div class="journal-header">
-              <h3 class="journal-title">${escapeHtml(entry.title)}</h3>
-              <div class="journal-date">${formatDate(entry.created_at)}</div>
+        // Group image attachments by journal entry id
+        const journalImages = {};
+        if (trip.attachments?.length) {
+          for (const a of trip.attachments) {
+            if (a.journal_entry_id && a.type?.startsWith('image/')) {
+              if (!journalImages[a.journal_entry_id]) journalImages[a.journal_entry_id] = [];
+              journalImages[a.journal_entry_id].push(a);
+            }
+          }
+        }
+
+        const journalHtml = trip.journal.map(entry => {
+          const entryImages = journalImages[entry.id] || [];
+          const imagesHtml = entryImages.length ? `
+            <div class="journal-images${entryImages.length === 1 ? ' single-image' : ''}">
+              ${entryImages.map(img => `
+                <div class="journal-image" onclick="openLightbox('${img.url}', '${escapeHtml(img.caption || img.name || '').replace(/'/g, "\\'")}')"> 
+                  <img src="${img.url}" alt="${escapeHtml(img.caption || img.name || '')}" loading="lazy">
+                  ${img.caption ? `<div class="journal-image-caption">${escapeHtml(img.caption)}</div>` : ''}
+                </div>
+              `).join('')}
             </div>
-            ${entry.content ? `<div class="journal-content">${escapeHtml(entry.content)}</div>` : ''}
-            ${entry.tags?.length ? `
-              <div class="journal-tags">
-                ${entry.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
+          ` : '';
+
+          return `
+            <article class="journal-card">
+              <div class="journal-header">
+                <h3 class="journal-title">${escapeHtml(entry.title)}</h3>
+                <div class="journal-date">${formatDate(entry.created_at)}</div>
               </div>
-            ` : ''}
-          </article>
-        `).join('');
+              ${entry.content ? `<div class="journal-content">${escapeHtml(entry.content)}</div>` : ''}
+              ${imagesHtml}
+              ${entry.tags?.length ? `
+                <div class="journal-tags">
+                  ${entry.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
+                </div>
+              ` : ''}
+            </article>
+          `;
+        }).join('');
         document.getElementById('journal-list').innerHTML = journalHtml;
         document.getElementById('journal-section').style.display = 'block';
       }
@@ -1457,8 +1577,9 @@
     }
     
     // Lightbox
-    function openLightbox(src) {
+    function openLightbox(src, caption) {
       document.getElementById('lightbox-image').src = src;
+      document.getElementById('lightbox-caption').textContent = caption || '';
       document.getElementById('lightbox').classList.add('active');
       document.body.style.overflow = 'hidden';
     }
@@ -1620,26 +1741,31 @@
 
       setUseTripState('loading', 'Importing...');
 
+      let createdTripId = null;
       try {
         const baseTrip = await API.trips.create({
           name: window.trip.title || window.trip.name || 'Imported Trip',
           description: window.trip.description || ''
         });
+        createdTripId = baseTrip.id;
 
-        if (Array.isArray(window.trip.waypoints) && window.trip.waypoints.length) {
+        let tripVersion = Number(baseTrip.version ?? 0);
+        let wpAdded = 0;
+        const wpTotal = Array.isArray(window.trip.waypoints) ? window.trip.waypoints.length : 0;
+
+        if (wpTotal > 0) {
           for (const wp of window.trip.waypoints) {
             const normalized = normalizeWaypointInput(wp);
             if (!normalized) continue;
-            await API.waypoints.add(baseTrip.id, normalized);
+            const result = await API.waypoints.add(baseTrip.id, normalized, {
+              headers: { 'If-Match': String(tripVersion) }
+            });
+            if (result?.trip_version !== undefined) {
+              tripVersion = Number(result.trip_version);
+            }
+            wpAdded++;
           }
-        }
-
-        if (Array.isArray(window.trip.journal) && window.trip.journal.length) {
-          for (const entry of window.trip.journal) {
-            const normalized = normalizeJournalEntry(entry);
-            if (!normalized) continue;
-            await API.journal.add(baseTrip.id, normalized);
-          }
+          if (wpAdded === 0) throw new Error('No waypoints were added');
         }
 
         if (window.trip.route) {
@@ -1655,6 +1781,12 @@
         }, 800);
       } catch (err) {
         console.error('Failed to import trip:', err);
+        // Clean up the empty shell trip so it doesn't confuse the user
+        if (createdTripId) {
+          try { await API.trips.delete(createdTripId); } catch (_) { /* best-effort */ }
+        }
+        localStorage.removeItem(pendingImportKey);
+        localStorage.removeItem('ride_imported_trip_id');
         setUseTripState('error', 'Import failed. Try again');
       }
     }

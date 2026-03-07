@@ -150,6 +150,10 @@ Object.assign(App, {
    */
   async loadTrip(tripId) {
     if (!this.useCloud || !this.currentUser) return;
+    if (this._activeUploads > 0) {
+      UI.showToast('Upload in progress — please wait', 'warning');
+      return;
+    }
     try {
       const trip = this.normalizeTrip(await API.trips.get(tripId));
       const cached = this.getCachedTrip(tripId);
@@ -184,6 +188,10 @@ Object.assign(App, {
   },
 
   async createNewTrip(name = 'New Trip') {
+    if (this._activeUploads > 0) {
+      UI.showToast('Upload in progress — please wait', 'warning');
+      return;
+    }
     if (this.useCloud && this.currentUser) {
       try {
         const trip = await API.trips.create({ name });
