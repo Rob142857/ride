@@ -73,6 +73,7 @@ const App = {
       await this.loadSharedTrip(sharedTripId, isEmbed);
     } else {
       await this.loadInitialTrip();
+      UI.switchView('trips');
     }
 
     this.refreshTripsList();

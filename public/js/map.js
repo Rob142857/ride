@@ -286,8 +286,7 @@ const MapManager = {
     // Add zoom control to bottom left (away from nav)
     L.control.zoom({ position: 'bottomleft' }).addTo(this.map);
 
-    // Try to get user's location
-    this.locateUser();
+    // User can manually locate via the locate button
 
     // Map click handler for adding waypoints
     this.map.on('click', (e) => this.handleMapClick(e));
@@ -295,6 +294,22 @@ const MapManager = {
     // Handle resize
     window.addEventListener('resize', () => {
       this.map.invalidateSize();
+    });
+
+    // Resize markers + route line on zoom change
+    this.map.on('zoomend', () => {
+      // Refresh waypoint marker icons at new zoom size
+      Object.keys(this.waypointMarkers).forEach(id => {
+        const marker = this.waypointMarkers[id];
+        if (marker?._wpType) marker.setIcon(this.createIcon(marker._wpType));
+      });
+      // Update route line weight
+      if (this.routingControl) {
+        const routes = this.routingControl._routes;
+        if (routes) {
+          this.routingControl.options.lineOptions.styles = this._routeStyles();
+        }
+      }
     });
 
     return this;
@@ -416,28 +431,44 @@ const MapManager = {
   },
 
   /**
+   * Get route line weight based on current zoom level
+   */
+  _routeStyles() {
+    const z = this.map?.getZoom() || 13;
+    // Thinner at low zoom, fuller when zoomed in
+    const w = z <= 8 ? 2 : z <= 11 ? 3 : z <= 14 ? 4 : 5;
+    return [
+      { color: '#e94560', opacity: 0.85, weight: w },
+      { color: '#ff6b6b', opacity: 0.3, weight: w + 3 }
+    ];
+  },
+
+  /**
    * Create custom icon for waypoint type
    */
   createIcon(type) {
     const config = this.waypointIcons[type] || this.waypointIcons.stop;
-    
+    const z = this.map?.getZoom() || 13;
+    const size = z <= 9 ? 22 : z <= 12 ? 28 : 34;
+    const fontSize = z <= 9 ? 11 : z <= 12 ? 13 : 15;
+
     return L.divIcon({
       className: 'custom-marker',
       html: `<div style="
         background: ${config.color};
-        width: 36px;
-        height: 36px;
+        width: ${size}px;
+        height: ${size}px;
         border-radius: 50% 50% 50% 0;
         transform: rotate(-45deg);
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.25);
         border: 2px solid white;
-      "><span style="transform: rotate(45deg); font-size: 16px;">${config.icon}</span></div>`,
-      iconSize: [36, 36],
-      iconAnchor: [18, 36],
-      popupAnchor: [0, -36]
+      "><span style="transform: rotate(45deg); font-size: ${fontSize}px;">${config.icon}</span></div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size],
+      popupAnchor: [0, -size]
     });
   },
 
@@ -449,6 +480,9 @@ const MapManager = {
       icon: this.createIcon(waypoint.type),
       draggable: true
     }).addTo(this.map);
+
+    // Store type for zoom-responsive icon refresh
+    marker._wpType = waypoint.type || 'stop';
 
     // Popup with waypoint info
     marker.bindPopup(`
@@ -522,10 +556,7 @@ const MapManager = {
       addWaypoints: true, // Allow adding waypoints by clicking on route
       fitSelectedRoutes: false,
       lineOptions: {
-        styles: [
-          { color: '#e94560', opacity: 0.8, weight: 6 },
-          { color: '#ff6b6b', opacity: 0.5, weight: 10 }
-        ]
+        styles: this._routeStyles()
       },
       createMarker: () => null, // We manage our own markers
       show: false // Hide the directions panel
