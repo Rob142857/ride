@@ -52,7 +52,6 @@ Object.assign(App, {
     document.getElementById('rideNextInstruction').textContent = 'Follow the route';
     document.getElementById('rideNextMeta').textContent = 'Waiting for GPS...';
     this.precomputeRouteMetrics();
-    this.prefetchTiles();
     MapManager.startRide(pos => this.onRidePosition(pos));
   },
 
@@ -82,11 +81,7 @@ Object.assign(App, {
   /** @deprecated Use RideUtils.haversine directly */
   haversine(a, b) { return RideUtils.haversine(a, b); },
 
-  prefetchTiles() {
-    if (this.currentTrip?.route?.coordinates) {
-      MapManager.prefetchTiles(this.currentTrip.route.coordinates);
-    }
-  },
+
 
   markVisitedWaypoints(position) {
     if (!this.currentTrip?.waypoints) return;

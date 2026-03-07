@@ -161,43 +161,7 @@ const MapManager = {
           steps
         });
 
-        this.prefetchTiles(route.coordinates);
         UI.showToast('Rerouted', 'info');
-      }
-    });
-  },
-
-  prefetchTiles(coords) {
-    if (!coords || !coords.length) return;
-    const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    const subs = ['a', 'b', 'c'];
-    const zoom = Math.min(Math.max(Math.round(this.map?.getZoom?.() || 14), 10), 17);
-    const radius = 2; // fetch 5x5 tiles around sampled points
-
-    const toTile = (lat, lng, z) => {
-      const x = Math.floor((lng + 180) / 360 * Math.pow(2, z));
-      const y = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z));
-      return { x, y };
-    };
-
-    const keyPoints = [coords[0], coords[Math.floor(coords.length / 2)], coords[coords.length - 1]].filter(Boolean);
-    const fetched = new Set();
-
-    const fetchTile = (x, y) => {
-      const key = `${x}:${y}`;
-      if (fetched.has(key)) return;
-      fetched.add(key);
-      const sub = subs[Math.abs(x + y) % subs.length];
-      const url = tileUrl.replace('{s}', sub).replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
-      fetch(url, { mode: 'no-cors' }).catch(() => {});
-    };
-
-    keyPoints.forEach((pt) => {
-      const tile = toTile(pt.lat, pt.lng, zoom);
-      for (let dx = -radius; dx <= radius; dx++) {
-        for (let dy = -radius; dy <= radius; dy++) {
-          fetchTile(tile.x + dx, tile.y + dy);
-        }
       }
     });
   },
@@ -221,9 +185,10 @@ const MapManager = {
       attributionControl: true
     }).setView([-34.5386, 146.5933], 12);
 
-    // Add tile layer (OpenStreetMap)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+    // Add tile layer (CARTO light basemap, OSM data)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
       maxZoom: 19
     }).addTo(this.map);
 
@@ -493,7 +458,6 @@ const MapManager = {
           steps
         });
 
-        this.prefetchTiles(route.coordinates);
       }
     });
   },

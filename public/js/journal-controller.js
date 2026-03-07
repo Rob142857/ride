@@ -249,7 +249,6 @@ Object.assign(App, {
       coordinates: routeData?.coordinates || []
     };
     this.precomputeRouteMetrics();
-    this.prefetchTiles();
     this.rideRerouting = false;
     this.offRouteCounter = 0;
 

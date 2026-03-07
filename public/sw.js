@@ -159,8 +159,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // ── Map tiles: stale-while-revalidate ──
-  if (url.hostname.includes('tile.openstreetmap.org') ||
-      url.hostname.includes('basemaps.cartocdn.com') ||
+  if (url.hostname.includes('basemaps.cartocdn.com') ||
       url.hostname.includes('arcgisonline.com')) {
     event.respondWith(
       caches.open(TILES_CACHE).then((cache) =>
