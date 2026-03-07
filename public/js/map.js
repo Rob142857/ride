@@ -16,6 +16,9 @@ const MapManager = {
   rideHeading: null,
   rideAccuracyCircle: null,
   ridePositionCb: null,
+  _wakeLock: null,
+  _gpsRetryTimer: null,
+  _headingUp: false,
 
   // Waypoint type icons
   waypointIcons: {
@@ -25,6 +28,35 @@ const MapManager = {
     food: { color: '#f97316', icon: '🍽️' },
     lodging: { color: '#8b5cf6', icon: '🏨' },
     custom: { color: '#06b6d4', icon: '⭐' }
+  },
+
+  /**
+   * Acquire screen wake lock to prevent display from sleeping during ride
+   */
+  async _acquireWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      this._wakeLock = await navigator.wakeLock.request('screen');
+      this._wakeLock.addEventListener('release', () => { this._wakeLock = null; });
+      // Re-acquire on visibility change (system may release on tab switch)
+      document.addEventListener('visibilitychange', this._onVisibilityChange);
+    } catch (e) {
+      console.warn('Wake lock failed:', e);
+    }
+  },
+
+  _onVisibilityChange() {
+    if (document.visibilityState === 'visible' && MapManager.rideWatchId && !MapManager._wakeLock) {
+      MapManager._acquireWakeLock();
+    }
+  },
+
+  async _releaseWakeLock() {
+    document.removeEventListener('visibilitychange', this._onVisibilityChange);
+    if (this._wakeLock) {
+      try { await this._wakeLock.release(); } catch (e) { /* ignore */ }
+      this._wakeLock = null;
+    }
   },
 
   /**
@@ -39,6 +71,12 @@ const MapManager = {
     // Ensure map is ready
     if (!this.map) return;
 
+    // Acquire wake lock to keep screen on
+    this._acquireWakeLock();
+
+    // Enable heading-up rotation
+    this._headingUp = true;
+
     // Create rider marker
     if (!this.rideMarker) {
       this.rideMarker = L.marker([0, 0], {
@@ -48,17 +86,34 @@ const MapManager = {
     }
 
     this.ridePositionCb = onPosition;
+    this._gpsErrors = 0;
+
+    this._startGpsWatch();
+  },
+
+  _startGpsWatch() {
+    if (this.rideWatchId) {
+      navigator.geolocation.clearWatch(this.rideWatchId);
+    }
+    clearTimeout(this._gpsRetryTimer);
 
     // Watch position
     this.rideWatchId = navigator.geolocation.watchPosition(
       (pos) => {
+        this._gpsErrors = 0; // reset on success
         const { latitude, longitude, heading, accuracy } = pos.coords;
         const latlng = [latitude, longitude];
         this.rideHeading = heading;
         this.rideMarker.setLatLng(latlng);
-        this.rideMarker.setIcon(this.createRideIcon(heading || 0));
+        // In heading-up mode the marker always points up; the map rotates instead
+        this.rideMarker.setIcon(this.createRideIcon(this._headingUp ? 0 : (heading || 0)));
 
-        // Auto-pan without spinning the map
+        // Heading-up: rotate map container so rider's heading points up
+        if (this._headingUp && heading != null && isFinite(heading)) {
+          this._setMapRotation(-heading);
+        }
+
+        // Auto-pan to rider
         const currentCenter = this.map.getCenter();
         const distToCenter = this.haversineLatLng(currentCenter, latlng);
         if (distToCenter > 30) {
@@ -78,12 +133,20 @@ const MapManager = {
       },
       (err) => {
         console.error('Ride GPS error', err);
-        UI.showToast('GPS signal lost', 'error');
+        this._gpsErrors = (this._gpsErrors || 0) + 1;
+        // Retry up to 5 times with backoff before giving up
+        if (this._gpsErrors <= 5) {
+          const delay = Math.min(2000 * this._gpsErrors, 10000);
+          UI.showToast(`GPS signal lost — retrying…`, 'error');
+          this._gpsRetryTimer = setTimeout(() => this._startGpsWatch(), delay);
+        } else {
+          UI.showToast('GPS unavailable. Check location settings.', 'error');
+        }
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 5000,
-        timeout: 15000
+        maximumAge: 3000,
+        timeout: 10000
       }
     );
   },
@@ -95,8 +158,14 @@ const MapManager = {
     if (this.rideWatchId && navigator.geolocation) {
       navigator.geolocation.clearWatch(this.rideWatchId);
     }
+    clearTimeout(this._gpsRetryTimer);
     this.rideWatchId = null;
     this.ridePositionCb = null;
+    this._gpsErrors = 0;
+    this._headingUp = false;
+    // Reset map rotation
+    this._setMapRotation(0);
+    this._releaseWakeLock();
     if (this.rideMarker) {
       this.map.removeLayer(this.rideMarker);
       this.rideMarker = null;
@@ -164,15 +233,34 @@ const MapManager = {
         UI.showToast('Rerouted', 'info');
       }
     });
+
+    this.routingControl.on('routingerror', (e) => {
+      console.error('Reroute failed:', e.error);
+      App.rideRerouting = false;
+      UI.showToast('Reroute failed — following original route', 'error');
+    });
   },
 
   /**
-   * Recenter on rider
+   * Recenter on rider (also re-enables heading-up if it was on)
    */
   recenterRide() {
     if (this.rideMarker) {
+      this._headingUp = true;
       this.map.setView(this.rideMarker.getLatLng(), Math.max(this.map.getZoom(), 15));
+      if (this.rideHeading != null && isFinite(this.rideHeading)) {
+        this._setMapRotation(-this.rideHeading);
+      }
     }
+  },
+
+  /**
+   * Rotate the map container via CSS transform for heading-up display
+   */
+  _setMapRotation(deg) {
+    const el = this.map?.getContainer();
+    if (!el) return;
+    el.style.transform = deg ? `rotate(${deg}deg)` : '';
   },
 
   /**
@@ -185,12 +273,15 @@ const MapManager = {
       attributionControl: true
     }).setView([-34.5386, 146.5933], 12);
 
-    // Add tile layer (CARTO light basemap, OSM data)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    // Add tile layer (CARTO Voyager — full-color streets, good contrast)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd',
       maxZoom: 19
     }).addTo(this.map);
+
+    // Disable heading-up when user manually drags/pans the map
+    this.map.on('dragstart', () => { this._headingUp = false; });
 
     // Add zoom control to bottom left (away from nav)
     L.control.zoom({ position: 'bottomleft' }).addTo(this.map);

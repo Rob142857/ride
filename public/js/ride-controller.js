@@ -40,9 +40,12 @@ Object.assign(App, {
     this.isRiding = true;
     this.rideVisitedWaypoints = new Set();
     this.rideRerouting = false;
-    this.rideInitialRouted = false;     // first-fix reroute flag
+    this.rideInitialRouted = false;
     this.offRouteCounter = 0;
     this.lastRerouteAt = 0;
+    this._rideNearIdx = 0;           // sliding window cursor
+    this._rideStartTime = Date.now();
+    this._rideArrived = false;
     document.getElementById('rideOverlay')?.classList.remove('hidden');
     document.body.classList.add('ride-mode');
     document.getElementById('rideTripName').textContent = this.currentTrip.name || 'Ride';
@@ -50,7 +53,7 @@ Object.assign(App, {
     document.getElementById('rideDistanceRemaining').textContent = this.currentTrip.route?.distance ? this.formatDistance(this.currentTrip.route.distance) : '—';
     document.getElementById('rideEta').textContent = this.currentTrip.route?.duration ? this.formatDuration(this.currentTrip.route.duration) : '—';
     document.getElementById('rideNextInstruction').textContent = 'Follow the route';
-    document.getElementById('rideNextMeta').textContent = 'Waiting for GPS...';
+    document.getElementById('rideNextMeta').textContent = 'Waiting for GPS…';
     this.precomputeRouteMetrics();
     MapManager.startRide(pos => this.onRidePosition(pos));
   },
@@ -60,6 +63,7 @@ Object.assign(App, {
     this.rideVisitedWaypoints = null;
     this.rideRerouting = false;
     this.offRouteCounter = 0;
+    this._rideArrived = false;
     document.getElementById('rideOverlay')?.classList.add('hidden');
     document.body.classList.remove('ride-mode');
     MapManager.stopRide();
@@ -81,15 +85,16 @@ Object.assign(App, {
   /** @deprecated Use RideUtils.haversine directly */
   haversine(a, b) { return RideUtils.haversine(a, b); },
 
-
-
   markVisitedWaypoints(position) {
     if (!this.currentTrip?.waypoints) return;
     const threshold = 40;
     if (!this.rideVisitedWaypoints) this.rideVisitedWaypoints = new Set();
     this.currentTrip.waypoints.forEach(wp => {
       if (this.rideVisitedWaypoints.has(wp.id)) return;
-      if (this.haversine(wp, position) <= threshold) this.rideVisitedWaypoints.add(wp.id);
+      if (this.haversine(wp, position) <= threshold) {
+        this.rideVisitedWaypoints.add(wp.id);
+        UI.showToast(`📍 Arrived at ${wp.name || 'waypoint'}`, 'success');
+      }
     });
   },
 
@@ -101,11 +106,40 @@ Object.assign(App, {
       .sort((a, b) => a.order - b.order);
   },
 
+  /**
+   * Find nearest route coordinate using sliding window from last known position.
+   * Falls back to full scan if the window doesn't find a close match.
+   */
+  _findNearestRouteIdx(coords, pos) {
+    const windowSize = 150; // look ±150 points from last position
+    const start = Math.max(0, (this._rideNearIdx || 0) - 20);
+    const end = Math.min(coords.length, (this._rideNearIdx || 0) + windowSize);
+
+    let bestIdx = this._rideNearIdx || 0;
+    let bestDist = Infinity;
+
+    // Windowed search (fast path)
+    for (let i = start; i < end; i++) {
+      const d = this.haversine(coords[i], pos);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+
+    // If windowed result is far (>300m), do a full scan as fallback
+    if (bestDist > 300) {
+      for (let i = 0; i < coords.length; i++) {
+        const d = this.haversine(coords[i], pos);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+    }
+
+    this._rideNearIdx = bestIdx;
+    return { idx: bestIdx, dist: bestDist };
+  },
+
   onRidePosition(pos) {
     if (!this.isRiding || !this.currentTrip?.route?.coordinates || !this.currentTrip.route._cumulative) return;
 
     // On first GPS fix, check if we're far from the route.
-    // If so, reroute from current position → all waypoints for immediate guidance.
     if (!this.rideInitialRouted) {
       this.rideInitialRouted = true;
       const coords = this.currentTrip.route.coordinates;
@@ -115,14 +149,13 @@ Object.assign(App, {
         if (d < nearestDist) nearestDist = d;
       }
       if (nearestDist > 200) {
-        // Rider is distant — reroute from current position through all waypoints
         const allWaypoints = [...(this.currentTrip.waypoints || [])].sort((a, b) => a.order - b.order);
         if (allWaypoints.length) {
           UI.showToast('Routing to your first waypoint…', 'info');
           this.rideRerouting = true;
           this.lastRerouteAt = Date.now();
           MapManager.rerouteFromPosition(pos, allWaypoints);
-          return;   // wait for reroute to finish before normal tracking
+          return;
         }
       }
     }
@@ -135,14 +168,10 @@ Object.assign(App, {
     const stopsEl = document.getElementById('rideStops');
     if (stopsEl) stopsEl.textContent = remainingWaypoints.length.toString();
 
-    // Find nearest segment point
-    let nearestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < coords.length; i++) {
-      const d = this.haversine(coords[i], pos);
-      if (d < bestDist) { bestDist = d; nearestIdx = i; }
-    }
+    // Find nearest route point (sliding window)
+    const { idx: nearestIdx, dist: bestDist } = this._findNearestRouteIdx(coords, pos);
 
+    // Off-route detection with dynamic threshold
     const dynamicThreshold = Math.max(50, (pos.accuracy || 30) * 1.6);
     const now = Date.now();
     if (bestDist > dynamicThreshold) {
@@ -156,23 +185,42 @@ Object.assign(App, {
     if (canReroute) {
       this.rideRerouting = true;
       this.lastRerouteAt = now;
-      UI.showToast('Off route. Rerouting...', 'info');
+      UI.showToast('Off route. Rerouting…', 'info');
       MapManager.rerouteFromPosition(pos, remainingWaypoints);
     }
 
+    // Distance remaining
     const remaining = Math.max(0, total - cumulative[nearestIdx]);
     document.getElementById('rideDistanceRemaining').textContent = RideUtils.formatDistance(remaining);
 
+    // Live ETA: estimate from remaining distance and average speed so far
+    const elapsed = (now - (this._rideStartTime || now)) / 1000;
+    const travelled = total - remaining;
+    if (elapsed > 10 && travelled > 50) {
+      const avgSpeed = travelled / elapsed; // m/s
+      const etaSeconds = remaining / avgSpeed;
+      document.getElementById('rideEta').textContent = RideUtils.formatDuration(etaSeconds);
+    }
+
+    // Arrival detection
+    if (remaining < 30 && remainingWaypoints.length === 0 && !this._rideArrived) {
+      this._rideArrived = true;
+      document.getElementById('rideNextInstruction').textContent = '🏁 You have arrived!';
+      document.getElementById('rideNextMeta').textContent = 'Ride complete';
+      UI.showToast('🏁 You have arrived at your destination!', 'success');
+      return;
+    }
+
+    // Turn-by-turn instruction
     const steps = this.currentTrip.route.steps || [];
-    const nextStep = steps.find(s => s.index >= nearestIdx) || steps[steps.length - 1];
+    const nextStep = steps.find(s => s.index > nearestIdx);
     if (nextStep) {
       document.getElementById('rideNextInstruction').textContent = nextStep.text || 'Continue';
-      const distToNextStep = nextStep.index > nearestIdx
-        ? cumulative[nextStep.index] - cumulative[nearestIdx] : bestDist;
-      document.getElementById('rideNextMeta').textContent = `${RideUtils.formatDistance(distToNextStep)} ahead`;
-    } else {
-      document.getElementById('rideNextInstruction').textContent = 'Finish';
-      document.getElementById('rideNextMeta').textContent = 'Approaching destination';
+      const distToNextStep = cumulative[nextStep.index] - cumulative[nearestIdx];
+      document.getElementById('rideNextMeta').textContent = `${RideUtils.formatDistance(Math.max(0, distToNextStep))} ahead`;
+    } else if (!this._rideArrived) {
+      document.getElementById('rideNextInstruction').textContent = 'Continue to destination';
+      document.getElementById('rideNextMeta').textContent = RideUtils.formatDistance(remaining) + ' remaining';
     }
   }
 });
