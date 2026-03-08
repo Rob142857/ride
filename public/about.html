@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ride — Plan, Share &amp; Ride Your Next Adventure</title>
-  <meta name="description" content="A beautifully simple trip planner and journal for astute travellers. Plan routes, document journeys, share with friends — private, secure, and distraction-free.">
+  <meta name="description" content="Ride is a friendly open-source app for planning routes, sharing rides, and journaling trips, with a public roadmap and privacy-first design.">
   <meta property="og:title" content="Ride — Plan, Share & Ride Your Next Adventure">
-  <meta property="og:description" content="A trip planner and journal for astute travellers who enjoy the craft of a well-curated journey. Better than mainstream maps for careful planning, revisions, refinement — of the perfect trip and crisp record.">
+  <meta property="og:description" content="A friendly open-source ride planning and sharing app. Plan routes, journal trips, collaborate with clean links, and follow a public roadmap.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://ride.incitat.io/about.html">
   <link rel="icon" href="/icons/favicon.ico">
@@ -79,6 +79,21 @@
     .topnav-links { display: flex; gap: 24px; align-items: center; }
     .topnav-links a { color: var(--text-secondary); font-size: 0.875rem; font-weight: 500; }
     .topnav-links a:hover { color: var(--text-primary); }
+    .topnav-links a.oss-cta {
+      display: inline-flex; align-items: center;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-glass);
+      background: rgba(255,255,255,0.04);
+      color: var(--text-secondary);
+      font-size: 0.76rem;
+      letter-spacing: 0.02em;
+    }
+    .topnav-links a.oss-cta:hover {
+      color: var(--text-primary);
+      border-color: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.08);
+    }
     .btn-launch {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 20px; border-radius: 10px;
@@ -341,7 +356,10 @@
 
     /* ---- Responsive ---- */
     @media (max-width: 640px) {
-      .topnav-links a:not(.btn-launch) { display: none; }
+      .topnav-links a.nav-section { display: none; }
+      .topnav-links { gap: 10px; }
+      .topnav-links a.oss-cta { padding: 4px 8px; font-size: 0.72rem; }
+      .topnav-links a.oss-cta.github-cta { display: none; }
       .hero { padding-top: 130px; }
       .hero-actions { flex-direction: column; align-items: center; }
       .howto-step { grid-template-columns: 44px 1fr; gap: 14px; }
@@ -359,9 +377,11 @@
   <nav class="topnav">
     <a href="/about.html" class="topnav-logo">ride</a>
     <div class="topnav-links">
-      <a href="#features">Features</a>
-      <a href="#how-it-works">How it works</a>
-      <a href="#story">About</a>
+      <a href="#features" class="nav-section">Features</a>
+      <a href="#how-it-works" class="nav-section">How it works</a>
+      <a href="#story" class="nav-section">About</a>
+      <a href="https://github.com/Rob142857/ride/issues" target="_blank" rel="noopener" class="oss-cta">Roadmap</a>
+      <a href="https://github.com/Rob142857/ride" target="_blank" rel="noopener" class="oss-cta github-cta">GitHub</a>
       <a href="/" class="btn-launch">Open App &rarr;</a>
     </div>
   </nav>
@@ -369,12 +389,11 @@
   <!-- Hero -->
   <section class="hero">
     <div class="container">
-      <div class="hero-badge">Free &amp; Open &bull; No ads &bull; No tracking</div>
+      <div class="hero-badge">Friendly open source &bull; Public roadmap &bull; No ads</div>
       <h1>Plan your next<br><em>adventure</em></h1>
       <p class="hero-sub">
-        A trip planner and journal for astute travellers &mdash; who enjoy the craft
-        of a well-curated journey. Beautifully simple, private and secure. Better than
-        mainstream maps for careful planning, revisions, refinement &mdash; of the perfect trip and crisp record.
+        Ride is a friendly open-source app for planning routes, sharing rides, and keeping a crisp trip journal.
+        Privacy-first by default, collaboration when you want it, and a roadmap developed in public with the community.
       </p>
       <div class="hero-actions">
         <a href="/" class="btn-primary">Start Planning</a>
@@ -394,7 +413,7 @@
       <p class="section-label">Features</p>
       <h2 class="section-heading">Everything you need, nothing you don&rsquo;t</h2>
       <p class="section-sub">
-        Ride keeps things simple: plan, ride, document, share. No clutter, no subscriptions.
+        Plan, ride, document, and share with less friction. Friendly UX, open-source direction, and no bloat.
       </p>
 
       <div class="features-grid">
@@ -419,7 +438,7 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
           </div>
           <h3>Share &amp; Collaborate</h3>
-          <p>Generate a short link and share your trip publicly. Friends see your route, waypoints and journal on a beautiful read-only page.</p>
+          <p>Generate a short link and share your ride plan publicly. Friends see your route, waypoints, and journal on a clean read-only page.</p>
         </div>
 
         <div class="feature-card">
@@ -544,20 +563,20 @@
     <div class="container">
       <div class="story-wrap">
         <p class="section-label">The story</p>
-        <h2 class="section-heading">Built by a traveller, for travellers</h2>
+        <h2 class="section-heading">Built by riders, open to contributors</h2>
 
         <blockquote>
-          Saveable and shareable maps, journaling and collaboration &mdash; without any unnecessary bits. Ease of use, excellence of travel, quietness from the usual mainstream apps.
+          Friendly ride planning, easy trip sharing, and useful journaling &mdash; with an open roadmap and community-first approach.
         </blockquote>
 
         <p>
-          Ride was crafted by a motorbike rider, camper and general interested explorer. The goal was simple: build one clean tool for planning trips, documenting the journey, and sharing routes with others &mdash; without the noise, the upsells, or the data harvesting that comes with mainstream maps.
+          Ride started with a simple goal: make route planning and ride sharing feel calm, clear, and enjoyable. It is designed for practical journeys and memorable adventures, without the upsells and distraction-heavy interfaces common in mainstream map tools.
         </p>
         <p>
-          It started as a weekend project and grew into something I reach for on every trip, from a Saturday morning loop through the hills to a multi-day ride across state lines. No sign-up walls, no premium tiers, no ads. Just ride.
+          The project has grown from a personal build into a friendly open-source app. The roadmap is public, feedback is welcome, and improvements are shaped in the open so the experience keeps getting better for everyone.
         </p>
         <p>
-          You can read more about how this was built, the infrastructure choices, and the broader projects at my blog. If Ride is useful to you and you&rsquo;d like to support the hosting costs, you can buy me a coffee.
+          Explore the code and roadmap on GitHub, read build notes on the blog, and support hosting if the app helps your rides.
         </p>
 
         <div class="story-links">
@@ -573,9 +592,13 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             Buy me a coffee
           </a>
-          <a href="https://github.com/Rob142857/ride_incitatio" target="_blank" rel="noopener" class="story-link">
+          <a href="https://github.com/Rob142857/ride" target="_blank" rel="noopener" class="story-link">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
             GitHub
+          </a>
+          <a href="https://github.com/Rob142857/ride/issues" target="_blank" rel="noopener" class="story-link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            Roadmap
           </a>
         </div>
       </div>
@@ -588,7 +611,7 @@
       <p class="section-label">Under the hood</p>
       <h2 class="section-heading">Solid foundations</h2>
       <p class="section-sub">
-        Ride is built on open-source cartography and global-edge infrastructure.
+        Ride is built on open-source foundations, with a public roadmap and edge-first infrastructure.
       </p>
 
       <div class="tech-grid">
@@ -638,8 +661,8 @@
   <section class="cta">
     <div class="container">
       <div class="cta-card">
-        <h2>Ready to plan your next ride?</h2>
-        <p>It&rsquo;s free, it&rsquo;s fast, and your data stays yours. Open the app and start dropping waypoints.</p>
+        <h2>Ready to plan and share your next ride?</h2>
+        <p>Friendly open-source experience, practical ride sharing, and your data stays yours. Open the app and start building your route.</p>
         <a href="/" class="btn-primary">Open Ride &rarr;</a>
       </div>
     </div>
@@ -652,11 +675,12 @@
       <a href="/terms.html">Terms</a>
       <a href="/deletion.html">Data Deletion</a>
       <a href="https://ko-fi.com/objectiveartefacts" target="_blank" rel="noopener">Buy me a coffee</a>
-      <a href="https://github.com/Rob142857/ride_incitatio" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Rob142857/ride/issues" target="_blank" rel="noopener">Roadmap</a>
+      <a href="https://github.com/Rob142857/ride" target="_blank" rel="noopener">GitHub</a>
       <a href="https://objectiveartefacts.com.au" target="_blank" rel="noopener">Blog</a>
       <a href="https://incitat.io" target="_blank" rel="noopener">incitat.io</a>
     </div>
-    <p class="footer-copy">&copy; 2025 Ride &mdash; Robert Evans &bull; <a href="https://objectiveartefacts.com.au" target="_blank" rel="noopener">Objective Artefacts</a></p>
+    <p class="footer-copy">&copy; 2026 Ride &mdash; Robert Evans &bull; <a href="https://objectiveartefacts.com.au" target="_blank" rel="noopener">Objective Artefacts</a></p>
   </footer>
 
 </body>

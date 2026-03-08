@@ -1,8 +1,11 @@
-name = "ride-trip-planner"
+# Copy this file to wrangler.toml (or wrangler.local.toml) for a new deployment.
+# Keep production IDs and secrets out of public forks.
+
+name = "ride"
 main = "api/worker.js"
 compatibility_date = "2024-01-01"
-routes = ["ride.incitat.io/*"]
 workers_dev = false
+routes = ["your-domain.example.com/*"]
 
 [assets]
 directory = "./public"
@@ -11,11 +14,11 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "RIDE_TRIP_PLANNER_DB"
 database_name = "ride-db"
-database_id = "368b270d-9442-4674-b52f-dc21c6592dae"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
 
 [[kv_namespaces]]
 binding = "RIDE_TRIP_PLANNER_SESSIONS"
-id = "36162f4023ea404ab718b0b01d7622e1"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
 [[r2_buckets]]
 binding = "RIDE_TRIP_PLANNER_ATTACHMENTS"
@@ -23,4 +26,4 @@ bucket_name = "ride-attachments"
 
 [vars]
 ENVIRONMENT = "production"
-BASE_URL = "https://ride.incitat.io"
+BASE_URL = "https://your-domain.example.com"

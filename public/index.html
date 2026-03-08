@@ -7,9 +7,9 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#16213e">
-  <meta name="description" content="Plan trips with waypoints, custom routes, and travel journal">
+  <meta name="description" content="Friendly open-source ride planning and sharing app with waypoints, custom routes, journals, and collaborative trip links.">
   
-  <title>Ride - Trip Planner</title>
+  <title>Ride - Open Source Ride Planner</title>
   
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/ride-logo-32.png">
@@ -37,14 +37,14 @@
     <div id="landingGate" class="landing-gate hidden" role="dialog" aria-modal="true" aria-label="Welcome">
       <div class="landing-gate-shell">
         <div class="landing-gate-card">
-          <div class="landing-gate-kicker">Beautiful trip planning</div>
+          <div class="landing-gate-kicker">Friendly open source planning</div>
           <h2 class="landing-gate-title">Ride</h2>
           <div class="landing-gate-rule" aria-hidden="true"></div>
-          <p class="landing-gate-blurb">Plan waypoints, trace routes, share clean links, and keep your trip together—simple, fast, and collaborative.</p>
+          <p class="landing-gate-blurb">Plan waypoints, trace routes, and share rides with clean links in a friendly open-source app focused on great collaborative experience.</p>
 
           <div class="landing-gate-quote">
-            <div class="landing-gate-quote-line">“Beauty in the route, clarity in the plan.”</div>
-            <div class="landing-gate-quote-meta">Minimal by design. Built to share.</div>
+            <div class="landing-gate-quote-line">"Friendly by default, open by design."</div>
+            <div class="landing-gate-quote-meta">Roadmap in public. Built to ride and share.</div>
           </div>
 
           <button id="landingBeginBtn" class="primary-btn">Begin</button>
@@ -78,6 +78,10 @@
         <div id="tripStats" class="trip-stats"></div>
       </div>
       <div class="topbar-right">
+        <nav class="topbar-open-source" aria-label="Open-source links">
+          <a href="https://github.com/Rob142857/ride/issues" target="_blank" rel="noopener">Roadmap</a>
+          <a href="https://github.com/Rob142857/ride" target="_blank" rel="noopener">GitHub</a>
+        </nav>
         <button id="rideBtn" class="icon-btn" aria-label="Start navigation">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
         </button>
@@ -130,6 +134,11 @@
       </ul>
       <div class="menu-footer">
         <p class="crafted-text">Crafted with Care<br><a href="https://objectiveartefacts.com.au" target="_blank" rel="noopener">Objective Artefacts Australia</a><br><a href="https://incitat.io" target="_blank" rel="noopener">incitat.io</a></p>
+        <p class="open-source-links">
+          <a href="https://github.com/Rob142857/ride/issues" target="_blank" rel="noopener">Roadmap</a>
+          <span aria-hidden="true">&middot;</span>
+          <a href="https://github.com/Rob142857/ride" target="_blank" rel="noopener">GitHub</a>
+        </p>
       </div>
     </aside>
     <div id="menuOverlay" class="hidden"></div>
@@ -348,9 +357,10 @@
           <input type="text" id="noteTitle" placeholder="Entry title" required>
           <textarea id="noteContent" placeholder="Write your notes..." rows="6"></textarea>
           <div class="visibility-toggle">
-            <label>
+            <label class="toggle-switch">
               <input type="checkbox" id="notePrivate">
-              <span>Private note (won't be shared)</span>
+              <span class="toggle-track"></span>
+              <span class="toggle-label-text">Private note (won't be shared)</span>
             </label>
           </div>
           <input type="text" id="noteTags" placeholder="Tags (comma separated)">
@@ -392,9 +402,10 @@
           <div class="share-visibility">
             <div class="share-row">
               <div class="share-label">Link access</div>
-              <label class="share-toggle">
+              <label class="toggle-switch">
                 <input type="checkbox" id="sharePublicToggle">
-                <span class="share-toggle-text">Public (anyone with link)</span>
+                <span class="toggle-track"></span>
+                <span class="toggle-label-text">Public (anyone with link)</span>
               </label>
             </div>
             <div class="share-section-label">Include in shared view</div>
@@ -498,14 +509,13 @@
             <div class="cover-focus-preview" id="tripDetailCoverPreview"></div>
           </div>
 
-          <div class="field-row">
-            <div>
-              <label class="field-label">Sharing</label>
-              <label class="public-toggle-label">
-                <input type="checkbox" id="tripDetailPublic"> Publicly shared
-              </label>
-            </div>
-          </div>
+          <div class="form-section">
+            <label class="field-label">Sharing</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="tripDetailPublic">
+              <span class="toggle-track"></span>
+              <span class="toggle-label-text">Publicly shared</span>
+            </label>
 
           <div class="share-link-block">
             <div class="share-link-labels">
@@ -518,6 +528,7 @@
               </button>
             </div>
             <p class="microcopy">Link appears after generating or when trip is public.</p>
+          </div>
           </div>
 
           <div class="modal-actions">

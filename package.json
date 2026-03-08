@@ -1,8 +1,17 @@
 {
-  "name": "ride-trip-planner",
+  "name": "ride",
   "version": "1.0.0",
-  "description": "Stripped-down trip planning PWA with waypoints, routes, and journal",
+  "private": true,
+  "description": "Open-source trip planning PWA with waypoints, routes, journals, and sharing",
   "main": "index.html",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rob142857/ride.git"
+  },
   "scripts": {
     "dev": "npx serve -p 3000",
     "start": "npx serve -p 3000",
@@ -16,7 +25,7 @@
   },
   "keywords": ["pwa", "trip", "navigation", "waypoints", "journal", "cloudflare"],
   "author": "Robert Evans - Objective Artefacts Australia",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "devDependencies": {
     "wrangler": "^3.0.0"
   }

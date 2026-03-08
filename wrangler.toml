@@ -28,11 +28,9 @@ bucket_name = "ride-attachments"
 # Environment variables (set via Cloudflare dashboard or wrangler secret)
 # GOOGLE_CLIENT_ID = ""
 # GOOGLE_CLIENT_SECRET = ""
-# FACEBOOK_APP_ID = ""
-# FACEBOOK_APP_SECRET = ""
 # MICROSOFT_CLIENT_ID = ""
 # MICROSOFT_CLIENT_SECRET = ""
-# JWT_SECRET = ""
+# GOOGLE_PLACES_API_KEY = ""
 
 [vars]
 ENVIRONMENT = "production"

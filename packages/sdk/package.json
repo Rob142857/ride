@@ -1,0 +1,12 @@
+{
+  "name": "@ride/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Developer-friendly Ride API SDK",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "sideEffects": false
+}

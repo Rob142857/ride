@@ -1,7 +1,7 @@
 {
   "name": "Ride Trip Planner",
   "short_name": "Ride",
-  "description": "Plan trips with waypoints, custom routes, and travel journal",
+  "description": "Friendly open-source ride planning and sharing with waypoints, routes, and trip journals",
   "start_url": "/",
   "id": "ride.incitat.io",
   "display": "fullscreen",

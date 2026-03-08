@@ -9,6 +9,8 @@ node_modules/
 # Wrangler
 .wrangler/
 .dev.vars
+wrangler.local.toml
+wrangler.private.toml
 
 # IDE
 .vscode/

@@ -6,13 +6,13 @@
   
   <!-- Dynamic meta tags will be injected by worker for social sharing -->
   <title>Trip | Ride</title>
-  <meta name="description" content="Explore this trip on Ride - Trip planning made beautiful">
+  <meta name="description" content="Explore this trip on Ride - a friendly open-source app for route planning and ride sharing.">
   
   <!-- Open Graph for Facebook, LinkedIn, etc -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Ride">
   <meta property="og:title" content="Trip | Ride">
-  <meta property="og:description" content="Explore this trip on Ride">
+  <meta property="og:description" content="Explore this trip on Ride, a friendly open-source ride planning and sharing app.">
   <meta property="og:image" content="https://ride.incitat.io/icons/og-ride.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -22,7 +22,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:site" content="@incitatio">
   <meta name="twitter:title" content="Trip | Ride">
-  <meta name="twitter:description" content="Explore this trip on Ride">
+  <meta name="twitter:description" content="Explore this trip on Ride, a friendly open-source ride planning and sharing app.">
   <meta name="twitter:image" content="https://ride.incitat.io/icons/og-ride.png">
   
   <!-- Favicons -->
@@ -685,6 +685,28 @@
     .footer-cta:hover::after {
       transform: translateX(120%);
     }
+
+    .footer-open-source {
+      margin-top: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .footer-open-source a {
+      color: var(--text-muted);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255,255,255,0.22);
+      padding-bottom: 1px;
+      transition: all 0.2s ease;
+    }
+
+    .footer-open-source a:hover {
+      color: var(--text-primary);
+      border-color: var(--text-primary);
+    }
     
     .footer-credits {
       margin-top: 48px;
@@ -1079,13 +1101,18 @@
         </picture>
         <span class="footer-brand-text">Ride</span>
       </div>
-      <p class="footer-tagline">Trip planning made beautiful</p>
+      <p class="footer-tagline">Friendly open-source ride planning and sharing</p>
       <a href="/" class="footer-cta">
         Plan Your Trip
         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
         </svg>
       </a>
+      <div class="footer-open-source">
+        <a href="https://github.com/Rob142857/ride/issues" target="_blank" rel="noopener">Roadmap</a>
+        <span aria-hidden="true">&middot;</span>
+        <a href="https://github.com/Rob142857/ride" target="_blank" rel="noopener">GitHub</a>
+      </div>
       <p class="footer-credits">Crafted with Care<br><a href="https://objectiveartefacts.com.au" target="_blank" rel="noopener">Objective Artefacts Australia</a><br><a href="https://incitat.io" target="_blank" rel="noopener">incitat.io</a></p>
     </footer>
     

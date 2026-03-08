@@ -1,0 +1,9 @@
+{
+  "name": "@ride/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web workspace scaffold for Ride",
+  "scripts": {
+    "status": "node -e \"console.log('Web workspace scaffolded; runtime still uses root public/.')\""
+  }
+}

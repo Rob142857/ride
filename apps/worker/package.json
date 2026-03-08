@@ -1,0 +1,11 @@
+{
+  "name": "@ride/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/worker.js",
+  "description": "Worker workspace scaffold for Ride",
+  "scripts": {
+    "status": "node -e \"console.log('Worker workspace scaffolded; runtime still resolves api/worker.js.')\""
+  }
+}
