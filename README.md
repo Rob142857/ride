@@ -6,11 +6,14 @@ Public repository: `https://github.com/Rob142857/ride`
 
 ## Stack
 
-- Cloudflare Pages + Worker entrypoint in `_worker.js`
-- API implementation in `api/worker.js` with route modules in `api/`
-- Cloudflare D1 (data), KV (sessions), R2 (attachments)
-- Vanilla JS frontend in `public/`
-- OAuth providers: Google and Microsoft
+- **Frontend:** Vanilla JS PWA in `public/`, rendered with [Leaflet](https://leafletjs.com) maps
+- **Map tiles:** [CARTO Voyager](https://carto.com/) raster tiles backed by [OpenStreetMap](https://www.openstreetmap.org) data
+- **Routing:** Self-hosted [OSRM](https://project-osrm.org) instance on an Azure Linux VM (Docker), exposed via Cloudflare Tunnel — see `docs/osrm-azure.md`
+- **Place search:** Google Places API (proxied through the Worker)
+- **Hosting:** Cloudflare Pages + Worker entrypoint in `_worker.js`
+- **API:** Worker modules in `api/` with route handlers
+- **Storage:** Cloudflare D1 (data), KV (sessions), R2 (attachments)
+- **Auth:** OAuth providers — Google and Microsoft
 
 ## Project Structure
 
