@@ -47,9 +47,6 @@ Object.assign(MapManager, {
     // Acquire wake lock to keep screen on
     this._acquireWakeLock();
 
-    // Enable heading-up rotation
-    this._headingUp = true;
-
     // Create rider marker
     if (!this.rideMarker) {
       this.rideMarker = L.marker([0, 0], {
@@ -78,13 +75,8 @@ Object.assign(MapManager, {
         const latlng = [latitude, longitude];
         this.rideHeading = heading;
         this.rideMarker.setLatLng(latlng);
-        // In heading-up mode the marker always points up; the map rotates instead
-        this.rideMarker.setIcon(this.createRideIcon(this._headingUp ? 0 : (heading || 0)));
-
-        // Heading-up: rotate map container so rider's heading points up
-        if (this._headingUp && heading != null && isFinite(heading)) {
-          this._setMapRotation(-heading);
-        }
+        // Rotate the rider arrow to point in direction of travel
+        this.rideMarker.setIcon(this.createRideIcon(heading || 0));
 
         // Auto-pan to rider
         const currentCenter = this.map.getCenter();
@@ -135,9 +127,6 @@ Object.assign(MapManager, {
     this.rideWatchId = null;
     this.ridePositionCb = null;
     this._gpsErrors = 0;
-    this._headingUp = false;
-    // Reset map rotation
-    this._setMapRotation(0);
     this._releaseWakeLock();
     if (this.rideMarker) {
       this.map.removeLayer(this.rideMarker);
@@ -219,20 +208,7 @@ Object.assign(MapManager, {
    */
   recenterRide() {
     if (this.rideMarker) {
-      this._headingUp = true;
       this.map.setView(this.rideMarker.getLatLng(), Math.max(this.map.getZoom(), 15));
-      if (this.rideHeading != null && isFinite(this.rideHeading)) {
-        this._setMapRotation(-this.rideHeading);
-      }
     }
-  },
-
-  /**
-   * Rotate the map container via CSS transform for heading-up display
-   */
-  _setMapRotation(deg) {
-    const el = this.map?.getContainer();
-    if (!el) return;
-    el.style.transform = deg ? `rotate(${deg}deg)` : '';
   }
 });
