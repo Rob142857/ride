@@ -1,0 +1,68 @@
+# OSRM Setup & Health Check Commands
+# Run these on mjw-ubuntu (azureuser) in order
+
+# ============================================================
+# STEP 0: First, see what's on the box already
+# ============================================================
+find ~/ride -maxdepth 3 -type f | head -30
+echo "==="
+docker ps -a
+echo "==="
+docker compose ls
+
+# ============================================================
+# STEP 1: Pull latest code (or clone if needed)
+# ============================================================
+cd ~
+# If ~/ride is already a git repo:
+cd ~/ride && git pull origin main
+
+# If ~/ride is NOT a git repo, clone fresh:
+# rm -rf ~/ride
+# git clone https://github.com/Rob142857/ride.git ~/ride
+
+# ============================================================
+# STEP 2: Deploy OSRM (first time only — takes 10-20 mins)
+# ============================================================
+cd ~/ride/infra
+
+# Run the setup script (downloads Oceania data, extracts, partitions)
+chmod +x setup-osrm.sh refresh-osrm.sh
+./setup-osrm.sh
+
+# Start services
+docker compose up -d
+
+# ============================================================
+# STEP 3: Set up weekly refresh cron
+# ============================================================
+(crontab -l 2>/dev/null; echo "0 3 * * 0 cd /home/azureuser/ride/infra && ./refresh-osrm.sh >> /var/log/osrm-refresh.log 2>&1") | crontab -
+
+# ============================================================
+# STEP 4: Health checks (run these any time)
+# ============================================================
+
+# 4a. Docker & containers status
+docker compose -f ~/ride/infra/docker-compose.yml ps
+
+# 4b. OSRM health check
+curl -s "http://localhost:5000/route/v1/driving/151.2093,-33.8688;151.2153,-33.8568?overview=false" | head -c 200
+
+# 4c. Cloudflare tunnel status (bare-metal service, not Docker)
+sudo systemctl status cloudflared
+journalctl -u cloudflared --no-pager -n 20
+
+# 4d. Weekly refresh cron
+crontab -l
+
+# 4e. Last refresh log
+tail -20 /var/log/osrm-refresh.log 2>/dev/null || echo "No refresh log found"
+
+# 4f. OSRM data age
+ls -lh ~/ride/infra/osrm-data/data.osm.pbf
+
+# 4g. Disk & memory
+df -h / && echo "---" && free -h
+
+# 4h. External endpoint test (maps.incitat.io via Cloudflare Tunnel)
+curl -s "https://maps.incitat.io/route/v1/driving/151.2093,-33.8688;151.2153,-33.8568?overview=false" | head -c 200

@@ -9,6 +9,8 @@
     "/*.png",
     "/*.svg",
     "/manifest.json",
+    "/robots.txt",
+    "/sitemap.xml",
     "/sw.js"
   ]
 }

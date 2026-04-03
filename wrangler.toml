@@ -1,6 +1,6 @@
 name = "ride-trip-planner"
 main = "api/worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-04-01"
 routes = ["ride.incitat.io/*"]
 workers_dev = false
 

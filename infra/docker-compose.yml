@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   osrm:
     image: osrm/osrm-backend:latest
@@ -9,9 +7,9 @@ services:
       - "127.0.0.1:5000:5000"
     volumes:
       - ./osrm-data:/data
-    command: osrm-routed --algorithm mld /data/data.osrm
+    command: osrm-routed --algorithm mld --max-table-size 200 --max-trip-size 100 /data/data.osrm
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/nearest/v1/driving/151.2093,-33.8688"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -19,14 +17,3 @@ services:
       resources:
         limits:
           memory: 6G
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      osrm:
-        condition: service_healthy

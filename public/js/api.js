@@ -161,8 +161,10 @@ const API = {
           }
         }
 
-        // Treat server-side failures as a lost connection (fail closed).
-        if (response.status >= 500 && typeof window !== 'undefined') {
+        // Treat server-side failures as a lost connection (fail closed),
+        // unless the caller marked the request as quiet (e.g. proxy endpoints
+        // whose 5xx doesn't mean *our* server is down).
+        if (response.status >= 500 && !options.quiet && typeof window !== 'undefined') {
           try {
             window.dispatchEvent(new CustomEvent('ride:connection-lost', {
               detail: { endpoint, status: response.status, kind: 'server' }
@@ -364,7 +366,7 @@ const API = {
       }
       if (options.radius) params.set('radius', options.radius);
       if (options.region) params.set('region', options.region);
-      const data = await API.request(`/places/search?${params}`);
+      const data = await API.request(`/places/search?${params}`, { quiet: true });
       return data.results || [];
     },
   },

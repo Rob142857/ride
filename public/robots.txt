@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+Disallow: /api/
+Disallow: /admin.html
+Disallow: /sw.js
+
+Sitemap: https://ride.incitat.io/sitemap.xml

@@ -160,6 +160,14 @@
     <div class="stat-card"><div class="label">Journal Notes</div><div class="value" id="statJournals">&mdash;</div></div>
     <div class="stat-card"><div class="label">Attachments</div><div class="value" id="statAttachments">&mdash;</div><div class="detail" id="statStorage"></div></div>
     <div class="stat-card"><div class="label">Logins (7d)</div><div class="value" id="statLogins7d">&mdash;</div><div class="detail" id="statLogins30d"></div></div>
+    <div class="stat-card" id="placesCard" style="border-left:3px solid #3b82f6">
+      <div class="label">Places API</div>
+      <div class="value" id="statPlacesUsed">&mdash;</div>
+      <div class="detail" id="statPlacesDetail"></div>
+      <div style="margin-top:6px;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden">
+        <div id="statPlacesBar" style="height:100%;background:#3b82f6;border-radius:3px;width:0%;transition:width .4s"></div>
+      </div>
+    </div>
   </div>
 
   <!-- Activity chart -->
@@ -671,9 +679,27 @@
     // Close modal on Escape
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAudit(); });
 
+    /* ── Places API usage ──────────────────────────────────── */
+
+    async function loadPlacesUsage() {
+      try {
+        const res = await fetch('/api/admin/places-usage');
+        if (!res.ok) return;
+        const p = await res.json();
+        document.getElementById('statPlacesUsed').textContent = fmtNum(p.used) + ' / ' + fmtNum(p.quota);
+        document.getElementById('statPlacesDetail').textContent = p.month + ' · ' + p.pct + '% of free tier';
+        const bar = document.getElementById('statPlacesBar');
+        bar.style.width = Math.min(100, p.pct) + '%';
+        bar.style.background = p.pct >= 90 ? '#ef4444' : p.pct >= 70 ? '#f59e0b' : '#3b82f6';
+        if (p.pct >= 90) document.getElementById('placesCard').style.borderLeftColor = '#ef4444';
+        else if (p.pct >= 70) document.getElementById('placesCard').style.borderLeftColor = '#f59e0b';
+      } catch (err) { console.error('Places usage load error:', err); }
+    }
+
     /* ── Init ─────────────────────────────────────────────── */
 
     loadStats();
+    loadPlacesUsage();
     loadUsers();
     loadLogins();
   </script>

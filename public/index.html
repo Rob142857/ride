@@ -11,6 +11,24 @@
   
   <title>Ride - Open Source Ride Planner</title>
   
+  <link rel="canonical" href="https://ride.incitat.io/">
+  
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Ride">
+  <meta property="og:title" content="Ride — Open Source Ride Planner">
+  <meta property="og:description" content="Friendly open-source ride planning and sharing app with waypoints, custom routes, journals, and collaborative trip links.">
+  <meta property="og:url" content="https://ride.incitat.io/">
+  <meta property="og:image" content="https://ride.incitat.io/icons/og-ride.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Ride — Open Source Ride Planner">
+  <meta name="twitter:description" content="Friendly open-source ride planning and sharing app with waypoints, custom routes, journals, and collaborative trip links.">
+  <meta name="twitter:image" content="https://ride.incitat.io/icons/og-ride.png">
+  
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/ride-logo-32.png">
   <link rel="icon" type="image/png" sizes="48x48" href="/icons/ride-logo-48.png">
@@ -22,6 +40,7 @@
   
   <link rel="stylesheet" href="css/global.css">
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/ride-mode.css">
 </head>
 <body class="geistsans_47a3c9f1-module__2HyNMa__variable geistmono_cfbefb1d-module__tUxLBG__variable antialiased">
   <div id="app">
@@ -556,11 +575,16 @@
   <script src="js/utils.js"></script>
   <script src="js/trip.js"></script>
   <script src="js/map.js"></script>
+  <script src="js/map-ride.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/ui-renderers.js"></script>
+  <script src="js/ui-place-search.js"></script>
   <script src="js/share.js"></script>
+  <script src="js/export-import.js"></script>
   <script src="js/app-core.js"></script>
   <script src="js/auth-controller.js"></script>
   <script src="js/trip-controller.js"></script>
+  <script src="js/trip-details.js"></script>
   <script src="js/waypoint-controller.js"></script>
   <script src="js/journal-controller.js"></script>
   <script src="js/ride-controller.js"></script>

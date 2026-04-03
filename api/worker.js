@@ -36,6 +36,7 @@ router.get('/api/admin/logins', AuthHandler.listLoginsAdmin);
 router.get('/api/admin/users/:id/audit', AuthHandler.auditUser);
 router.post('/api/admin/users/:id/status', AuthHandler.setUserStatus);
 router.post('/api/admin/users/:id/notes', AuthHandler.addAdminNote);
+router.get('/api/admin/places-usage', PlacesHandler.usageStats);
 
 // Trip routes (protected)
 router.get('/api/trips', requireAuth, TripsHandler.listTrips);

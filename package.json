@@ -27,6 +27,6 @@
   "author": "Robert Evans - Objective Artefacts Australia",
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
-    "wrangler": "^3.0.0"
+    "wrangler": "^4.80.0"
   }
 }
