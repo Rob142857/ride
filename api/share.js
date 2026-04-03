@@ -78,10 +78,14 @@ export const ShareHandler = {
       'SELECT * FROM route_data WHERE trip_id = ?'
     ).bind(trip.id).first();
 
-    // Cover image
-    const coverImage = attachments.results.find(a => a.is_cover) || attachments.results.find(a => a.mime_type?.startsWith('image/'));
-    const coverUrl = trip.cover_image_url || (coverImage ? `${BASE_URL}/api/attachments/${coverImage.id}` : null);
-    const coverId = coverImage?.id;
+    // Cover image — only use explicit is_cover or trip.cover_image_url;
+    // fall back to first image only for the hero, but never remove journal
+    // attachments from the list.
+    const explicitCover = attachments.results.find(a => a.is_cover);
+    const fallbackCover = attachments.results.find(a => a.mime_type?.startsWith('image/'));
+    const coverUrl = trip.cover_image_url || (explicitCover ? `${BASE_URL}/api/attachments/${explicitCover.id}` : (fallbackCover ? `${BASE_URL}/api/attachments/${fallbackCover.id}` : null));
+    // Only exclude from attachments list if explicitly marked as cover (not a fallback)
+    const excludeCoverId = explicitCover?.id || null;
 
     return jsonResponse({
       trip: {
@@ -101,7 +105,7 @@ export const ShareHandler = {
           tags: JSON.parse(e.tags || '[]'), created_at: e.created_at
         })),
         attachments: attachments.results
-          .filter(a => a.id !== coverId)
+          .filter(a => !excludeCoverId || a.id !== excludeCoverId)
           .map(a => ({
             id: a.id, name: a.original_name, type: a.mime_type,
             caption: a.caption, url: `${BASE_URL}/api/attachments/${a.id}`,

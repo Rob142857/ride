@@ -11,18 +11,32 @@ Object.assign(App, {
       document.getElementById('rideAddSheet')?.classList.add('hidden');
     });
     document.getElementById('rideAddNoteBtn')?.addEventListener('click', () => {
+      const createWaypoint = document.getElementById('rideOptWaypoint')?.checked ?? false;
+      const position = MapManager.rideMarker ? MapManager.rideMarker.getLatLng() : null;
       document.getElementById('rideAddSheet')?.classList.add('hidden');
       if (!this.ensureEditable('add a note')) return;
+      if (createWaypoint && position) {
+        this._insertWaypointAtPosition(position);
+      }
       UI.openModal('noteModal');
     });
     document.getElementById('rideAddPhotoBtn')?.addEventListener('click', () => {
+      // Capture ride options before closing sheet
+      this._ridePhotoOpts = {
+        tagGps: document.getElementById('rideOptGps')?.checked ?? false,
+        createWaypoint: document.getElementById('rideOptWaypoint')?.checked ?? false,
+        position: MapManager.rideMarker ? MapManager.rideMarker.getLatLng() : null
+      };
       document.getElementById('rideAddSheet')?.classList.add('hidden');
       if (!this.ensureEditable('add a photo')) return;
       document.getElementById('ridePhotoInput')?.click();
     });
     document.getElementById('ridePhotoInput')?.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
-      if (file) await this.addPhotoAttachment(file);
+      if (!file) { e.target.value = ''; return; }
+      const opts = this._ridePhotoOpts || {};
+      this._ridePhotoOpts = null;
+      await this.addRidePhoto(file, opts);
       e.target.value = '';
     });
     document.getElementById('rideRecenterBtn')?.addEventListener('click', () => {
@@ -30,6 +44,100 @@ Object.assign(App, {
     });
     document.getElementById('rideExitBtn')?.addEventListener('click', () => this.exitRideMode());
     document.getElementById('rideBannerExitBtn')?.addEventListener('click', () => this.exitRideMode());
+  },
+
+  /**
+   * Add a photo during ride mode with optional GPS tagging and waypoint creation
+   */
+  async addRidePhoto(file, opts = {}) {
+    if (!this.currentTrip || !this.ensureEditable('save photos')) return;
+
+    // Create waypoint at current GPS position if requested
+    if (opts.createWaypoint && opts.position) {
+      await this._insertWaypointAtPosition(opts.position);
+    }
+
+    // Build photo title — include GPS if tagged
+    const now = new Date();
+    let title = `Photo ${now.toLocaleString()}`;
+    const gpsPos = opts.tagGps && opts.position ? opts.position : null;
+    if (gpsPos) {
+      title += ` [${gpsPos.lat.toFixed(5)}, ${gpsPos.lng.toFixed(5)}]`;
+    }
+
+    let entry;
+    try {
+      const entryData = { title, content: '', is_private: false, tags: [] };
+      if (gpsPos) {
+        entryData.content = `📍 GPS: ${gpsPos.lat.toFixed(6)}, ${gpsPos.lng.toFixed(6)}`;
+      }
+      entry = await API.journal.add(this.currentTrip.id, entryData);
+      if (!this.currentTrip.journal) this.currentTrip.journal = [];
+      entry.attachments = [];
+      this.currentTrip.journal.push(entry);
+    } catch (err) {
+      console.error('Failed to create photo note', err);
+      UI.showToast('Could not create note for photo.', 'error');
+      return;
+    }
+
+    this._activeUploads++;
+    try {
+      UI.showToast('Uploading photo...', 'info');
+      const attachment = await API.attachments.upload(this.currentTrip.id, file, { journal_entry_id: entry.id });
+      this.addAttachmentToEntry(entry.id, attachment, true);
+      UI.showToast('Photo saved to trip', 'success');
+    } catch (err) {
+      console.error('Photo upload failed', err);
+      UI.showToast('Photo upload failed', 'error');
+    } finally {
+      this._activeUploads = Math.max(0, this._activeUploads - 1);
+    }
+    UI.renderJournal(this.currentTrip.journal);
+    this.renderNoteAttachments(entry);
+  },
+
+  /**
+   * Insert a waypoint at the rider's current GPS position,
+   * placed in order between the nearest existing waypoints
+   */
+  async _insertWaypointAtPosition(latlng) {
+    if (!this.currentTrip) return;
+    const lat = latlng.lat;
+    const lng = latlng.lng;
+    const waypoints = this.currentTrip.waypoints || [];
+
+    // Find the best insertion index: after the nearest visited waypoint
+    let insertAfter = waypoints.length; // default: append at end
+    if (waypoints.length > 0 && this.rideVisitedWaypoints) {
+      // Find the last visited waypoint in order — insert after it
+      for (let i = waypoints.length - 1; i >= 0; i--) {
+        if (this.rideVisitedWaypoints.has(waypoints[i].id)) {
+          insertAfter = i + 1;
+          break;
+        }
+      }
+    }
+
+    const waypointData = {
+      name: `📍 ${new Date().toLocaleTimeString()}`,
+      lat, lng
+    };
+
+    const newWp = await this.addWaypoint(waypointData);
+    if (!newWp) return;
+
+    // Reorder so the new waypoint sits at the correct position
+    if (insertAfter < waypoints.length) {
+      const order = waypoints.map(w => w.id);
+      // Move the new waypoint from end to insertAfter position
+      const idx = order.indexOf(newWp.id);
+      if (idx !== -1) {
+        order.splice(idx, 1);
+        order.splice(insertAfter, 0, newWp.id);
+        await this.reorderWaypoints(order);
+      }
+    }
   },
 
   enterRideMode() {
