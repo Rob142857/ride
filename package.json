@@ -23,10 +23,18 @@
     "dev:remote": "wrangler dev --remote --d1=RIDE_TRIP_PLANNER_DB --kv=RIDE_TRIP_PLANNER_SESSIONS --r2=RIDE_TRIP_PLANNER_ATTACHMENTS",
     "setup": "echo 'Run: npm run db:create && npm run kv:create && update wrangler.toml with IDs && npm run db:migrate'"
   },
-  "keywords": ["pwa", "trip", "navigation", "waypoints", "journal", "cloudflare"],
+  "keywords": [
+    "pwa",
+    "trip",
+    "navigation",
+    "waypoints",
+    "journal",
+    "cloudflare"
+  ],
   "author": "Robert Evans - Objective Artefacts Australia",
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
+    "sharp": "^0.34.5",
     "wrangler": "^4.80.0"
   }
 }

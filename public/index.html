@@ -30,9 +30,15 @@
   <meta name="twitter:image" content="https://ride.incitat.io/icons/og-ride.png">
   
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/ride-logo-32.png">
   <link rel="icon" type="image/png" sizes="48x48" href="/icons/ride-logo-48.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
   
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
@@ -86,10 +92,7 @@
         <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
       </button>
       <div class="topbar-title">
-        <picture class="topbar-logo" aria-hidden="true">
-          <source srcset="/icons/ride-logo.webp" type="image/webp">
-          <img src="/icons/ride-logo.png" alt="Ride logo">
-        </picture>
+        <img class="topbar-logo-icon" src="/icons/icon.svg" alt="Ride logo">
         <div class="topbar-trip-info">
           <span id="tripLabel" class="trip-label">Ride</span>
           <h1 id="tripTitle">New Trip</h1>

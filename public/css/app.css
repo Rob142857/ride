@@ -158,10 +158,16 @@ body {
 }
 
 .auth-gate-title {
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 2rem;
+  letter-spacing: 0.04em;
   margin-bottom: 10px;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 45%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .auth-gate-status {
@@ -213,9 +219,16 @@ body {
 
 .landing-gate-title {
   margin-top: 8px;
-  font-size: 2.2rem;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 2.8rem;
   line-height: 1.05;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 45%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .landing-gate-rule {
@@ -616,6 +629,21 @@ body.doc-page {
   height: 22px;
   width: auto;
   display: block;
+}
+
+/* Inline SVG icon variant (replaces <picture> in topbar) */
+.topbar-logo-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease-elegant), filter 0.2s var(--ease-elegant);
+}
+
+.topbar-logo-icon:hover {
+  transform: scale(1.06);
+  filter: brightness(1.1);
+}
 }
 
 .topbar-trip-info {
@@ -2692,6 +2720,12 @@ body.doc-page {
 
   .topbar-logo img {
     height: 19px;
+  }
+
+  .topbar-logo-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
   }
 
   .trip-label {

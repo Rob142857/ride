@@ -1,8 +1,94 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
-  <rect width="192" height="192" rx="32" fill="#16213e"/>
-  <circle cx="96" cy="80" r="24" fill="#e94560"/>
-  <path d="M96 40 C60 40 40 70 40 100 C40 140 96 170 96 170 C96 170 152 140 152 100 C152 70 132 40 96 40 Z" fill="none" stroke="#e94560" stroke-width="8"/>
-  <circle cx="60" cy="130" r="8" fill="#4ade80"/>
-  <circle cx="132" cy="130" r="8" fill="#fbbf24"/>
-  <path d="M60 130 Q96 100 132 130" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="8 4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!--
+    Ride — Premium App Icon
+    Geometry: Pin head r=120 with κ=0.5523 circular bezier approximation
+    C1-continuous teardrop, golden-ratio accent proportions
+    Multi-layer gradient compositing with SVG filter bloom
+  -->
+  <defs>
+    <!-- Deep space background -->
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset=".48" stop-color="#141e3c"/>
+      <stop offset="1" stop-color="#0e1428"/>
+    </linearGradient>
+
+    <!-- Pin body: luminous indigo -->
+    <linearGradient id="pin" x1="160" y1="72" x2="360" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset=".5" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+
+    <!-- Specular highlight (upper-left light source) -->
+    <radialGradient id="hl" cx="210" cy="148" r="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c7d2fe" stop-opacity=".38"/>
+      <stop offset=".6" stop-color="#818cf8" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#4338ca" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Inner ring luminosity -->
+    <linearGradient id="ring" x1="200" y1="136" x2="312" y2="248" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e0e7ff" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#a5b4fc" stop-opacity=".25"/>
+    </linearGradient>
+
+    <!-- Golden waypoint (warm romantic accent) -->
+    <radialGradient id="dot" cx="256" cy="188" r="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fef3c7"/>
+      <stop offset=".4" stop-color="#fcd34d"/>
+      <stop offset=".75" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </radialGradient>
+
+    <!-- Ambient glow behind pin -->
+    <radialGradient id="amb" cx="256" cy="210" r="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366f1" stop-opacity=".1"/>
+      <stop offset=".7" stop-color="#4338ca" stop-opacity=".03"/>
+      <stop offset="1" stop-color="#0f172a" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Dot bloom filter (warm-shifted gaussian glow) -->
+    <filter id="bloom" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="b"/>
+      <feColorMatrix in="b" type="matrix"
+        values="1 0 0 0 0  0 .85 0 0 0  0 0 .4 0 0  0 0 0 .7 0" result="warm"/>
+      <feMerge>
+        <feMergeNode in="warm"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Depth shadow under pin -->
+    <filter id="lift" x="-.08" y="-.04" width="1.16" height="1.16">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#0f172a" flood-opacity=".5"/>
+    </filter>
+  </defs>
+
+  <!-- L0  Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- L1  Ambient radiance -->
+  <ellipse cx="256" cy="210" rx="200" ry="180" fill="url(#amb)"/>
+
+  <!-- L2  Pin shape — dimensional gradient fill -->
+  <path d="M256 72 C322 72 376 126 376 192 C376 318 302 410 256 440 C210 410 136 318 136 192 C136 126 190 72 256 72Z"
+        fill="url(#pin)" filter="url(#lift)"/>
+
+  <!-- L3  Specular highlight overlay -->
+  <path d="M256 72 C322 72 376 126 376 192 C376 318 302 410 256 440 C210 410 136 318 136 192 C136 126 190 72 256 72Z"
+        fill="url(#hl)"/>
+
+  <!-- L4  Edge rim light (upper arc) -->
+  <path d="M256 72 C322 72 376 126 376 192" fill="none" stroke="#c7d2fe" stroke-width="1.5" opacity=".18"/>
+  <path d="M136 192 C136 126 190 72 256 72" fill="none" stroke="#c7d2fe" stroke-width="1.5" opacity=".18"/>
+
+  <!-- L5  Inner waypoint ring -->
+  <circle cx="256" cy="192" r="56" fill="none" stroke="url(#ring)" stroke-width="3.5"/>
+
+  <!-- L6  Golden waypoint with bloom -->
+  <circle cx="256" cy="192" r="18" fill="url(#dot)" filter="url(#bloom)"/>
+
+  <!-- L7  Pure white highlight core -->
+  <circle cx="256" cy="192" r="6" fill="#fffbeb" opacity=".9"/>
 </svg>

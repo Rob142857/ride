@@ -12,7 +12,7 @@
  * and post a 'ride:update' message to all clients so they can reload.
  */
 
-const CACHE_NAME = 'ride-v5';
+const CACHE_NAME = 'ride-v6';
 const TILES_CACHE = 'ride-tiles';
 
 const STATIC_ASSETS = [
@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/css/app.css',
   '/css/global.css',
+  '/css/ride-mode.css',
   '/js/api.js',
   '/js/app-core.js',
   '/js/auth-controller.js',
@@ -35,7 +36,8 @@ const STATIC_ASSETS = [
   '/js/ui.js',
   '/js/share.js',
   '/icons/icon-192.png',
-  '/icons/icon-512.png'
+  '/icons/icon-512.png',
+  '/icons/icon.svg'
 ];
 
 const EXTERNAL_ASSETS = [
