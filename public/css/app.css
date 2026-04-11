@@ -161,13 +161,31 @@ body {
   font-family: var(--font-serif);
   font-style: italic;
   font-weight: 400;
-  font-size: 2rem;
+  font-size: 2.6rem;
   letter-spacing: 0.04em;
   margin-bottom: 10px;
-  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 45%, #a5b4fc 100%);
+  background: linear-gradient(
+    105deg,
+    #c7d2fe 0%,
+    #e0e7ff 20%,
+    #fff 35%,
+    #e0e7ff 50%,
+    #a5b4fc 70%,
+    #c7d2fe 100%
+  );
+  background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  animation: wordmark-shimmer 6s ease-in-out infinite;
+  transition: filter 0.4s var(--ease-smooth), transform 0.4s var(--ease-smooth);
+  cursor: default;
+}
+
+.auth-gate-title:hover {
+  animation-duration: 2s;
+  filter: drop-shadow(0 0 18px rgba(165, 180, 252, 0.35));
+  transform: scale(1.04);
 }
 
 .auth-gate-status {
@@ -222,13 +240,31 @@ body {
   font-family: var(--font-serif);
   font-style: italic;
   font-weight: 400;
-  font-size: 2.8rem;
+  font-size: 3.4rem;
   line-height: 1.05;
   letter-spacing: 0.04em;
-  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 45%, #a5b4fc 100%);
+  background: linear-gradient(
+    105deg,
+    #c7d2fe 0%,
+    #e0e7ff 20%,
+    #fff 35%,
+    #e0e7ff 50%,
+    #a5b4fc 70%,
+    #c7d2fe 100%
+  );
+  background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  animation: wordmark-shimmer 6s ease-in-out infinite;
+  transition: filter 0.4s var(--ease-smooth), transform 0.4s var(--ease-smooth);
+  cursor: default;
+}
+
+.landing-gate-title:hover {
+  animation-duration: 2s;
+  filter: drop-shadow(0 0 22px rgba(165, 180, 252, 0.4));
+  transform: scale(1.05);
 }
 
 .landing-gate-rule {
@@ -643,7 +679,6 @@ body.doc-page {
 .topbar-logo-icon:hover {
   transform: scale(1.06);
   filter: brightness(1.1);
-}
 }
 
 .topbar-trip-info {

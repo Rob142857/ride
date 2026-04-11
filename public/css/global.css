@@ -30,6 +30,36 @@
   --shadow-modal: 0 25px 80px rgba(0, 0, 0, 0.25), 0 10px 30px rgba(0, 0, 0, 0.15);
 }
 
+/* ── Wordmark shimmer ────────────────────────────────────────────────── */
+@keyframes wordmark-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.wordmark-shimmer {
+  background: linear-gradient(
+    105deg,
+    #c7d2fe 0%,
+    #e0e7ff 20%,
+    #fff 35%,
+    #e0e7ff 50%,
+    #a5b4fc 70%,
+    #c7d2fe 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: wordmark-shimmer 6s ease-in-out infinite;
+}
+
+.wordmark-shimmer:hover {
+  animation-duration: 2s;
+  filter: drop-shadow(0 0 18px rgba(165, 180, 252, 0.35));
+  transform: scale(1.04);
+  transition: filter 0.4s var(--ease-smooth), transform 0.4s var(--ease-smooth);
+}
+
 /* CSS Reset & Antialiasing */
 html {
   box-sizing: border-box;
