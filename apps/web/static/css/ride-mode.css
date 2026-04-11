@@ -1,0 +1,310 @@
+/**
+ * Ride mode styles — GPS tracking overlay, FAB group, action sheet, markers
+ * Extracted from app.css for modularity
+ */
+
+/* ── body.ride-mode overrides ─────────────────────────────── */
+
+body.ride-mode {
+  overflow: hidden;
+}
+
+body.ride-mode #topBar,
+body.ride-mode #bottomNav,
+body.ride-mode #sideMenu,
+body.ride-mode #menuOverlay,
+body.ride-mode .panel,
+body.ride-mode .panel-header,
+body.ride-mode .panel-actions,
+body.ride-mode .panel-title {
+  display: none !important;
+}
+
+body.ride-mode .locate-btn {
+  display: none;
+}
+
+/* Hide zoom controls in ride mode — rider doesn't need them */
+body.ride-mode .leaflet-control-zoom {
+  display: none !important;
+}
+
+/* ── Ride marker (Leaflet divIcon) ────────────────────────── */
+
+.ride-marker {
+  width: 28px;
+  height: 28px;
+  transform: translate(-14px, -14px);
+}
+
+.ride-marker .ride-marker-inner {
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  background: rgba(59, 130, 246, 0.9);
+  border: 2px solid #fff;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ride-marker .ride-arrow {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 12px solid #fff;
+  transform-origin: 50% 70%;
+}
+
+/* ── Ride overlay ─────────────────────────────────────────── */
+
+.ride-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  pointer-events: none;
+}
+
+.ride-overlay * {
+  pointer-events: auto;
+}
+
+/* ── Top banner ───────────────────────────────────────────── */
+
+.ride-banner-minimal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(var(--safe-area-top) + 10px) 16px 12px;
+  border-radius: 0;
+  background: linear-gradient(135deg, rgba(59,130,246,0.92), rgba(99,102,241,0.92));
+  border: none;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  z-index: 125;
+}
+
+.ride-banner-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.ride-banner-minimal .ride-next-main {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.ride-banner-minimal .ride-next-meta {
+  margin-top: 4px;
+  font-size: 13px;
+  color: rgba(255,255,255,0.8);
+}
+
+.ride-banner-stats {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.02em;
+}
+
+.ride-banner-sep {
+  margin: 0 4px;
+  opacity: 0.5;
+}
+
+.ride-banner-exit {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.ride-banner-exit:active {
+  background: rgba(255,255,255,0.25);
+}
+
+/* ── FAB group — centered at bottom ───────────────────────── */
+
+.ride-fab-group {
+  position: absolute;
+  bottom: calc(var(--safe-area-bottom) + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+}
+
+.ride-fab {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+}
+
+.ride-fab:active {
+  transform: scale(0.95);
+}
+
+/* ── Action sheet for add options ─────────────────────────── */
+
+.ride-action-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: rgba(10, 12, 20, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: calc(var(--safe-area-bottom) + 16px);
+  opacity: 0;
+  transition: opacity 0.3s var(--ease-elegant);
+}
+
+.ride-action-sheet:not(.hidden) {
+  opacity: 1;
+}
+
+.ride-action-sheet.hidden {
+  display: none;
+}
+
+.ride-action-sheet-content {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: actionSheetSlideUp 0.35s var(--ease-smooth) forwards;
+}
+
+@keyframes actionSheetSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ride-action-btn {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: var(--radius-btn);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 245, 247, 0.95) 100%);
+  color: #1a1a2e;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s var(--ease-elegant);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.ride-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.ride-action-btn:active {
+  transform: scale(0.98);
+}
+
+.ride-action-btn.cancel {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
+.ride-action-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-btn);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ride-option-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ride-option-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #60a5fa;
+  cursor: pointer;
+}
+
+.ride-action-btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--text-primary);
+}
+
+/* ── Landscape / short-screen safety ──────────────────────── */
+
+@media (max-height: 500px) {
+  .ride-banner-minimal {
+    padding-top: calc(var(--safe-area-top) + 4px);
+    padding-bottom: 6px;
+  }
+
+  .ride-banner-minimal .ride-next-main {
+    font-size: 15px;
+  }
+
+  .ride-banner-stats {
+    margin-top: 2px;
+  }
+
+  .ride-fab-group {
+    bottom: calc(var(--safe-area-bottom) + 8px);
+  }
+
+  .ride-fab {
+    width: 42px;
+    height: 42px;
+    font-size: 18px;
+  }
+}

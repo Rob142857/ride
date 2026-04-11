@@ -5,10 +5,6 @@
 	import { haptic } from '$lib/utils';
 	import type { AppView } from '$types';
 
-	const ui = $derived($uiState);
-	const trip = $derived($currentTrip);
-	const riding = $derived($isRiding);
-
 	const tabs: { view: AppView; label: string; icon: string }[] = [
 		{ view: 'map', label: 'Map', icon: 'M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11V19z' },
 		{ view: 'waypoints', label: 'Stops', icon: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z' },
@@ -22,16 +18,15 @@
 	}
 </script>
 
-{#if !riding}
-<nav class="bottomnav" role="tablist">
+{#if !$isRiding}
+<nav class="bottomnav" aria-label="Primary navigation">
 	{#each tabs as tab}
 		<button
 			class="nav-tab"
-			class:active={ui.view === tab.view}
-			role="tab"
-			aria-selected={ui.view === tab.view}
+			class:active={$uiState.view === tab.view}
+			aria-pressed={$uiState.view === tab.view}
 			onclick={() => onTab(tab.view)}
-			disabled={tab.view !== 'trips' && !trip}
+			disabled={tab.view !== 'trips' && tab.view !== 'map' && !$currentTrip}
 		>
 			<svg viewBox="0 0 24 24" class="nav-icon"><path d={tab.icon}/></svg>
 			<span class="nav-label">{tab.label}</span>
@@ -45,13 +40,14 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-around;
+		position: relative;
 		height: var(--footer-height);
 		padding-bottom: var(--safe-bottom);
 		background: rgba(10, 14, 23, 0.88);
 		backdrop-filter: blur(20px);
 		border-top: 1px solid var(--border-glass);
 		flex-shrink: 0;
-		z-index: 100;
+		z-index: 1205;
 	}
 
 	.nav-tab {
@@ -95,7 +91,16 @@
 
 	@media (min-width: 768px) {
 		.bottomnav {
-			display: none;
+			padding-inline: 16px;
+		}
+
+		.nav-tab {
+			flex-direction: row;
+			gap: 8px;
+		}
+
+		.nav-label {
+			font-size: 0.72rem;
 		}
 	}
 </style>

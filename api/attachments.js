@@ -3,7 +3,7 @@
  * Upload, retrieve, update, and delete trip attachments (R2)
  */
 
-import { jsonResponse, errorResponse, generateId, parseBody, BASE_URL } from './utils.js';
+import { jsonResponse, errorResponse, generateId, parseBody, getBaseUrl } from './utils.js';
 import { verifyTripOwnership } from './handler-utils.js';
 
 export const AttachmentsHandler = {
@@ -12,6 +12,7 @@ export const AttachmentsHandler = {
    */
   async uploadAttachment(context) {
     const { env, user, params, request } = context;
+    const baseUrl = getBaseUrl(env, request.url);
 
     const trip = await verifyTripOwnership(env, params.tripId, user.id);
     if (!trip) return errorResponse('Trip not found', 404);
@@ -54,7 +55,7 @@ export const AttachmentsHandler = {
       const attachment = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM attachments WHERE id = ?').bind(id).first();
 
       return jsonResponse({
-        attachment: { ...attachment, url: `${BASE_URL}/api/attachments/${id}` }
+        attachment: { ...attachment, url: `${baseUrl}/api/attachments/${id}` }
       }, 201);
     } catch (err) {
       if (objectPutSucceeded) {
@@ -109,6 +110,7 @@ export const AttachmentsHandler = {
    */
   async updateAttachment(context) {
     const { env, user, params, request } = context;
+    const baseUrl = getBaseUrl(env, request.url);
     const body = await parseBody(request);
 
     const attachment = await env.RIDE_TRIP_PLANNER_DB.prepare(
@@ -137,7 +139,7 @@ export const AttachmentsHandler = {
 
     const updated = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM attachments WHERE id = ?').bind(params.id).first();
     return jsonResponse({
-      attachment: { ...updated, url: `${BASE_URL}/api/attachments/${params.id}` }
+      attachment: { ...updated, url: `${baseUrl}/api/attachments/${params.id}` }
     });
   },
 

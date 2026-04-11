@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { uiState } from '$stores/ui';
-
-	const ui = $derived($uiState);
 </script>
 
 <div class="toast-container" aria-live="polite">
-	{#each ui.toasts as toast (toast.id)}
+	{#each $uiState.toasts as toast (toast.id)}
 		<div class="toast toast-{toast.type}" role="alert">
 			<span class="toast-msg">{toast.text}</span>
 		</div>

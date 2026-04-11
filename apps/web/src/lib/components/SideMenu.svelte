@@ -5,10 +5,6 @@
 	import { haptic } from '$lib/utils';
 	import type { AppView } from '$types';
 
-	const ui = $derived($uiState);
-	const user = $derived($currentUser);
-	const trips = $derived($tripList);
-
 	function navTo(view: AppView) {
 		haptic();
 		switchView(view);
@@ -29,21 +25,21 @@
 	}
 </script>
 
-{#if ui.sideMenuOpen}
+{#if $uiState.sideMenuOpen}
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="overlay" onclick={toggleSideMenu} onkeydown={e => e.key === 'Escape' && toggleSideMenu()}></div>
-<aside class="sidemenu" role="dialog" aria-label="Menu">
+<aside class="sidemenu" aria-label="Menu">
 	<div class="menu-header">
 		<img class="menu-logo" src="/icons/icon.svg" alt="" />
-		<span class="menu-brand wordmark-shimmer">Ride</span>
+		<span class="menu-brand wordmark">Ride</span>
 	</div>
 
-	{#if user}
+	{#if $currentUser}
 		<div class="menu-user">
-			{#if user.picture}
-				<img class="menu-avatar" src={user.picture} alt="" />
+			{#if $currentUser.picture}
+				<img class="menu-avatar" src={$currentUser.picture} alt="" />
 			{/if}
-			<span class="menu-username">{user.name ?? user.email}</span>
+			<span class="menu-username">{$currentUser.name ?? $currentUser.email}</span>
 		</div>
 	{/if}
 
@@ -54,7 +50,7 @@
 		</button>
 		<button class="menu-item" onclick={() => navTo('trips')}>
 			<svg viewBox="0 0 24 24"><path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/></svg>
-			My Trips ({trips.length})
+			My Trips ({$tripList.length})
 		</button>
 	</div>
 
@@ -75,7 +71,7 @@
 		</a>
 	</div>
 
-	{#if user}
+	{#if $currentUser}
 		<div class="menu-footer">
 			<button class="menu-item logout" onclick={doLogout}>
 				<svg viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
@@ -92,7 +88,7 @@
 		inset: 0;
 		background: rgba(0, 0, 0, 0.55);
 		backdrop-filter: blur(3px);
-		z-index: 200;
+		z-index: 1300;
 		animation: fadeIn 0.2s ease;
 	}
 
@@ -104,7 +100,7 @@
 		width: min(300px, 80vw);
 		background: var(--bg-surface);
 		border-right: 1px solid var(--border-glass);
-		z-index: 201;
+		z-index: 1301;
 		display: flex;
 		flex-direction: column;
 		padding: var(--safe-top) 0 var(--safe-bottom);

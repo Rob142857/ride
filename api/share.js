@@ -3,7 +3,7 @@
  * Generate share links and serve public trip views
  */
 
-import { jsonResponse, errorResponse, generateShortCodeForId, BASE_URL } from './utils.js';
+import { jsonResponse, errorResponse, generateShortCodeForId, getBaseUrl } from './utils.js';
 import { verifyTripOwnership, safeJsonParse, orderWaypointsWithTripSettings } from './handler-utils.js';
 
 export const ShareHandler = {
@@ -11,7 +11,8 @@ export const ShareHandler = {
    * Generate share link for trip (uses short code)
    */
   async generateShareLink(context) {
-    const { env, user, params } = context;
+    const { env, user, params, request } = context;
+    const baseUrl = getBaseUrl(env, request.url);
 
     const trip = await verifyTripOwnership(env, params.id, user.id, true);
     if (!trip) return errorResponse('Trip not found', 404);
@@ -40,14 +41,15 @@ export const ShareHandler = {
       ).bind(params.id).run();
     }
 
-    return jsonResponse({ shareUrl: `${BASE_URL}/${shortCode}`, shortCode });
+    return jsonResponse({ shareUrl: `${baseUrl}/${shortCode}`, shortCode });
   },
 
   /**
    * Get shared trip by short code (public access - no auth required)
    */
   async getSharedTrip(context) {
-    const { env, params } = context;
+    const { env, params, request } = context;
+    const baseUrl = getBaseUrl(env, request.url);
 
     const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
       'SELECT * FROM trips WHERE short_code = ?'
@@ -83,7 +85,7 @@ export const ShareHandler = {
     // attachments from the list.
     const explicitCover = attachments.results.find(a => a.is_cover);
     const fallbackCover = attachments.results.find(a => a.mime_type?.startsWith('image/'));
-    const coverUrl = trip.cover_image_url || (explicitCover ? `${BASE_URL}/api/attachments/${explicitCover.id}` : (fallbackCover ? `${BASE_URL}/api/attachments/${fallbackCover.id}` : null));
+    const coverUrl = trip.cover_image_url || (explicitCover ? `${baseUrl}/api/attachments/${explicitCover.id}` : (fallbackCover ? `${baseUrl}/api/attachments/${fallbackCover.id}` : null));
     // Only exclude from attachments list if explicitly marked as cover (not a fallback)
     const excludeCoverId = explicitCover?.id || null;
 
@@ -108,7 +110,7 @@ export const ShareHandler = {
           .filter(a => !excludeCoverId || a.id !== excludeCoverId)
           .map(a => ({
             id: a.id, name: a.original_name, type: a.mime_type,
-            caption: a.caption, url: `${BASE_URL}/api/attachments/${a.id}`,
+            caption: a.caption, url: `${baseUrl}/api/attachments/${a.id}`,
             journal_entry_id: a.journal_entry_id || null
           })),
         route: routeData ? {

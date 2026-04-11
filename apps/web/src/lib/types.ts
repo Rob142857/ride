@@ -15,6 +15,9 @@ export interface Trip {
 	userId: string;
 	name: string;
 	description?: string;
+	waypointCount?: number;
+	journalCount?: number;
+	attachmentCount?: number;
 	isPublic: boolean;
 	shareCode?: string;
 	shortCode?: string;

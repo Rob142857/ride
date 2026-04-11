@@ -94,6 +94,28 @@ export function generateShortCode(length = 6) {
 export const BASE_URL = 'https://ride.incitat.io';
 
 /**
+ * Resolve the canonical base URL for the current deployment.
+ * Prefer the configured env var, but fall back to the current request origin
+ * so preview/workers.dev deployments generate correct links and OAuth callbacks.
+ */
+export function getBaseUrl(env, requestUrl = null) {
+  const configured = env?.BASE_URL;
+  if (configured && /^https?:\/\//.test(configured)) {
+    return configured.replace(/\/$/, '');
+  }
+
+  if (requestUrl) {
+    try {
+      return new URL(requestUrl).origin;
+    } catch {
+      // Fall through to the default base URL.
+    }
+  }
+
+  return BASE_URL;
+}
+
+/**
  * Parse JSON body safely
  */
 export async function parseBody(request) {

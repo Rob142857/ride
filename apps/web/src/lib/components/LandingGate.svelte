@@ -9,7 +9,7 @@
 <div class="landing-gate">
 	<div class="landing-content">
 		<img class="landing-logo" src="/icons/icon.svg" alt="Ride" />
-		<h1 class="landing-title wordmark-shimmer">Ride</h1>
+		<h1 class="landing-title wordmark">Ride</h1>
 		<p class="landing-tagline">Your roads.<br/>Your stories.<br/>Your way.</p>
 
 		<div class="landing-features">

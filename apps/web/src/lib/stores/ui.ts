@@ -17,8 +17,16 @@ const initial: UIState = {
 	modalData: null,
 	sideMenuOpen: false,
 	toasts: [],
-	landingSeen: localStorage.getItem('ride_landing_seen') === '1'
+	landingSeen: getLandingSeen()
 };
+
+function getLandingSeen(): boolean {
+	try {
+		return typeof window !== 'undefined' && window.localStorage.getItem('ride_landing_seen') === '1';
+	} catch {
+		return false;
+	}
+}
 
 export const uiStore = writable<UIState>(initial);
 export const uiState = uiStore;
@@ -53,7 +61,7 @@ export function closeSideMenu(): void {
 }
 
 export function dismissLanding(): void {
-	localStorage.setItem('ride_landing_seen', '1');
+	if (typeof window !== 'undefined') window.localStorage.setItem('ride_landing_seen', '1');
 	uiStore.update((s) => ({ ...s, landingSeen: true }));
 }
 

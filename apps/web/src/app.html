@@ -22,6 +22,44 @@
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
 	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+	<script>
+		(function () {
+			if (typeof window === 'undefined') return;
+			window.__rideFallbackMap = null;
+			window.__rideMapBootstrapped = false;
+
+			function bootFallbackMap() {
+				if (window.__rideMapBootstrapped || !window.L) return;
+				var el = document.getElementById('ride-map-canvas');
+				if (!el || el.dataset.fallbackInit === '1') return;
+
+				try {
+					el.dataset.fallbackInit = '1';
+					var map = window.L.map(el, {
+						zoomControl: false,
+						attributionControl: true
+					}).setView([-34.5386, 146.5933], 6);
+					window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+						attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+						maxZoom: 19,
+						subdomains: 'abcd',
+						detectRetina: true
+					}).addTo(map);
+					window.__rideFallbackMap = map;
+					window.__rideMapBootstrapped = true;
+				} catch (error) {
+					console.warn('[Ride] Fallback map init failed:', error);
+				}
+			}
+
+			window.addEventListener('load', function () {
+				setTimeout(bootFallbackMap, 300);
+				setTimeout(bootFallbackMap, 1200);
+				setTimeout(bootFallbackMap, 2500);
+			});
+		})();
+	</script>
 	%sveltekit.head%
 </head>
 <body data-sveltekit-preload-data="hover">

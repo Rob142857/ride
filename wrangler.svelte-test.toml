@@ -1,0 +1,24 @@
+name = "ride-svelte-test"
+main = "api/worker.js"
+compatibility_date = "2026-04-01"
+workers_dev = true
+
+[assets]
+directory = "./apps/web/build"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "RIDE_TRIP_PLANNER_DB"
+database_name = "ride-db"
+database_id = "368b270d-9442-4674-b52f-dc21c6592dae"
+
+[[kv_namespaces]]
+binding = "RIDE_TRIP_PLANNER_SESSIONS"
+id = "36162f4023ea404ab718b0b01d7622e1"
+
+[[r2_buckets]]
+binding = "RIDE_TRIP_PLANNER_ATTACHMENTS"
+bucket_name = "ride-attachments"
+
+[vars]
+ENVIRONMENT = "preview"

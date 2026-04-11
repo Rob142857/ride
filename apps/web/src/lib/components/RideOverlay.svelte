@@ -1,41 +1,39 @@
 <script lang="ts">
-	import { mapState, stopRide } from '$stores/map';
+	import { rideState, stopRide } from '$stores/map';
 	import { formatDistance, formatDuration } from '$lib/utils';
-
-	const ride = $derived($mapState.ride);
 
 	function end() {
 		if (confirm('End ride?')) stopRide();
 	}
 </script>
 
-{#if ride.active}
+{#if $rideState.active}
 <div class="ride-overlay">
 	<div class="ride-hud">
 		<div class="hud-speed">
-			<span class="speed-value">{ride.speed ? Math.round(ride.speed * 3.6) : 0}</span>
+			<span class="speed-value">{$rideState.speed ? Math.round($rideState.speed * 3.6) : 0}</span>
 			<span class="speed-unit">km/h</span>
 		</div>
 
-		{#if ride.nextInstruction}
+		{#if $rideState.nextInstruction}
 			<div class="hud-instruction">
-				<span class="instruction-text">{ride.nextInstruction.text}</span>
-				{#if ride.nextInstruction.distance}
-					<span class="instruction-dist">{formatDistance(ride.nextInstruction.distance / 1000)}</span>
+				<span class="instruction-text">{$rideState.nextInstruction.text}</span>
+				{#if $rideState.nextInstruction.distance}
+					<span class="instruction-dist">{formatDistance($rideState.nextInstruction.distance / 1000)}</span>
 				{/if}
 			</div>
 		{/if}
 
 		<div class="hud-stats">
-			{#if ride.position}
+			{#if $rideState.position}
 				<div class="hud-stat">
 					<span class="stat-label">Heading</span>
-					<span class="stat-value">{ride.heading ? `${Math.round(ride.heading)}°` : '—'}</span>
+					<span class="stat-value">{$rideState.heading ? `${Math.round($rideState.heading)}°` : '—'}</span>
 				</div>
 			{/if}
 			<div class="hud-stat">
 				<span class="stat-label">Visited</span>
-				<span class="stat-value">{ride.visitedWaypoints.size}</span>
+				<span class="stat-value">{$rideState.visitedWaypoints.size}</span>
 			</div>
 		</div>
 	</div>

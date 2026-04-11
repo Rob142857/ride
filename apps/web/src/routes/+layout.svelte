@@ -5,30 +5,65 @@
 	import SideMenu from '$components/SideMenu.svelte';
 	import Toast from '$components/Toast.svelte';
 	import AuthGate from '$components/AuthGate.svelte';
-	import LandingGate from '$components/LandingGate.svelte';
-	import { checkAuth, isAuthenticated, isChecking } from '$stores/auth';
-	import { landingSeen } from '$stores/ui';
+	import { checkAuth, isAuthenticated } from '$stores/auth';
 	import { loadTrips } from '$stores/trip';
-	import { onMount } from 'svelte';
 
 	let { children } = $props();
-	let appReady = $state(false);
+	let initDone = $state(false);
+	let initStarted = $state(false);
+	const LEGACY_SW_CLEANED_KEY = 'ride_legacy_sw_cleared_v1';
 
-	onMount(async () => {
-		const ok = await checkAuth();
-		if (ok) await loadTrips();
-		appReady = true;
+	async function clearLegacyServiceWorkers() {
+		if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+		if (window.localStorage.getItem(LEGACY_SW_CLEANED_KEY) === '1') return;
+
+		try {
+			const registrations = await navigator.serviceWorker.getRegistrations();
+			if (registrations.length) {
+				await Promise.all(registrations.map((registration) => registration.unregister()));
+			}
+
+			if ('caches' in window) {
+				const cacheNames = await caches.keys();
+				await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+			}
+
+			window.localStorage.setItem(LEGACY_SW_CLEANED_KEY, '1');
+		} catch (error) {
+			console.warn('[Ride] Failed to clear legacy service workers:', error);
+		}
+	}
+
+	$effect(() => {
+		if (initStarted) return;
+		initStarted = true;
+		(async () => {
+			try {
+				await clearLegacyServiceWorkers();
+				const ok = await checkAuth();
+				if (ok) {
+					await loadTrips();
+				}
+			} catch (e) {
+				console.error('[Ride] Init failed:', e);
+			} finally {
+				initDone = true;
+			}
+		})();
+
+		const t = setTimeout(() => {
+			initDone = true;
+		}, 4000);
+
+		return () => clearTimeout(t);
 	});
 </script>
 
-{#if !appReady}
-	<!-- Loading skeleton -->
+{#if !initDone}
 	<div class="app-loader">
 		<img src="/icons/icon.svg" alt="Ride" class="app-loader-icon" />
 		<span class="wordmark app-loader-title">Ride</span>
 	</div>
-{:else if !$landingSeen}
-	<LandingGate />
 {:else if !$isAuthenticated}
 	<AuthGate />
 {:else}
@@ -74,11 +109,14 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+		min-height: 100dvh;
 		overflow: hidden;
 	}
 
 	.app-main {
 		flex: 1;
+		min-height: 0;
+		display: flex;
 		overflow: hidden;
 		position: relative;
 	}

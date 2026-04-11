@@ -3,10 +3,9 @@
 	import { openModal } from '$stores/ui';
 	import type { JournalEntry } from '$types';
 
-	const trip = $derived($currentTrip);
-	const entries = $derived(
-		((trip?.journalEntries ?? trip?.journal) ?? []).slice().sort(
-			(a, b) => new Date(b.createdAt ?? b.created_at ?? 0).getTime() - new Date(a.createdAt ?? a.created_at ?? 0).getTime()
+	const entries = $derived.by(() =>
+		((($currentTrip?.journalEntries ?? $currentTrip?.journal) ?? []).slice()).sort(
+			(a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
 		)
 	);
 
@@ -52,7 +51,7 @@
 							<p class="card-excerpt">{entry.content.slice(0, 120)}{entry.content.length > 120 ? '…' : ''}</p>
 						{/if}
 						<div class="card-meta">
-							<span class="card-date">{formatDate(entry.createdAt ?? entry.created_at)}</span>
+							<span class="card-date">{formatDate(entry.createdAt)}</span>
 							{#if entry.tags?.length}
 								<div class="card-tags">
 									{#each entry.tags as tag}

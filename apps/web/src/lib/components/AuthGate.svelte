@@ -1,24 +1,22 @@
 <script lang="ts">
-	import { login } from '$stores/auth';
-
 	const providers = [
 		{ id: 'google', label: 'Continue with Google', icon: '🔵' },
-		{ id: 'github', label: 'Continue with GitHub', icon: '⚫' },
+		{ id: 'microsoft', label: 'Continue with Microsoft', icon: '🟦' },
 	];
 </script>
 
 <div class="auth-gate">
 	<div class="auth-card">
 		<img class="auth-logo" src="/icons/icon.svg" alt="Ride" />
-		<h1 class="auth-title wordmark-shimmer">Ride</h1>
+		<h1 class="auth-title wordmark">Ride</h1>
 		<p class="auth-subtitle">Plan roads. Track journeys. Own your adventure.</p>
 
 		<div class="auth-providers">
 			{#each providers as p}
-				<button class="auth-btn" onclick={() => login(p.id)}>
+				<a class="auth-btn" href="/api/auth/login/{p.id}" data-sveltekit-reload>
 					<span class="auth-btn-icon">{p.icon}</span>
 					{p.label}
-				</button>
+				</a>
 			{/each}
 		</div>
 
@@ -94,6 +92,7 @@
 		background: var(--bg-elevated);
 		border: 1px solid var(--border-glass);
 		color: var(--text-primary);
+		text-decoration: none;
 		cursor: pointer;
 		min-height: 50px;
 		transition: background 0.15s, border-color 0.15s, transform 0.1s;

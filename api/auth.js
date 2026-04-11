@@ -4,7 +4,7 @@
  * Domain: ride.incitat.io
  */
 
-import { jsonResponse, errorResponse, generateId, createSession, setSessionCookie, clearSessionCookie, BASE_URL } from './utils.js';
+import { jsonResponse, errorResponse, generateId, createSession, setSessionCookie, clearSessionCookie, getBaseUrl } from './utils.js';
 
 // OAuth provider configurations
 const PROVIDERS = {
@@ -45,6 +45,7 @@ export const AuthHandler = {
    */
   async initiateLogin(context) {
     const { params, env, url } = context;
+    const baseUrl = getBaseUrl(env, url.href);
     const providerName = params.provider;
     
     const provider = PROVIDERS[providerName];
@@ -64,9 +65,9 @@ export const AuthHandler = {
     // Validate return URL — extract path from same-origin URLs, reject foreign origins
     let returnUrl = url.searchParams.get('return') || '/';
     try {
-      const parsed = new URL(returnUrl, BASE_URL);
+      const parsed = new URL(returnUrl, baseUrl);
       // Only allow same-origin return URLs
-      if (parsed.origin === new URL(BASE_URL).origin) {
+      if (parsed.origin === new URL(baseUrl).origin) {
         returnUrl = parsed.pathname + parsed.search + parsed.hash;
       } else {
         returnUrl = '/';
@@ -82,9 +83,7 @@ export const AuthHandler = {
       returnUrl
     }), { expirationTtl: 300 });
     
-    // Build redirect URL - use BASE_URL in production for consistency
-    const origin = env.ENVIRONMENT === 'production' ? BASE_URL : url.origin;
-    const redirectUri = `${origin}/api/auth/callback/${providerName}`;
+    const redirectUri = `${baseUrl}/api/auth/callback/${providerName}`;
     
     const authParams = new URLSearchParams({
       client_id: clientId,
@@ -109,6 +108,7 @@ export const AuthHandler = {
    */
   async handleCallback(context) {
     const { params, env, url, request } = context;
+    const baseUrl = getBaseUrl(env, url.href);
     const providerName = params.provider;
     
     const provider = PROVIDERS[providerName];
@@ -137,9 +137,7 @@ export const AuthHandler = {
     }
     await env.RIDE_TRIP_PLANNER_SESSIONS.delete(`oauth_state_${state}`);
     
-    // Exchange code for token — use BASE_URL for consistent redirect_uri
-    const origin = env.ENVIRONMENT === 'production' ? BASE_URL : url.origin;
-    const redirectUri = `${origin}/api/auth/callback/${providerName}`;
+    const redirectUri = `${baseUrl}/api/auth/callback/${providerName}`;
     
     const tokenParams = new URLSearchParams({
       client_id: provider.getClientId(env),
@@ -211,7 +209,7 @@ export const AuthHandler = {
     
     // Redirect to app with session cookie (Response.redirect requires absolute URL)
     const returnPath = stateData.returnUrl || '/';
-    const absoluteReturnUrl = returnPath.startsWith('http') ? returnPath : `${BASE_URL}${returnPath}`;
+    const absoluteReturnUrl = returnPath.startsWith('http') ? returnPath : `${baseUrl}${returnPath}`;
     const response = Response.redirect(absoluteReturnUrl, 302);
     
     return setSessionCookie(response, session.token, session.expiresAt);

@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { currentTrip, deleteWaypoint, reorderWaypoints } from '$stores/trip';
-	import { openModal } from '$stores/ui';
+	import { currentTrip, currentWaypoints, deleteWaypoint, reorderWaypoints } from '$stores/trip';
+	import { openModal, switchView } from '$stores/ui';
+	import { setAddingWaypoint } from '$stores/map';
 	import { haptic } from '$lib/utils';
 	import type { Waypoint } from '$types';
 
@@ -8,10 +9,7 @@
 		stop: '📍', scenic: '🏞️', fuel: '⛽', food: '🍽️', lodging: '🏨', custom: '⭐',
 	};
 
-	const trip = $derived($currentTrip);
-	const waypoints = $derived(
-		(trip?.waypoints ?? []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-	);
+	const waypoints = $derived.by(() => $currentWaypoints);
 
 	let dragId = $state<string | null>(null);
 	let overIdx = $state<number | null>(null);
@@ -31,7 +29,7 @@
 
 	function onDrop(e: DragEvent, targetIdx: number) {
 		e.preventDefault();
-		if (!dragId || !trip) return;
+		if (!dragId || !$currentTrip) return;
 		const sourceIdx = waypoints.findIndex(w => w.id === dragId);
 		if (sourceIdx === -1 || sourceIdx === targetIdx) { cleanup(); return; }
 
@@ -53,12 +51,32 @@
 			deleteWaypoint(wp.id);
 		}
 	}
+
+	function addStop() {
+		haptic();
+		switchView('map');
+		setAddingWaypoint(true);
+		openModal('addWaypoint');
+	}
+
+	function moveWaypoint(wp: Waypoint, direction: -1 | 1) {
+		const currentIndex = waypoints.findIndex((item) => item.id === wp.id);
+		const targetIndex = currentIndex + direction;
+		if (currentIndex < 0 || targetIndex < 0 || targetIndex >= waypoints.length) return;
+
+		const ids = waypoints.map((item) => item.id);
+		const [moved] = ids.splice(currentIndex, 1);
+		ids.splice(targetIndex, 0, moved);
+		reorderWaypoints(ids);
+		haptic();
+	}
 </script>
 
 <div class="waypoints-view">
 	<div class="view-header">
 		<h2>Waypoints</h2>
 		<span class="count-badge">{waypoints.length}</span>
+		<button class="btn-primary small" onclick={addStop}>+ Stop</button>
 	</div>
 
 	{#if waypoints.length === 0}
@@ -66,6 +84,7 @@
 			<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
 			<h3>No waypoints yet</h3>
 			<p>Switch to the map and tap + to add your first stop</p>
+			<button class="btn-primary" onclick={addStop}>Add Stop</button>
 		</div>
 	{:else}
 		<div class="waypoint-list" role="list">
@@ -93,6 +112,12 @@
 						{/if}
 					</div>
 					<div class="wp-actions">
+						<button class="icon-btn compact" onclick={() => moveWaypoint(wp, -1)} aria-label="Move waypoint up" disabled={i === 0}>
+							<svg viewBox="0 0 24 24"><path d="M7.41 14.59 12 10l4.59 4.59L18 13.17l-6-6-6 6z"/></svg>
+						</button>
+						<button class="icon-btn compact" onclick={() => moveWaypoint(wp, 1)} aria-label="Move waypoint down" disabled={i === waypoints.length - 1}>
+							<svg viewBox="0 0 24 24"><path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+						</button>
 						<button class="icon-btn" onclick={() => confirmDelete(wp)} aria-label="Delete">
 							<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
 						</button>
@@ -216,5 +241,20 @@
 		text-overflow: ellipsis;
 	}
 
-	.wp-actions { flex-shrink: 0; }
+	.wp-actions {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	:global(.icon-btn.compact) {
+		width: 34px;
+		height: 34px;
+	}
+
+	:global(.icon-btn.compact svg) {
+		width: 18px;
+		height: 18px;
+	}
 </style>

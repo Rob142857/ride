@@ -4,8 +4,7 @@
 	import { haptic } from '$lib/utils';
 	import type { Trip } from '$types';
 
-	const state = $derived($tripState);
-	const trips = $derived(state.list);
+	const trips = $derived.by(() => $tripState.list);
 
 	function formatDate(d: string | undefined) {
 		if (!d) return '';
@@ -32,6 +31,10 @@
 			deleteTrip(trip.id);
 		}
 	}
+
+	function tripStopCount(trip: Trip) {
+		return trip.waypointCount ?? trip.waypoints?.length ?? 0;
+	}
 </script>
 
 <div class="trips-view">
@@ -41,7 +44,7 @@
 		<button class="btn-primary small" onclick={newTrip}>+ New Trip</button>
 	</div>
 
-	{#if state.listLoading}
+	{#if $tripState.listLoading}
 		<div class="trips-loading">
 			{#each Array(3) as _}
 				<div class="skeleton-card">
@@ -61,7 +64,7 @@
 		<div class="trip-grid">
 			{#each trips as trip (trip.id)}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="trip-card" class:active={state.current?.id === trip.id} onclick={() => selectTrip(trip)} onkeydown={e => e.key === 'Enter' && selectTrip(trip)} role="button" tabindex="0">
+				<div class="trip-card" class:active={$tripState.current?.id === trip.id} onclick={() => selectTrip(trip)} onkeydown={e => e.key === 'Enter' && selectTrip(trip)} role="button" tabindex="0">
 					{#if (trip as any).coverImageUrl}
 						<div class="card-cover">
 							<img src={(trip as any).coverImageUrl} alt="" loading="lazy" />
@@ -74,8 +77,8 @@
 					<div class="card-body">
 						<h3 class="card-name">{trip.name}</h3>
 						<div class="card-meta">
-							<span>{trip.waypoints?.length ?? 0} stops</span>
-							<span>{formatDate(trip.updatedAt ?? trip.updated_at)}</span>
+							<span>{tripStopCount(trip)} stops</span>
+							<span>{formatDate(trip.updatedAt)}</span>
 						</div>
 					</div>
 					<button class="icon-btn card-delete" onclick={e => confirmDelete(e, trip)} aria-label="Delete">

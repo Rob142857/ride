@@ -3,6 +3,7 @@
   "include": ["/*"],
   "exclude": [
     "/_app/*",
+    "/css/*",
     "/icons/*",
     "/images/*",
     "/*.ico",

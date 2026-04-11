@@ -3,6 +3,10 @@ import type { Trip, Waypoint, JournalEntry, Attachment, User, PlaceResult } from
 
 const BASE = '/api';
 
+interface VersionedRequestOptions extends RequestInit {
+	version?: number;
+}
+
 interface ApiResponse<T = unknown> {
 	ok: boolean;
 	data?: T;
@@ -13,11 +17,14 @@ async function request<T>(
 	method: string,
 	path: string,
 	body?: unknown,
-	opts?: RequestInit
+	opts?: VersionedRequestOptions
 ): Promise<ApiResponse<T>> {
 	const url = `${BASE}${path}`;
-	const headers: Record<string, string> = {};
+	const headers: Record<string, string> = { ...(opts?.headers as Record<string, string> | undefined) };
 	let reqBody: BodyInit | undefined;
+	if (typeof opts?.version === 'number') {
+		headers['If-Match'] = String(opts.version);
+	}
 
 	if (body instanceof FormData) {
 		reqBody = body;
@@ -28,11 +35,11 @@ async function request<T>(
 
 	try {
 		const res = await fetch(url, {
+			...opts,
 			method,
 			headers,
 			body: reqBody,
-			credentials: 'include',
-			...opts
+			credentials: 'include'
 		});
 
 		if (!res.ok) {
@@ -54,17 +61,24 @@ function normalizeTrip(t: Record<string, unknown>): Trip {
 		userId: (t.user_id ?? t.userId) as string,
 		name: (t.name ?? 'Untitled') as string,
 		description: (t.description ?? '') as string,
+		waypointCount: Number(t.waypoint_count ?? t.waypointCount ?? 0),
+		journalCount: Number(t.journal_count ?? t.journalCount ?? 0),
+		attachmentCount: Number(t.attachment_count ?? t.attachmentCount ?? 0),
 		isPublic: Boolean(t.is_public ?? t.isPublic),
 		shareCode: (t.share_code ?? t.shareCode) as string | undefined,
+		shortCode: (t.short_code ?? t.shortCode) as string | undefined,
+		shortUrl: (t.short_url ?? t.shortUrl) as string | undefined,
+		coverImageUrl: (t.cover_image_url ?? t.coverImageUrl) as string | undefined,
 		coverImageId: (t.cover_image_id ?? t.coverImageId) as string | undefined,
 		coverFocusX: (t.cover_focus_x ?? t.coverFocusX) as number | undefined,
 		coverFocusY: (t.cover_focus_y ?? t.coverFocusY) as number | undefined,
 		contactInfo: (t.contact_info ?? t.contactInfo) as string | undefined,
 		settings: t.settings ? (typeof t.settings === 'string' ? JSON.parse(t.settings as string) : t.settings) as Trip['settings'] : {},
 		waypoints: Array.isArray(t.waypoints) ? t.waypoints.map(normalizeWaypoint) : [],
-		journalEntries: Array.isArray(t.journal_entries ?? t.journalEntries) ? ((t.journal_entries ?? t.journalEntries) as Record<string, unknown>[]).map(normalizeJournalEntry) : [],
+		journalEntries: Array.isArray(t.journal_entries ?? t.journalEntries ?? t.journal) ? ((t.journal_entries ?? t.journalEntries ?? t.journal) as Record<string, unknown>[]).map(normalizeJournalEntry) : [],
+		journal: Array.isArray(t.journal_entries ?? t.journalEntries ?? t.journal) ? ((t.journal_entries ?? t.journalEntries ?? t.journal) as Record<string, unknown>[]).map(normalizeJournalEntry) : [],
 		attachments: Array.isArray(t.attachments) ? t.attachments.map(normalizeAttachment) : [],
-		routeData: (t.route_data ?? t.routeData) as Trip['routeData'],
+		routeData: (t.route_data ?? t.routeData ?? t.route) as Trip['routeData'],
 		version: (t.version ?? 1) as number,
 		createdAt: (t.created_at ?? t.createdAt ?? '') as string,
 		updatedAt: (t.updated_at ?? t.updatedAt ?? '') as string
@@ -77,13 +91,27 @@ function normalizeWaypoint(w: Record<string, unknown>): Waypoint {
 		tripId: (w.trip_id ?? w.tripId) as string,
 		name: (w.name ?? '') as string,
 		address: (w.address ?? '') as string,
-		lat: Number(w.lat),
-		lng: Number(w.lng),
+		lat: Number(w.lat ?? w.latitude ?? 0),
+		lng: Number(w.lng ?? w.longitude ?? 0),
 		type: (w.type ?? 'stop') as Waypoint['type'],
 		notes: (w.notes ?? '') as string,
 		order: Number(w.sort_order ?? w.order ?? 0),
 		attachments: Array.isArray(w.attachments) ? w.attachments.map(normalizeAttachment) : [],
-		createdAt: (w.created_at ?? w.createdAt ?? '') as string
+		createdAt: (w.created_at ?? w.createdAt ?? '') as string,
+		latitude: Number(w.lat ?? w.latitude ?? 0),
+		longitude: Number(w.lng ?? w.longitude ?? 0)
+	};
+}
+
+function normalizePlaceResult(place: Record<string, unknown>): PlaceResult {
+	const location = place.location as { lat?: number; lng?: number } | undefined;
+	return {
+		name: (place.name ?? '') as string,
+		address: (place.address ?? '') as string,
+		lat: Number(place.lat ?? location?.lat ?? 0),
+		lng: Number(place.lng ?? location?.lng ?? 0),
+		rating: place.rating != null ? Number(place.rating) : undefined,
+		types: Array.isArray(place.types) ? (place.types as string[]) : []
 	};
 }
 
@@ -154,16 +182,34 @@ export const trips = {
 
 /* ── Waypoints ───────────────────────────────────────────────────── */
 export const waypoints = {
-	add: async (tripId: string, data: Partial<Waypoint>) => {
-		const r = await request<{ waypoint: Record<string, unknown> }>('POST', `/trips/${tripId}/waypoints`, data);
-		return r.ok && r.data?.waypoint ? { ok: true, data: normalizeWaypoint(r.data.waypoint) } : { ok: false, error: r.error };
+	add: async (tripId: string, data: Partial<Waypoint>, version?: number) => {
+		const r = await request<{ waypoint: Record<string, unknown>; trip_version?: number }>('POST', `/trips/${tripId}/waypoints`, data, {
+			version
+		});
+		return r.ok && r.data?.waypoint
+			? { ok: true as const, data: normalizeWaypoint(r.data.waypoint), tripVersion: r.data.trip_version }
+			: { ok: false as const, error: r.error };
 	},
-	update: async (tripId: string, id: string, data: Partial<Waypoint>) => {
-		const r = await request<{ waypoint: Record<string, unknown> }>('PUT', `/trips/${tripId}/waypoints/${id}`, data);
-		return r.ok && r.data?.waypoint ? { ok: true, data: normalizeWaypoint(r.data.waypoint) } : { ok: false, error: r.error };
+	update: async (tripId: string, id: string, data: Partial<Waypoint>, version?: number) => {
+		const r = await request<{ waypoint: Record<string, unknown>; trip_version?: number }>('PUT', `/trips/${tripId}/waypoints/${id}`, data, {
+			version
+		});
+		return r.ok && r.data?.waypoint
+			? { ok: true as const, data: normalizeWaypoint(r.data.waypoint), tripVersion: r.data.trip_version }
+			: { ok: false as const, error: r.error };
 	},
-	delete: (tripId: string, id: string) => request('DELETE', `/trips/${tripId}/waypoints/${id}`),
-	reorder: (tripId: string, ids: string[]) => request('PUT', `/trips/${tripId}/waypoints/reorder`, { ids })
+	delete: async (tripId: string, id: string, version?: number) => {
+		const r = await request<{ success: boolean; trip_version?: number }>('DELETE', `/trips/${tripId}/waypoints/${id}`, undefined, {
+			version
+		});
+		return r.ok ? { ok: true as const, tripVersion: r.data?.trip_version } : { ok: false as const, error: r.error };
+	},
+	reorder: async (tripId: string, ids: string[], version?: number) => {
+		const r = await request<{ success: boolean; trip_version?: number }>('PUT', `/trips/${tripId}/waypoints/reorder`, { order: ids }, {
+			version
+		});
+		return r.ok ? { ok: true as const, tripVersion: r.data?.trip_version } : { ok: false as const, error: r.error };
+	}
 };
 
 /* ── Journal ─────────────────────────────────────────────────────── */
@@ -201,8 +247,8 @@ export const places = {
 		const params = new URLSearchParams({ q });
 		if (lat != null) params.set('lat', String(lat));
 		if (lng != null) params.set('lng', String(lng));
-		const r = await request<{ results: PlaceResult[] }>('GET', `/places/search?${params}`);
-		return r.ok ? { ok: true, data: r.data?.results ?? [] } : { ok: false, error: r.error, data: [] };
+		const r = await request<{ results: Record<string, unknown>[] }>('GET', `/places/search?${params}`);
+		return r.ok ? { ok: true, data: (r.data?.results ?? []).map(normalizePlaceResult) } : { ok: false, error: r.error, data: [] };
 	}
 };
 

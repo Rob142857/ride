@@ -13,12 +13,12 @@ import { AttachmentsHandler } from './attachments.js';
 import { ShareHandler } from './share.js';
 import { AccountHandler } from './account.js';
 import { PlacesHandler } from './places.js';
-import { cors, jsonResponse, errorResponse, requireAuth, optionalAuth, BASE_URL } from './utils.js';
+import { cors, jsonResponse, errorResponse, requireAuth, optionalAuth, BASE_URL, getBaseUrl } from './utils.js';
 
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-04-11T03';
+const BUILD_ID = '2026-04-11T31';
 
 const router = new Router();
 
@@ -121,7 +121,7 @@ function escapeAttr(str) {
  * Fetch lightweight trip metadata for OG tag injection (title, description, cover image).
  * Runs a single cheap query — no waypoints/journal/route.
  */
-async function getTripMeta(env, shortCode) {
+async function getTripMeta(env, shortCode, baseUrl) {
   try {
     const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
       `SELECT t.id, t.name, t.description, t.public_title, t.public_description,
@@ -139,7 +139,7 @@ async function getTripMeta(env, shortCode) {
     const title = trip.public_title || trip.name || 'Trip';
     const description = trip.public_description || trip.description || '';
     const coverUrl = trip.cover_image_url
-      || (trip.cover_attachment_id ? `${BASE_URL}/api/attachments/${trip.cover_attachment_id}` : null);
+      || (trip.cover_attachment_id ? `${baseUrl}/api/attachments/${trip.cover_attachment_id}` : null);
 
     // Build a short summary line for OG description
     const parts = [];
@@ -164,11 +164,11 @@ async function getTripMeta(env, shortCode) {
  * Inject trip-specific OG/Twitter meta tags into the static trip.html so social
  * crawlers (which don't execute JS) see the real title, description, and cover image.
  */
-function injectMetaTags(html, meta, shortCode) {
+function injectMetaTags(html, meta, shortCode, baseUrl) {
   const title = escapeAttr(meta.title);
   const desc = escapeAttr(meta.ogDescription);
-  const image = meta.coverUrl || `${BASE_URL}/icons/og-ride.png`;
-  const pageUrl = `${BASE_URL}/${shortCode}`;
+  const image = meta.coverUrl || `${baseUrl}/icons/og-ride.png`;
+  const pageUrl = `${baseUrl}/${shortCode}`;
 
   html = html.replace(/<title>[^<]*<\/title>/, `<title>${title} | Ride</title>`);
   html = html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/,  `$1${desc}$2`);
@@ -189,7 +189,7 @@ const CSP = [
   "script-src 'self' 'unsafe-inline' https://unpkg.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://server.arcgisonline.com https://ride.incitat.io https://lh3.googleusercontent.com https://*.microsoft.com",
+  "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://tile.openstreetmap.org https://server.arcgisonline.com https://ride.incitat.io https://lh3.googleusercontent.com https://*.microsoft.com",
   "connect-src 'self' https://ride.incitat.io https://maps.incitat.io https://unpkg.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
@@ -216,6 +216,7 @@ function addSecurityHeaders(response) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const baseUrl = getBaseUrl(env, request.url);
     
     // Handle API routes first
     if (url.pathname.startsWith('/api/')) {
@@ -235,7 +236,7 @@ export default {
       
       // Fetch trip metadata for OG tags + existence check in one query
       try {
-        const meta = await getTripMeta(env, shortCode);
+        const meta = await getTripMeta(env, shortCode, baseUrl);
         
         if (meta) {
           // Valid short code - serve the trip page with injected OG meta tags
@@ -244,7 +245,7 @@ export default {
           newUrl.searchParams.set('trip', shortCode);
           const resp = await env.ASSETS.fetch(new Request(newUrl, request));
           let html = await resp.text();
-          html = injectMetaTags(html, meta, shortCode);
+          html = injectMetaTags(html, meta, shortCode, baseUrl);
           return addSecurityHeaders(new Response(html, {
             status: resp.status,
             headers: { 'Content-Type': 'text/html; charset=utf-8' }
@@ -260,13 +261,13 @@ export default {
     // Legacy support: /t/abc123 redirects to /abc123
     if (url.pathname.match(/^\/t\/[a-zA-Z0-9]{6}$/)) {
       const shortCode = url.pathname.split('/')[2];
-      return Response.redirect(`${BASE_URL}/${shortCode}`, 301);
+      return Response.redirect(`${baseUrl}/${shortCode}`, 301);
     }
     
     // Legacy support: /trip/abc123 redirects to /abc123
     if (url.pathname.match(/^\/trip\/[a-zA-Z0-9]{6}$/)) {
       const shortCode = url.pathname.split('/')[2];
-      return Response.redirect(`${BASE_URL}/${shortCode}`, 301);
+      return Response.redirect(`${baseUrl}/${shortCode}`, 301);
     }
     
     // For all other routes, let Pages handle static files (add security headers to HTML)

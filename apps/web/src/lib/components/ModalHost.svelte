@@ -2,28 +2,52 @@
 	import { uiState, closeModal, toastSuccess, toastError } from '$stores/ui';
 	import { addWaypoint, addJournalEntry, updateJournalEntry, updateWaypoint } from '$stores/trip';
 	import { currentTrip } from '$stores/trip';
+	import { setAddingWaypoint } from '$stores/map';
 	import * as api from '$lib/api';
 	import type { Waypoint, JournalEntry } from '$types';
-
-	const ui = $derived($uiState);
-	const trip = $derived($currentTrip);
 
 	/* ---------- Add Waypoint ---------- */
 	let wpName = $state('');
 	let wpType = $state('stop');
 	let wpNotes = $state('');
+	let wpAddress = $state('');
+	let wpLat = $state<number | null>(null);
+	let wpLng = $state<number | null>(null);
+	let placeQuery = $state('');
+	let placeResults = $state<import('$types').PlaceResult[]>([]);
+	let placeSearchLoading = $state(false);
+	let placeSearchError = $state('');
+	let addWaypointOpen = $state(false);
+
+	$effect(() => {
+		if ($uiState.modal !== 'addWaypoint') {
+			addWaypointOpen = false;
+			return;
+		}
+		if (!addWaypointOpen) {
+			resetWp();
+			addWaypointOpen = true;
+		}
+		const data = $uiState.modalData as { lat: number; lng: number } | undefined;
+		if (data) {
+			wpLat = data.lat;
+			wpLng = data.lng;
+		}
+	});
 
 	async function submitWaypoint() {
-		const data = ui.modalData as { lat: number; lng: number } | undefined;
-		if (!data || !wpName.trim()) return;
-		await addWaypoint({
+		if (wpLat == null || wpLng == null || !wpName.trim()) return;
+		const waypoint = await addWaypoint({
 			name: wpName.trim(),
 			type: wpType as any,
-			lat: data.lat,
-			lng: data.lng,
+			address: wpAddress.trim() || undefined,
+			lat: wpLat,
+			lng: wpLng,
 			notes: wpNotes.trim() || undefined,
 		});
+		if (!waypoint) return;
 		toastSuccess('Waypoint added');
+		setAddingWaypoint(false);
 		resetWp();
 		closeModal();
 	}
@@ -32,6 +56,75 @@
 		wpName = '';
 		wpType = 'stop';
 		wpNotes = '';
+		wpAddress = '';
+		wpLat = null;
+		wpLng = null;
+		placeQuery = '';
+		placeResults = [];
+		placeSearchError = '';
+	}
+
+	function requestCurrentPosition(): Promise<GeolocationPosition> {
+		return new Promise((resolve, reject) => {
+			if (!navigator.geolocation) {
+				reject(new Error('Geolocation is not available on this device.'));
+				return;
+			}
+			navigator.geolocation.getCurrentPosition(resolve, reject, {
+				enableHighAccuracy: true,
+				timeout: 15000,
+				maximumAge: 0
+			});
+		});
+	}
+
+	async function useCurrentLocation() {
+		try {
+			const position = await requestCurrentPosition();
+			wpLat = position.coords.latitude;
+			wpLng = position.coords.longitude;
+			if (!wpName.trim()) wpName = 'Current Location';
+			toastSuccess('Using current location');
+		} catch (error) {
+			toastError(error instanceof Error ? error.message : 'Unable to get current location');
+		}
+	}
+
+	function pickOnMap() {
+		setAddingWaypoint(true);
+		toastSuccess('Tap the map to place the stop');
+	}
+
+	async function searchPlaces() {
+		const query = placeQuery.trim();
+		if (!query) return;
+		placeSearchLoading = true;
+		placeSearchError = '';
+		try {
+			const result = await api.places.search(query, wpLat ?? undefined, wpLng ?? undefined);
+			if (result.ok) {
+				placeResults = result.data ?? [];
+				if (!placeResults.length) placeSearchError = 'No places found.';
+			} else {
+				placeResults = [];
+				placeSearchError = result.error ?? 'Place search failed.';
+			}
+		} catch (error) {
+			placeResults = [];
+			placeSearchError = error instanceof Error ? error.message : 'Place search failed.';
+		} finally {
+			placeSearchLoading = false;
+		}
+	}
+
+	function applyPlace(place: import('$types').PlaceResult) {
+		wpName = place.name || wpName;
+		wpAddress = place.address || '';
+		wpLat = place.lat;
+		wpLng = place.lng;
+		placeResults = [];
+		placeQuery = place.name || '';
+		toastSuccess('Place applied to waypoint');
 	}
 
 	/* ---------- Add / Edit Journal ---------- */
@@ -41,14 +134,14 @@
 	let jTags = $state('');
 
 	$effect(() => {
-		if (ui.modal === 'editJournal' && ui.modalData) {
-			const e = ui.modalData as JournalEntry;
+		if ($uiState.modal === 'editJournal' && $uiState.modalData) {
+			const e = $uiState.modalData as JournalEntry;
 			jTitle = e.title || '';
 			jContent = e.content || '';
 			jPrivate = !!e.isPrivate;
 			jTags = (e.tags || []).join(', ');
 		}
-		if (ui.modal === 'addJournal') {
+		if ($uiState.modal === 'addJournal') {
 			jTitle = ''; jContent = ''; jPrivate = false; jTags = '';
 		}
 	});
@@ -57,12 +150,12 @@
 		if (!jTitle.trim()) return;
 		const tags = jTags.split(',').map(t => t.trim()).filter(Boolean);
 
-		if (ui.modal === 'editJournal' && ui.modalData) {
-			const entry = ui.modalData as JournalEntry;
+		if ($uiState.modal === 'editJournal' && $uiState.modalData) {
+			const entry = $uiState.modalData as JournalEntry;
 			await updateJournalEntry(entry.id, {
 				title: jTitle.trim(),
 				content: jContent.trim(),
-				is_private: jPrivate,
+				isPrivate: jPrivate,
 				tags,
 			});
 			toastSuccess('Note updated');
@@ -70,7 +163,7 @@
 			await addJournalEntry({
 				title: jTitle.trim(),
 				content: jContent.trim(),
-				is_private: jPrivate,
+				isPrivate: jPrivate,
 				tags,
 			});
 			toastSuccess('Note added');
@@ -83,18 +176,18 @@
 	let isPublic = $state(false);
 
 	$effect(() => {
-		if (ui.modal === 'share' && trip) {
-			isPublic = !!(trip.isPublic || (trip as any).is_public);
-			const code = trip.shareCode || (trip as any).share_code;
+		if ($uiState.modal === 'share' && $currentTrip) {
+			isPublic = !!($currentTrip.isPublic || ($currentTrip as any).is_public);
+			const code = $currentTrip.shareCode || ($currentTrip as any).share_code;
 			shareUrl = code ? `${window.location.origin}/${code}` : '';
 			if (!shareUrl) generateShareLink();
 		}
 	});
 
 	async function generateShareLink() {
-		if (!trip) return;
+		if (!$currentTrip) return;
 		try {
-			const result = await api.trips.share(trip.id);
+			const result = await api.trips.share($currentTrip.id);
 			if (result.ok && result.data) {
 				shareUrl = `${window.location.origin}/${result.data}`;
 			}
@@ -113,9 +206,9 @@
 	}
 
 	async function togglePublic() {
-		if (!trip) return;
+		if (!$currentTrip) return;
 		try {
-			await api.trips.update(trip.id, { is_public: !isPublic });
+			await api.trips.update($currentTrip.id, { isPublic: !isPublic });
 			isPublic = !isPublic;
 		} catch {
 			toastError('Failed to update');
@@ -135,29 +228,70 @@
 	function onOverlayClick(e: MouseEvent) {
 		if ((e.target as HTMLElement).classList.contains('modal-overlay')) closeModal();
 	}
+
+	function dismissModal() {
+		setAddingWaypoint(false);
+		closeModal();
+	}
 </script>
 
-{#if ui.modal}
+{#if $uiState.modal}
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="modal-overlay" onclick={onOverlayClick} onkeydown={e => e.key === 'Escape' && closeModal()}>
-	<div class="modal-sheet" role="dialog" aria-modal="true">
+<div
+	class="modal-overlay"
+	class:passthrough={$uiState.modal === 'addWaypoint'}
+	onclick={onOverlayClick}
+	onkeydown={e => e.key === 'Escape' && dismissModal()}
+>
+	<div class="modal-sheet" class:waypoint-sheet={$uiState.modal === 'addWaypoint'} role="dialog" aria-modal={$uiState.modal === 'addWaypoint' ? 'false' : 'true'}>
 		<div class="modal-handle"></div>
 
-		{#if ui.modal === 'addWaypoint'}
+		{#if $uiState.modal === 'addWaypoint'}
 			<h2 class="modal-title">Add Waypoint</h2>
 			<form class="modal-form" onsubmit={e => { e.preventDefault(); submitWaypoint(); }}>
+				<div class="waypoint-actions-row">
+					<button class="btn-ghost small" type="button" onclick={pickOnMap}>Pick on map</button>
+					<button class="btn-ghost small" type="button" onclick={useCurrentLocation}>Use my location</button>
+				</div>
 				<input class="field" type="text" placeholder="Waypoint name" bind:value={wpName} required />
+				<input class="field" type="text" placeholder="Address or place details (optional)" bind:value={wpAddress} />
 				<select class="field" bind:value={wpType}>
 					{#each wpTypes as t}
 						<option value={t.value}>{t.label}</option>
 					{/each}
 				</select>
+				<div class="place-search-block">
+					<div class="place-search-row">
+						<input class="field" type="text" placeholder="Search cafe, fuel, landmark..." bind:value={placeQuery} />
+						<button class="btn-ghost small" type="button" onclick={searchPlaces} disabled={placeSearchLoading}>
+							{placeSearchLoading ? 'Searching...' : 'Search'}
+						</button>
+					</div>
+					{#if placeSearchError}
+						<p class="muted">{placeSearchError}</p>
+					{/if}
+					{#if placeResults.length}
+						<div class="place-results">
+							{#each placeResults as place}
+								<button class="place-result" type="button" onclick={() => applyPlace(place)}>
+									<span class="place-name">{place.name}</span>
+									<span class="place-address">{place.address}</span>
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+				{#if wpLat != null && wpLng != null}
+					<p class="muted coords-row">Tap the map to reposition. {wpLat.toFixed(5)}, {wpLng.toFixed(5)}</p>
+				{:else}
+					<p class="muted coords-row">Choose a place, use your location, or tap the map to set coordinates.</p>
+				{/if}
 				<textarea class="field" placeholder="Notes (optional)" bind:value={wpNotes} rows="2"></textarea>
-				<button class="btn-primary" type="submit">Add Waypoint</button>
+				<button class="btn-primary" type="submit" disabled={wpLat == null || wpLng == null || !wpName.trim()}>Add Waypoint</button>
 			</form>
 
-		{:else if ui.modal === 'addJournal' || ui.modal === 'editJournal'}
-			<h2 class="modal-title">{ui.modal === 'editJournal' ? 'Edit Note' : 'New Note'}</h2>
+		{:else if $uiState.modal === 'addJournal' || $uiState.modal === 'editJournal'}
+			<h2 class="modal-title">{$uiState.modal === 'editJournal' ? 'Edit Note' : 'New Note'}</h2>
 			<form class="modal-form" onsubmit={e => { e.preventDefault(); submitJournal(); }}>
 				<input class="field" type="text" placeholder="Title" bind:value={jTitle} required />
 				<textarea class="field" placeholder="What happened?" bind:value={jContent} rows="4"></textarea>
@@ -166,10 +300,10 @@
 					<input type="checkbox" bind:checked={jPrivate} />
 					<span>Private note</span>
 				</label>
-				<button class="btn-primary" type="submit">{ui.modal === 'editJournal' ? 'Save' : 'Add Note'}</button>
+				<button class="btn-primary" type="submit">{$uiState.modal === 'editJournal' ? 'Save' : 'Add Note'}</button>
 			</form>
 
-		{:else if ui.modal === 'share'}
+		{:else if $uiState.modal === 'share'}
 			<h2 class="modal-title">Share Trip</h2>
 			<div class="modal-form">
 				<label class="toggle-row">
@@ -186,8 +320,8 @@
 				{/if}
 			</div>
 
-		{:else if ui.modal === 'waypointDetail'}
-			{@const wp = ui.modalData as Waypoint}
+		{:else if $uiState.modal === 'waypointDetail'}
+			{@const wp = $uiState.modalData as Waypoint}
 			<h2 class="modal-title">{wp?.name || 'Waypoint'}</h2>
 			<div class="modal-form">
 				{#if wp?.address}<p class="muted">{wp.address}</p>{/if}
@@ -200,10 +334,10 @@
 			</div>
 
 		{:else}
-			<p class="muted">Unknown modal: {ui.modal}</p>
+			<p class="muted">Unknown modal: {$uiState.modal}</p>
 		{/if}
 
-		<button class="modal-close" onclick={closeModal} aria-label="Close">
+		<button class="modal-close" onclick={dismissModal} aria-label="Close">
 			<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
 		</button>
 	</div>
@@ -223,6 +357,13 @@
 		animation: fadeIn 0.15s ease;
 	}
 
+	.modal-overlay.passthrough {
+		background: transparent;
+		backdrop-filter: none;
+		pointer-events: none;
+		align-items: flex-end;
+	}
+
 	@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 	.modal-sheet {
@@ -236,6 +377,15 @@
 		padding-bottom: calc(28px + var(--safe-bottom));
 		position: relative;
 		animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	.modal-sheet.waypoint-sheet {
+		pointer-events: auto;
+		max-width: 520px;
+		max-height: min(68vh, 560px);
+		margin: 0 16px 16px;
+		border-radius: var(--radius-xl);
+		box-shadow: var(--shadow-modal);
 	}
 
 	@keyframes slideUp {
@@ -298,6 +448,61 @@
 		gap: 8px;
 	}
 
+	.place-search-block {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.place-search-row {
+		display: flex;
+		gap: 8px;
+	}
+
+	.place-search-row .field {
+		flex: 1;
+	}
+
+	.waypoint-actions-row {
+		display: flex;
+		gap: 8px;
+	}
+
+	.waypoint-actions-row :global(button) {
+		flex: 1;
+	}
+
+	.place-results {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		max-height: 140px;
+		overflow-y: auto;
+	}
+
+	.place-result {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
+		padding: 10px 12px;
+		border-radius: var(--radius-md);
+		background: var(--bg-elevated);
+		border: 1px solid var(--border-glass);
+		text-align: left;
+	}
+
+	.place-name {
+		font-size: 0.84rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.place-address {
+		font-size: 0.74rem;
+		color: var(--text-muted);
+	}
+
 	.share-link-row .field { flex: 1; }
 	.share-link-row .btn-primary.small { padding: 10px 16px; font-size: 0.8rem; white-space: nowrap; }
 
@@ -310,6 +515,7 @@
 	}
 
 	.muted { color: var(--text-muted); font-size: 0.82rem; }
+	.coords-row { margin-top: -4px; }
 
 	.modal-close {
 		position: absolute;
@@ -334,5 +540,8 @@
 	@media (min-width: 768px) {
 		.modal-overlay { align-items: center; }
 		.modal-sheet { border-radius: var(--radius-xl); margin: 20px; }
+		.modal-overlay.passthrough {
+			align-items: flex-end;
+		}
 	}
 </style>

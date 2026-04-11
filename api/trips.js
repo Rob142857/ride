@@ -3,7 +3,7 @@
  * Core CRUD operations for trips (trip-level only)
  */
 
-import { jsonResponse, errorResponse, generateId, generateShortCodeForId, parseBody, BASE_URL } from './utils.js';
+import { jsonResponse, errorResponse, generateId, generateShortCodeForId, parseBody, getBaseUrl } from './utils.js';
 import { safeJsonParse, orderWaypointsWithTripSettings, parseIfMatchVersion, conflictResponse } from './handler-utils.js';
 
 export const TripsHandler = {
@@ -11,7 +11,8 @@ export const TripsHandler = {
    * List all trips for current user
    */
   async listTrips(context) {
-    const { env, user } = context;
+    const { env, user, request } = context;
+    const baseUrl = getBaseUrl(env, request.url);
 
     const trips = await env.RIDE_TRIP_PLANNER_DB.prepare(
       `SELECT t.*, 
@@ -25,7 +26,7 @@ export const TripsHandler = {
 
     const results = (trips.results || []).map(t => ({
       ...t,
-      short_url: t.short_code ? `${BASE_URL}/${t.short_code}` : null
+      short_url: t.short_code ? `${baseUrl}/${t.short_code}` : null
     }));
 
     return jsonResponse({ trips: results });
@@ -36,6 +37,7 @@ export const TripsHandler = {
    */
   async createTrip(context) {
     const { env, user, request } = context;
+    const baseUrl = getBaseUrl(env, request.url);
     const body = await parseBody(request);
 
     if (!body?.name) {
@@ -67,7 +69,7 @@ export const TripsHandler = {
     }
 
     const trip = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM trips WHERE id = ?').bind(id).first();
-    trip.short_url = `${BASE_URL}/${shortCode}`;
+    trip.short_url = `${baseUrl}/${shortCode}`;
 
     return jsonResponse({ trip }, 201);
   },
@@ -76,7 +78,8 @@ export const TripsHandler = {
    * Get a single trip with all data
    */
   async getTrip(context) {
-    const { env, user, params } = context;
+    const { env, user, params, request } = context;
+    const baseUrl = getBaseUrl(env, request.url);
 
     const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
       'SELECT * FROM trips WHERE id = ? AND user_id = ?'
@@ -104,14 +107,14 @@ export const TripsHandler = {
 
     const attachmentsWithUrls = attachments.results.map(a => ({
       ...a,
-      url: `${BASE_URL}/api/attachments/${a.id}`
+      url: `${baseUrl}/api/attachments/${a.id}`
     }));
 
     return jsonResponse({
       trip: {
         ...trip,
         settings: safeJsonParse(trip.settings || '{}', {}),
-        short_url: trip.short_code ? `${BASE_URL}/${trip.short_code}` : null,
+        short_url: trip.short_code ? `${baseUrl}/${trip.short_code}` : null,
         waypoints: orderedWaypoints,
         journal: journal.results.map(e => ({
           ...e,

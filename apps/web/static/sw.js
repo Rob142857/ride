@@ -12,39 +12,16 @@
  * and post a 'ride:update' message to all clients so they can reload.
  */
 
-const CACHE_NAME = 'ride-v6';
+const CACHE_NAME = 'ride-v9';
 const TILES_CACHE = 'ride-tiles';
 
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/css/app.css',
-  '/css/global.css',
-  '/css/ride-mode.css',
-  '/js/api.js',
-  '/js/app-core.js',
-  '/js/auth-controller.js',
-  '/js/trip-controller.js',
-  '/js/waypoint-controller.js',
-  '/js/journal-controller.js',
-  '/js/ride-controller.js',
-  '/js/utils.js',
-  '/js/storage.js',
-  '/js/trip.js',
-  '/js/map.js',
-  '/js/ui.js',
-  '/js/share.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/icon.svg'
-];
-
-const EXTERNAL_ASSETS = [
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-  'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css',
-  'https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js'
 ];
 
 /* ── Build version tracking ──────────────────────────────────────────── */
@@ -91,7 +68,6 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME).then(async (cache) => {
       console.log('[SW] Caching app shell');
       await cache.addAll(STATIC_ASSETS.map(u => new Request(u, { cache: 'reload' })));
-      await cache.addAll(EXTERNAL_ASSETS);
     })
   );
   self.skipWaiting();
@@ -126,7 +102,10 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   // ── API: network only ──
+  // For navigation requests (OAuth login redirects), let the browser handle
+  // the 302 natively so the URL bar updates and cross-origin redirects work.
   if (url.pathname.startsWith('/api/')) {
+    if (request.mode === 'navigate') return;
     event.respondWith(fetch(request));
     return;
   }
@@ -142,6 +121,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname === '/' ||
     url.pathname === '/index.html' ||
     url.pathname === '/manifest.json' ||
+    url.pathname.startsWith('/_app/') ||
     url.pathname.startsWith('/css/') ||
     url.pathname.startsWith('/js/') ||
     url.pathname.startsWith('/icons/')
@@ -161,7 +141,8 @@ self.addEventListener('fetch', (event) => {
   }
 
   // ── Map tiles: stale-while-revalidate ──
-  if (url.hostname.includes('basemaps.cartocdn.com') ||
+    if (url.hostname.includes('basemaps.cartocdn.com') ||
+      url.hostname.includes('tile.openstreetmap.org') ||
       url.hostname.includes('arcgisonline.com')) {
     event.respondWith(
       caches.open(TILES_CACHE).then((cache) =>

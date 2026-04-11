@@ -29,6 +29,8 @@
 	/* Spacing */
 	--header-height: 56px;
 	--nav-height: 64px;
+	--footer-height: 64px;
+	--bg-base: #0a0e17;
 	--safe-top: env(safe-area-inset-top, 0px);
 	--safe-bottom: env(safe-area-inset-bottom, 0px);
 	--safe-left: env(safe-area-inset-left, 0px);
@@ -37,6 +39,7 @@
 	/* Radius */
 	--radius-sm: 6px;
 	--radius: 12px;
+	--radius-md: 12px;
 	--radius-lg: 16px;
 	--radius-xl: 24px;
 
@@ -50,6 +53,7 @@
 	--shadow-md: 0 4px 20px rgba(0, 0, 0, 0.2);
 	--shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.3);
 	--shadow-modal: 0 25px 80px rgba(0, 0, 0, 0.4);
+	--red: #f85149;
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────── */
