@@ -59,6 +59,8 @@ Object.assign(UI, {
         if (e.target?.closest?.('.waypoint-handle')) return;
         const id = el.dataset.id;
         if (!id) return;
+        const waypoint = orderedWaypoints.find((wp) => wp.id === id);
+        if (waypoint) MapManager.centerOnWaypoint(waypoint);
         if (!App.ensureEditable('edit waypoints')) return;
         App.openWaypointDetails(id);
       });

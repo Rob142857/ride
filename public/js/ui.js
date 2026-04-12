@@ -39,7 +39,44 @@ const UI = {
     });
 
     // Initial visibility: map view only
-    btn.classList.toggle('hidden', this.currentView !== 'map');
+    btn.classList.toggle('hidden', !['map', 'waypoints'].includes(this.currentView));
+  },
+
+  setWaypointPlannerState(state = 'idle', message = '') {
+    const panel = document.getElementById('waypointsPanel');
+    const status = document.getElementById('waypointPlannerStatus');
+    if (panel) {
+      panel.dataset.mode = state;
+    }
+    if (!status) return;
+
+    if (message) {
+      status.textContent = message;
+      return;
+    }
+
+    if (state === 'pick') {
+      status.textContent = 'Tap anywhere on the map to position the next waypoint.';
+      return;
+    }
+    if (state === 'selected') {
+      status.textContent = 'Pinned on the map. Add any details, then save the waypoint.';
+      return;
+    }
+    status.textContent = 'Ready. Choose a waypoint source to begin.';
+  },
+
+  openWaypointPlaceSearch() {
+    if (this.currentView !== 'waypoints') this.switchView('waypoints');
+    this.openPlaceSearchModal();
+    this.setWaypointPlannerState('search', 'Search for a place, preview it on the map, then apply it to the waypoint form.');
+  },
+
+  startWaypointMapPick() {
+    if (!App.ensureEditable('add waypoints')) return;
+    if (this.currentView !== 'waypoints') this.switchView('waypoints');
+    this.openModal('waypointModal');
+    MapManager.enableAddWaypointMode();
   },
 
   bindAuthGate() {
@@ -205,15 +242,21 @@ const UI = {
       }
     }
 
+    if (view !== 'waypoints') {
+      MapManager.disableAddWaypointMode();
+    } else {
+      this.setWaypointPlannerState(MapManager.isAddingWaypoint ? 'pick' : 'idle');
+    }
+
     // Trigger map resize when switching to map view
-    if (view === 'map' && MapManager.map) {
+    if ((view === 'map' || view === 'waypoints') && MapManager.map) {
       setTimeout(() => MapManager.map.invalidateSize(), 100);
     }
 
-    // Floating controls: only on map view
+    // Floating controls: keep them for map-backed waypoint planning too
     const locateBtn = document.getElementById('locateBtn');
     if (locateBtn) {
-      locateBtn.classList.toggle('hidden', view !== 'map');
+      locateBtn.classList.toggle('hidden', !['map', 'waypoints'].includes(view));
     }
   },
 
@@ -305,9 +348,28 @@ const UI = {
 
     // Add waypoint button
     document.getElementById('addWaypointBtn').addEventListener('click', () => {
+      this.startWaypointMapPick();
+    });
+
+    document.getElementById('pickWaypointOnMapBtn')?.addEventListener('click', () => {
+      this.startWaypointMapPick();
+    });
+
+    document.getElementById('searchWaypointPlaceBtn')?.addEventListener('click', () => {
       if (!App.ensureEditable('add waypoints')) return;
-      this.openModal('waypointModal');
-      MapManager.enableAddWaypointMode();
+      this.openWaypointPlaceSearch();
+    });
+
+    document.getElementById('fitWaypointsBtn')?.addEventListener('click', async () => {
+      const waypoints = App.currentTrip?.waypoints || [];
+      if (waypoints.length) {
+        MapManager.fitToWaypoints(waypoints);
+        this.setWaypointPlannerState('idle', `Showing all ${waypoints.length} waypoint${waypoints.length === 1 ? '' : 's'} on the map.`);
+        return;
+      }
+      try {
+        await MapManager.locateUser({ toast: true, animate: true });
+      } catch (_) {}
     });
 
     // Add note button
@@ -415,6 +477,8 @@ const UI = {
 
     const waypoint = await App.addWaypoint({ name, address, lat, lng, type, notes });
     if (waypoint) {
+      this.setWaypointPlannerState('idle', `Saved ${waypoint.name || 'waypoint'} to your route.`);
+      MapManager.centerOnWaypoint(waypoint);
       this.closeModal('waypointModal');
     }
   },

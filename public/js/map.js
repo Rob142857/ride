@@ -141,11 +141,16 @@ const MapManager = {
         latInput.value = e.latlng.lat.toFixed(6);
         lngInput.value = e.latlng.lng.toFixed(6);
       }
+      const addressInput = document.getElementById('waypointAddress');
+      if (addressInput && !addressInput.value.trim()) {
+        addressInput.value = 'Dropped pin from map';
+      }
       const nameInput = document.getElementById('waypointName');
       if (nameInput && !nameInput.value.trim()) {
         const nextNum = (App.currentTrip?.waypoints?.length || 0) + 1;
         nameInput.value = `Waypoint ${nextNum}`;
       }
+      UI.setWaypointPlannerState('selected', 'Pinned on the map. Add any details, then save the waypoint.');
 
       // Show temporary marker
       if (this.tempMarker) {
@@ -165,6 +170,7 @@ const MapManager = {
     this.isAddingWaypoint = true;
     this.map.getContainer().style.cursor = 'crosshair';
     document.body.classList.add('map-pick-mode');
+    UI.setWaypointPlannerState('pick', 'Tap anywhere on the map to position the next waypoint.');
     UI.showToast('Tap on map to set location', 'info');
   },
 
@@ -176,6 +182,7 @@ const MapManager = {
     this.map.getContainer().style.cursor = '';
     this.pendingLocation = null;
     document.body.classList.remove('map-pick-mode');
+    UI.setWaypointPlannerState('idle');
     
     if (this.tempMarker) {
       this.map.removeLayer(this.tempMarker);
@@ -379,6 +386,7 @@ const MapManager = {
    * Center on specific waypoint
    */
   centerOnWaypoint(waypoint) {
+    if (!waypoint) return;
     this.map.setView([waypoint.lat, waypoint.lng], 15);
     
     // Open popup

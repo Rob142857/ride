@@ -217,16 +217,33 @@
     
     <!-- Panels -->
     <section id="waypointsPanel" class="panel hidden">
-      <div class="panel-header">
-        <div class="panel-title">
-          <h2>Waypoints</h2>
-          <button id="refreshWaypointsBtn" class="icon-btn heading-refresh" aria-label="Refresh waypoints">↻</button>
+      <div class="waypoints-drawer">
+        <div class="panel-header">
+          <div class="panel-title">
+            <h2>Waypoints</h2>
+            <button id="refreshWaypointsBtn" class="icon-btn heading-refresh" aria-label="Refresh waypoints">↻</button>
+          </div>
+          <div class="panel-actions">
+            <button id="addWaypointBtn" class="primary-btn">Pick on map</button>
+          </div>
         </div>
-        <div class="panel-actions">
-          <button id="addWaypointBtn" class="primary-btn">+ Add</button>
+        <div class="waypoints-panel-body">
+          <div class="waypoint-planner-card">
+            <div class="waypoint-planner-copy">
+              <div class="waypoint-planner-kicker">Planning mode</div>
+              <h3>Keep the map in view while you build the route</h3>
+              <p>Drop a waypoint directly on the map, or search for a place and apply it to the next stop.</p>
+            </div>
+            <div class="waypoint-planner-actions">
+              <button id="pickWaypointOnMapBtn" type="button" class="primary-btn">Tap map to place</button>
+              <button id="searchWaypointPlaceBtn" type="button" class="secondary-btn">Search places</button>
+              <button id="fitWaypointsBtn" type="button" class="secondary-btn">Fit trip</button>
+            </div>
+            <div id="waypointPlannerStatus" class="waypoint-planner-status">Ready. Choose a waypoint source to begin.</div>
+          </div>
+          <div id="waypointsList" class="waypoints-list"></div>
         </div>
       </div>
-      <div id="waypointsList" class="panel-content"></div>
     </section>
     
     <section id="journalPanel" class="panel hidden">

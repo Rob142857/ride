@@ -15,14 +15,7 @@ Object.assign(UI, {
     if (!openBtn || !input || !submit || !resultsEl || !statusEl) return;
 
     openBtn.addEventListener('click', () => {
-      const address = document.getElementById('waypointAddress')?.value || '';
-      input.value = address;
-      this.placeSearchBias = null;
-      this.placeSearchResults = [];
-      statusEl.textContent = 'Type a search to begin.';
-      resultsEl.innerHTML = '<div class="microcopy">Search returns up to 12 places.</div>';
-      this.openModal('placeSearchModal');
-      setTimeout(() => input.focus(), 80);
+      this.openPlaceSearchModal();
     });
 
     submit.addEventListener('click', () => this.performPlaceSearch());
@@ -49,6 +42,22 @@ Object.assign(UI, {
         }
       });
     }
+  },
+
+  openPlaceSearchModal() {
+    const input = document.getElementById('placeSearchInput');
+    const resultsEl = document.getElementById('placeSearchResults');
+    const statusEl = document.getElementById('placeSearchStatus');
+    const address = document.getElementById('waypointAddress')?.value || '';
+    if (!input || !resultsEl || !statusEl) return;
+
+    input.value = address;
+    this.placeSearchBias = null;
+    this.placeSearchResults = [];
+    statusEl.textContent = 'Type a search to begin.';
+    resultsEl.innerHTML = '<div class="microcopy">Search returns up to 12 places.</div>';
+    this.openModal('placeSearchModal');
+    setTimeout(() => input.focus(), 80);
   },
 
   async performPlaceSearch() {
@@ -127,8 +136,10 @@ Object.assign(UI, {
   previewPlaceOnMap(place) {
     if (!place?.location) return;
     const { lat, lng } = place.location;
+    if (this.currentView !== 'waypoints') this.switchView('waypoints');
     MapManager.map?.setView([lat, lng], Math.max(MapManager.map.getZoom() || 12, 14));
     MapManager.showTempLocation(lat, lng);
+    this.setWaypointPlannerState('search', `Previewing ${place.name || 'place'} on the map.`);
   },
 
   applyPlaceToWaypoint(place) {
@@ -145,8 +156,10 @@ Object.assign(UI, {
     if (lngEl) lngEl.value = lng;
 
     this.closeModal('placeSearchModal');
+    if (this.currentView !== 'waypoints') this.switchView('waypoints');
     this.openModal('waypointModal');
     this.previewPlaceOnMap(place);
+    this.setWaypointPlannerState('selected', 'Place applied. Add any details, then save the waypoint.');
     UI.showToast('Place added to waypoint form', 'success');
   },
 
