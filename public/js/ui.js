@@ -74,8 +74,7 @@ const UI = {
 
   startWaypointMapPick() {
     if (!App.ensureEditable('add waypoints')) return;
-    if (this.currentView !== 'waypoints') this.switchView('waypoints');
-    this.openModal('waypointModal');
+    if (this.currentView !== 'map') this.switchView('map');
     MapManager.enableAddWaypointMode();
   },
 
