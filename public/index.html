@@ -576,6 +576,30 @@
       </div>
     </div>
     
+    <!-- Settings modal -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Settings</h3>
+        <div class="form-section">
+          <label class="toggle-switch">
+            <input type="checkbox" id="fuelToggle" />
+            <span class="toggle-track"></span>
+            <span class="toggle-label-text">Fuel cost calculator</span>
+          </label>
+          <div id="fuelFields" class="settings-subfields" style="display:none">
+            <label class="field-label" for="fuelRate">Litres per 100 km</label>
+            <input type="number" id="fuelRate" step="0.1" min="0" placeholder="e.g. 6.5" />
+            <label class="field-label" for="fuelPrice">Fuel price ($ per litre)</label>
+            <input type="number" id="fuelPrice" step="0.01" min="0" placeholder="e.g. 3.20" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="settingsCancel" class="secondary-btn">Cancel</button>
+          <button type="button" id="settingsSave" class="primary-btn">Save</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast notifications -->
     <div id="toast" class="hidden"></div>
     

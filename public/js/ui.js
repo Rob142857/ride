@@ -312,8 +312,7 @@ const UI = {
 
     document.getElementById('settingsBtn').addEventListener('click', () => {
       closeMenuFn();
-      // TODO: Open settings modal
-      this.showToast('Settings coming soon', 'info');
+      this.openSettingsModal();
     });
 
     document.getElementById('aboutBtn').addEventListener('click', () => {
@@ -567,9 +566,59 @@ const UI = {
     if (typeof distance === 'number') parts.push(this.formatDistance(distance));
     if (typeof time === 'number') parts.push(this.formatDuration(time));
 
+    const fuelCost = this.calcFuelCost(distance);
+    if (fuelCost !== null) parts.push(`$${fuelCost}`);
+
     el.innerHTML = parts.length
       ? parts.map((p) => `<span class="trip-stat-pill">${p}</span>`).join('')
       : '';
+  },
+
+  calcFuelCost(distanceMeters) {
+    if (typeof distanceMeters !== 'number' || distanceMeters <= 0) return null;
+    const settings = Storage.load(Storage.KEYS.SETTINGS, {});
+    if (!settings.fuelEnabled) return null;
+    const rate = parseFloat(settings.fuelRate);
+    const price = parseFloat(settings.fuelPrice);
+    if (!rate || !price || rate <= 0 || price <= 0) return null;
+    const km = distanceMeters / 1000;
+    return ((km / 100) * rate * price).toFixed(2);
+  },
+
+  openSettingsModal() {
+    const modal = document.getElementById('settingsModal');
+    const settings = Storage.load(Storage.KEYS.SETTINGS, {});
+
+    const toggle = document.getElementById('fuelToggle');
+    const fields = document.getElementById('fuelFields');
+    const rateInput = document.getElementById('fuelRate');
+    const priceInput = document.getElementById('fuelPrice');
+
+    toggle.checked = !!settings.fuelEnabled;
+    rateInput.value = settings.fuelRate || '';
+    priceInput.value = settings.fuelPrice || '';
+    fields.style.display = toggle.checked ? '' : 'none';
+
+    toggle.onchange = () => { fields.style.display = toggle.checked ? '' : 'none'; };
+
+    document.getElementById('settingsSave').onclick = () => {
+      settings.fuelEnabled = toggle.checked;
+      settings.fuelRate = rateInput.value;
+      settings.fuelPrice = priceInput.value;
+      Storage.save(Storage.KEYS.SETTINGS, settings);
+      modal.classList.add('hidden');
+      this.showToast('Settings saved', 'success');
+      // Refresh stats if a trip is loaded
+      if (typeof App !== 'undefined' && App.currentTrip) {
+        this.updateTripStats(App.currentTrip);
+      }
+    };
+
+    document.getElementById('settingsCancel').onclick = () => {
+      modal.classList.add('hidden');
+    };
+
+    modal.classList.remove('hidden');
   },
 
   formatDistance(meters) {

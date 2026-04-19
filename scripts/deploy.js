@@ -42,23 +42,7 @@ fs.writeFileSync(WORKER_PATH, src, 'utf8');
 
 console.log(`\n  BUILD_ID: ${oldId || '(none)'} → ${newId}\n`);
 
-// Build SvelteKit frontend
-console.log('  Building SvelteKit frontend...\n');
-try {
-  execSync('npm install --legacy-peer-deps', {
-    stdio: 'inherit',
-    cwd: path.resolve(__dirname, '..', 'apps', 'web')
-  });
-  execSync('npx vite build', {
-    stdio: 'inherit',
-    cwd: path.resolve(__dirname, '..', 'apps', 'web')
-  });
-} catch (err) {
-  console.error('  Frontend build failed!');
-  process.exit(err.status || 1);
-}
-
-// Run wrangler deploy
+// Run wrangler deploy (vanilla JS served from public/ — no build step)
 try {
   execSync('npx wrangler deploy', { stdio: 'inherit', cwd: path.resolve(__dirname, '..') });
 } catch (err) {

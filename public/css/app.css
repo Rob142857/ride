@@ -2610,6 +2610,11 @@ body.doc-page {
   margin-bottom: 2px;
 }
 
+.settings-subfields {
+  margin-top: 12px;
+  padding-left: 4px;
+}
+
 /* Floating Button */
 .floating-btn {
   position: fixed;
@@ -2887,7 +2892,12 @@ body.doc-page {
   }
 
   .trip-stats {
-    display: none;
+    gap: 4px;
+  }
+
+  .trip-stat-pill {
+    font-size: 0.65rem;
+    padding: 1px 5px;
   }
 
   .topbar-right {
@@ -3008,8 +3018,9 @@ body.doc-page {
 }
 
 @media (max-width: 1180px) {
-  .trip-stats {
-    display: none;
+  .trip-stat-pill {
+    font-size: 0.7rem;
+    padding: 1px 6px;
   }
 }
 
