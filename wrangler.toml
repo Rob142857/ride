@@ -5,7 +5,7 @@ routes = ["ride.incitat.io/*"]
 workers_dev = false
 
 [assets]
-directory = "./apps/web/build"
+directory = "./public"
 binding = "ASSETS"
 
 # D1 Database binding

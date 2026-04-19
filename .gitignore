@@ -25,6 +25,8 @@ Thumbs.db
 # Build outputs
 dist/
 build/
+.svelte-kit/
+apps/web/build/
 
 # Logs
 *.log
