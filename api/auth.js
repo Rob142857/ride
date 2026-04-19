@@ -332,6 +332,26 @@ export const AuthHandler = {
   },
 
   /**
+   * Admin: share link view audit trail
+   */
+  async listShareViewsAdmin(context) {
+    const { env } = context;
+    const db = env.RIDE_TRIP_PLANNER_DB;
+
+    const result = await db.prepare(
+      `SELECT sv.id, sv.trip_id, sv.short_code, sv.viewer_label, sv.ip,
+              sv.user_agent, sv.client_hints, sv.referrer, sv.created_at,
+              t.name AS trip_name, u.name AS owner_name, u.email AS owner_email
+       FROM share_views sv
+       LEFT JOIN trips t ON t.id = sv.trip_id
+       LEFT JOIN users u ON u.id = t.user_id
+       ORDER BY sv.created_at DESC LIMIT 500`
+    ).all();
+
+    return jsonResponse({ views: result.results || [] });
+  },
+
+  /**
    * Admin: full account audit snapshot
    * Returns user profile, all trips (with waypoints, journal, attachments),
    * admin notes, login history, and automated content flags.

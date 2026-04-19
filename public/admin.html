@@ -185,6 +185,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="users" onclick="switchTab('users')">Users</div>
     <div class="tab" data-tab="logins" onclick="switchTab('logins')">Audit Log</div>
+    <div class="tab" data-tab="shares" onclick="switchTab('shares')">Share Views</div>
   </div>
 
   <!-- Users tab -->
@@ -241,6 +242,32 @@
     </div>
   </div>
 
+  <!-- Share Views tab -->
+  <div class="section hidden" id="tabShares">
+    <div class="toolbar">
+      <input type="search" id="shareSearch" placeholder="Filter by trip, code, IP, country&hellip;" oninput="filterShares()" />
+      <span class="spacer"></span>
+      <span class="count" id="shareCount"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="sharesTable">
+        <thead>
+          <tr>
+            <th data-sort="created_at" onclick="sortSharesBy('created_at')">Time <span class="sort-arrow">▲</span></th>
+            <th data-sort="trip_name" onclick="sortSharesBy('trip_name')">Trip <span class="sort-arrow">▲</span></th>
+            <th data-sort="short_code" onclick="sortSharesBy('short_code')">Code <span class="sort-arrow">▲</span></th>
+            <th data-sort="owner_name" onclick="sortSharesBy('owner_name')">Owner <span class="sort-arrow">▲</span></th>
+            <th data-sort="viewer_label" onclick="sortSharesBy('viewer_label')">Viewer <span class="sort-arrow">▲</span></th>
+            <th data-sort="ip" onclick="sortSharesBy('ip')">IP <span class="sort-arrow">▲</span></th>
+            <th data-sort="country" onclick="sortSharesBy('country')">Country <span class="sort-arrow">▲</span></th>
+            <th data-sort="referrer" onclick="sortSharesBy('referrer')">Referrer <span class="sort-arrow">▲</span></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Audit modal -->
   <div class="modal-overlay" id="auditOverlay" onclick="if(event.target===this)closeAudit()">
     <div class="modal">
@@ -271,9 +298,11 @@
     const ADMIN_EMAIL = 'admin@incitat.io';
     let allUsers = [];
     let allLogins = [];
+    let allShares = [];
     let auditUserId = null;
     let userSort = { key: null, asc: true };
     let loginSort = { key: null, asc: true };
+    let shareSort = { key: null, asc: true };
 
     /* ── Helpers ──────────────────────────────────────────── */
 
@@ -339,6 +368,7 @@
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
       document.getElementById('tabUsers').classList.toggle('hidden', name !== 'users');
       document.getElementById('tabLogins').classList.toggle('hidden', name !== 'logins');
+      document.getElementById('tabShares').classList.toggle('hidden', name !== 'shares');
     }
 
     /* ── Stats ────────────────────────────────────────────── */
@@ -531,6 +561,78 @@
       else { loginSort.key = key; loginSort.asc = true; }
       updateSortHeaders('#loginsTable', loginSort);
       filterLogins();
+    }
+
+    /* ── Share Views ───────────────────────────────────────── */
+
+    async function loadShares() {
+      try {
+        const res = await fetch('/api/admin/share-views');
+        if (!res.ok) return;
+        const data = await res.json();
+        allShares = data.views || [];
+        renderShares(allShares);
+        document.getElementById('shareCount').textContent = allShares.length + ' views';
+      } catch (err) { console.error('Share views load error:', err); }
+    }
+
+    function renderShares(list) {
+      const tbody = document.querySelector('#sharesTable tbody');
+      tbody.innerHTML = '';
+      if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">No share link views recorded yet.</td></tr>';
+        return;
+      }
+      list.forEach(v => {
+        let country = '';
+        try { const h = JSON.parse(v.client_hints || '{}'); country = h.cfCountry || ''; } catch(_) {}
+        const ref = v.referrer || '';
+        const refShort = ref.length > 50 ? ref.slice(0, 50) + '\u2026' : ref;
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td class="muted" title="' + esc(v.created_at) + '">' + fmtRelative(v.created_at) + '</td>' +
+          '<td>' + esc(v.trip_name || '\u2014') + '</td>' +
+          '<td class="mono">' + esc(v.short_code) + '</td>' +
+          '<td>' + esc(v.owner_name || v.owner_email || '\u2014') + '</td>' +
+          '<td><span class="badge ' + (v.viewer_label === 'external' ? 'badge-default' : 'badge-active') + '">' + esc(v.viewer_label) + '</span></td>' +
+          '<td class="mono">' + esc(v.ip) + '</td>' +
+          '<td>' + (country ? esc(country) : '<span class="muted">\u2014</span>') + '</td>' +
+          '<td class="muted" title="' + esc(ref) + '">' + esc(refShort || '\u2014') + '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterShares() {
+      const q = document.getElementById('shareSearch').value.toLowerCase().trim();
+      let list = allShares;
+      if (q) list = list.filter(v => {
+        let country = '';
+        try { const h = JSON.parse(v.client_hints || '{}'); country = h.cfCountry || ''; } catch(_) {}
+        return [v.trip_name, v.short_code, v.owner_name, v.owner_email, v.viewer_label, v.ip, country, v.referrer].join(' ').toLowerCase().includes(q);
+      });
+      renderShares(applySortShares(list));
+    }
+
+    function applySortShares(list) {
+      if (!shareSort.key) return list;
+      const k = shareSort.key, dir = shareSort.asc ? 1 : -1;
+      return [...list].sort((a, b) => {
+        let va, vb;
+        if (k === 'country') {
+          try { va = JSON.parse(a.client_hints || '{}').cfCountry || ''; } catch(_) { va = ''; }
+          try { vb = JSON.parse(b.client_hints || '{}').cfCountry || ''; } catch(_) { vb = ''; }
+        } else {
+          va = a[k]; vb = b[k];
+        }
+        return ((va || '').toString().localeCompare((vb || '').toString(), undefined, { sensitivity: 'base' })) * dir;
+      });
+    }
+
+    function sortSharesBy(key) {
+      if (shareSort.key === key) shareSort.asc = !shareSort.asc;
+      else { shareSort.key = key; shareSort.asc = true; }
+      updateSortHeaders('#sharesTable', shareSort);
+      filterShares();
     }
 
     /* ── Audit Modal ──────────────────────────────────────── */
@@ -763,6 +865,7 @@
     loadPlacesUsage();
     loadUsers();
     loadLogins();
+    loadShares();
   </script>
 </body>
 </html>

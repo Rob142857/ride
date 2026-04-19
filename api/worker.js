@@ -18,7 +18,7 @@ import { cors, jsonResponse, errorResponse, requireAuth, optionalAuth, BASE_URL 
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-04-19T03';
+const BUILD_ID = '2026-04-19T04';
 
 const router = new Router();
 
@@ -33,6 +33,7 @@ router.post('/api/auth/logout', AuthHandler.logout);
 router.get('/api/admin/stats', AuthHandler.adminStats);
 router.get('/api/admin/users', AuthHandler.listUsersAdmin);
 router.get('/api/admin/logins', AuthHandler.listLoginsAdmin);
+router.get('/api/admin/share-views', AuthHandler.listShareViewsAdmin);
 router.get('/api/admin/users/:id/audit', AuthHandler.auditUser);
 router.post('/api/admin/users/:id/status', AuthHandler.setUserStatus);
 router.post('/api/admin/users/:id/notes', AuthHandler.addAdminNote);
@@ -153,11 +154,36 @@ async function getTripMeta(env, shortCode) {
       ? (summary ? `${description.slice(0, 200)} — ${summary}` : description.slice(0, 300))
       : (summary || 'Explore this trip on Ride');
 
-    return { title, ogDescription, coverUrl };
+    return { tripId: trip.id, title, ogDescription, coverUrl };
   } catch (err) {
     console.error('getTripMeta error:', err);
     return null;
   }
+}
+
+/**
+ * Log a share link view to the share_views audit table.
+ * Fire-and-forget — errors are swallowed so they never block the page render.
+ */
+function logShareView(env, ctx, request, shortCode, tripId) {
+  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '';
+  const userAgent = request.headers.get('user-agent') || '';
+  const referrer = request.headers.get('referer') || request.headers.get('referrer') || '';
+  const clientHints = JSON.stringify({
+    cfCountry: request.headers.get('cf-ipcountry') || undefined,
+    uaPlatform: request.headers.get('sec-ch-ua-platform') || undefined,
+    uaMobile: request.headers.get('sec-ch-ua-mobile') || undefined,
+    acceptLanguage: request.headers.get('accept-language') || undefined,
+    cfRay: request.headers.get('cf-ray') || undefined,
+  });
+
+  ctx.waitUntil(
+    env.RIDE_TRIP_PLANNER_DB.prepare(
+      'INSERT INTO share_views (id, trip_id, short_code, viewer_user_id, viewer_label, ip, user_agent, client_hints, referrer) VALUES (?, ?, ?, NULL, \'external\', ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), tripId, shortCode, ip, userAgent, clientHints, referrer)
+      .run()
+      .catch(err => console.error('share_views insert error:', err))
+  );
 }
 
 /**
@@ -238,6 +264,9 @@ export default {
         const meta = await getTripMeta(env, shortCode);
         
         if (meta) {
+          // Log the share link view (fire-and-forget)
+          logShareView(env, ctx, request, shortCode, meta.tripId);
+
           // Valid short code - serve the trip page with injected OG meta tags
           // Use /trip not /trip.html — Cloudflare assets redirects .html to pretty URLs
           const newUrl = new URL('/trip', url.origin);
