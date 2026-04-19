@@ -55,6 +55,10 @@
     table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
     th, td { padding: 9px 12px; text-align: left; white-space: nowrap; }
     th { color: var(--neutral-500); font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; background: var(--neutral-50); border-bottom: 1px solid var(--neutral-200); position: sticky; top: 0; z-index: 1; }
+    th[data-sort] { cursor: pointer; user-select: none; }
+    th[data-sort]:hover { color: var(--neutral-700); }
+    th .sort-arrow { display: inline-block; margin-left: 3px; font-size: 0.6rem; opacity: 0.35; vertical-align: middle; }
+    th.sort-active .sort-arrow { opacity: 1; color: var(--accent); }
     td { border-bottom: 1px solid var(--neutral-100); }
     tbody tr { transition: background 0.12s ease; }
     tbody tr:hover { background: var(--neutral-50); }
@@ -197,13 +201,13 @@
         <thead>
           <tr>
             <th style="width:30px"><input type="checkbox" id="checkAll" onchange="toggleSelectAll(this.checked)" /></th>
-            <th>User</th>
-            <th>Email</th>
-            <th>Provider</th>
-            <th>Status</th>
-            <th>Trips</th>
-            <th>Created</th>
-            <th>Last Login</th>
+            <th data-sort="name" onclick="sortUsersBy('name')">User <span class="sort-arrow">▲</span></th>
+            <th data-sort="email" onclick="sortUsersBy('email')">Email <span class="sort-arrow">▲</span></th>
+            <th data-sort="provider" onclick="sortUsersBy('provider')">Provider <span class="sort-arrow">▲</span></th>
+            <th data-sort="status" onclick="sortUsersBy('status')">Status <span class="sort-arrow">▲</span></th>
+            <th data-sort="trip_count" onclick="sortUsersBy('trip_count')">Trips <span class="sort-arrow">▲</span></th>
+            <th data-sort="created_at" onclick="sortUsersBy('created_at')">Created <span class="sort-arrow">▲</span></th>
+            <th data-sort="last_login" onclick="sortUsersBy('last_login')">Last Login <span class="sort-arrow">▲</span></th>
             <th style="width:60px"></th>
           </tr>
         </thead>
@@ -223,13 +227,13 @@
       <table id="loginsTable">
         <thead>
           <tr>
-            <th>Time</th>
-            <th>Email</th>
-            <th>Provider</th>
-            <th>IP Address</th>
-            <th>Country</th>
-            <th>Platform</th>
-            <th>User Agent</th>
+            <th data-sort="created_at" onclick="sortLoginsBy('created_at')">Time <span class="sort-arrow">▲</span></th>
+            <th data-sort="email" onclick="sortLoginsBy('email')">Email <span class="sort-arrow">▲</span></th>
+            <th data-sort="provider" onclick="sortLoginsBy('provider')">Provider <span class="sort-arrow">▲</span></th>
+            <th data-sort="ip" onclick="sortLoginsBy('ip')">IP Address <span class="sort-arrow">▲</span></th>
+            <th data-sort="country" onclick="sortLoginsBy('country')">Country <span class="sort-arrow">▲</span></th>
+            <th data-sort="platform" onclick="sortLoginsBy('platform')">Platform <span class="sort-arrow">▲</span></th>
+            <th data-sort="user_agent" onclick="sortLoginsBy('user_agent')">User Agent <span class="sort-arrow">▲</span></th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -268,6 +272,8 @@
     let allUsers = [];
     let allLogins = [];
     let auditUserId = null;
+    let userSort = { key: null, asc: true };
+    let loginSort = { key: null, asc: true };
 
     /* ── Helpers ──────────────────────────────────────────── */
 
@@ -414,10 +420,42 @@
 
     function filterUsers() {
       const q = document.getElementById('userSearch').value.toLowerCase().trim();
-      if (!q) { renderUsers(allUsers); return; }
-      renderUsers(allUsers.filter(u =>
-        (u.email||'').toLowerCase().includes(q) || (u.name||'').toLowerCase().includes(q)
-      ));
+      let list = allUsers;
+      if (q) list = list.filter(u => (u.email||'').toLowerCase().includes(q) || (u.name||'').toLowerCase().includes(q));
+      renderUsers(applySortUsers(list));
+    }
+
+    function applySortUsers(list) {
+      if (!userSort.key) return list;
+      const k = userSort.key, dir = userSort.asc ? 1 : -1;
+      return [...list].sort((a, b) => {
+        let va = a[k], vb = b[k];
+        if (k === 'trip_count') return (((va ?? 0) - (vb ?? 0)) || 0) * dir;
+        if (k === 'created_at' || k === 'last_login') {
+          if (k === 'last_login') { va = va || a.updated_at; vb = vb || b.updated_at; }
+          return ((va || '').localeCompare(vb || '')) * dir;
+        }
+        return ((va || '').toString().localeCompare((vb || '').toString(), undefined, { sensitivity: 'base' })) * dir;
+      });
+    }
+
+    function sortUsersBy(key) {
+      if (userSort.key === key) userSort.asc = !userSort.asc;
+      else { userSort.key = key; userSort.asc = true; }
+      updateSortHeaders('#usersTable', userSort);
+      filterUsers();
+    }
+
+    function updateSortHeaders(tableSelector, sortState) {
+      document.querySelectorAll(tableSelector + ' thead th').forEach(th => {
+        th.classList.remove('sort-active');
+        const arrow = th.querySelector('.sort-arrow');
+        if (arrow) arrow.textContent = '▲';
+        if (th.dataset.sort === sortState.key) {
+          th.classList.add('sort-active');
+          if (arrow) arrow.textContent = sortState.asc ? '▲' : '▼';
+        }
+      });
     }
 
     /* ── Audit Log ────────────────────────────────────────── */
@@ -464,12 +502,35 @@
 
     function filterLogins() {
       const q = document.getElementById('loginSearch').value.toLowerCase().trim();
-      if (!q) { renderLogins(allLogins); return; }
-      renderLogins(allLogins.filter(e => {
+      let list = allLogins;
+      if (q) list = list.filter(e => {
         let hints = '';
         try { const h = JSON.parse(e.client_hints || '{}'); hints = (h.cfCountry||'') + ' ' + (h.uaPlatform||''); } catch(_) {}
         return [e.email, e.ip, e.provider, hints, e.user_agent].join(' ').toLowerCase().includes(q);
-      }));
+      });
+      renderLogins(applySortLogins(list));
+    }
+
+    function applySortLogins(list) {
+      if (!loginSort.key) return list;
+      const k = loginSort.key, dir = loginSort.asc ? 1 : -1;
+      return [...list].sort((a, b) => {
+        let va, vb;
+        if (k === 'country' || k === 'platform') {
+          try { const ha = JSON.parse(a.client_hints || '{}'); va = k === 'country' ? ha.cfCountry : (ha.uaPlatform || '').replace(/"/g, ''); } catch(_) { va = ''; }
+          try { const hb = JSON.parse(b.client_hints || '{}'); vb = k === 'country' ? hb.cfCountry : (hb.uaPlatform || '').replace(/"/g, ''); } catch(_) { vb = ''; }
+        } else {
+          va = a[k]; vb = b[k];
+        }
+        return ((va || '').toString().localeCompare((vb || '').toString(), undefined, { sensitivity: 'base' })) * dir;
+      });
+    }
+
+    function sortLoginsBy(key) {
+      if (loginSort.key === key) loginSort.asc = !loginSort.asc;
+      else { loginSort.key = key; loginSort.asc = true; }
+      updateSortHeaders('#loginsTable', loginSort);
+      filterLogins();
     }
 
     /* ── Audit Modal ──────────────────────────────────────── */
