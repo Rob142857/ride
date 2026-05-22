@@ -7,23 +7,26 @@ const Share = {
    * Open share modal and generate link
    */
   async openShareModal() {
-    // Set public toggle state
-    const publicToggle = document.getElementById('sharePublicToggle');
-    publicToggle.checked = !!(App.currentTrip?.isPublic ?? App.currentTrip?.is_public);
-    publicToggle.onchange = async (e) => {
-      try {
-        await API.trips.update(App.currentTrip.id, { is_public: e.target.checked });
-        App.currentTrip.isPublic = e.target.checked;
-        App.currentTrip.is_public = e.target.checked ? 1 : 0;
-        UI.showToast(e.target.checked ? 'Trip is now public' : 'Trip is now private', 'success');
-      } catch {
-        UI.showToast('Failed to update sharing', 'error');
-        publicToggle.checked = !e.target.checked;
-      }
-    };
     if (!App.currentTrip) {
       UI.showToast('No trip to share', 'error');
       return;
+    }
+    // Set public toggle state
+    const publicToggle = document.getElementById('sharePublicToggle');
+    if (publicToggle) {
+      publicToggle.checked = !!(App.currentTrip?.isPublic ?? App.currentTrip?.is_public);
+      publicToggle.onchange = async (e) => {
+        if (!App.currentTrip) { e.target.checked = !e.target.checked; return; }
+        try {
+          await API.trips.update(App.currentTrip.id, { is_public: e.target.checked });
+          App.currentTrip.isPublic = e.target.checked;
+          App.currentTrip.is_public = e.target.checked ? 1 : 0;
+          UI.showToast(e.target.checked ? 'Trip is now public' : 'Trip is now private', 'success');
+        } catch {
+          UI.showToast('Failed to update sharing', 'error');
+          publicToggle.checked = !e.target.checked;
+        }
+      };
     }
 
     // Start with any server-provided link already on the trip (DB source)

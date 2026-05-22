@@ -423,6 +423,8 @@ const UI = {
       if (modalId === 'noteModal') {
         const attachmentList = document.getElementById('noteAttachmentList');
         if (attachmentList) attachmentList.innerHTML = '<div class="microcopy">No attachments yet.</div>';
+        // Drop any deferred ride-mode waypoint if the note was dismissed unsaved.
+        if (App && App._pendingRideNoteWaypoint) App._pendingRideNoteWaypoint = null;
       }
 
       // If user dismisses login modal while still signed out, keep failing closed.
@@ -500,6 +502,13 @@ const UI = {
       : await App.addJournalEntry({ title, content, isPrivate, tags });
 
     if (result) {
+      // If a ride-mode waypoint creation was deferred until note save,
+      // commit it now and tag the note's title with the GPS coords.
+      if (!entryId && App.isRiding && App._pendingRideNoteWaypoint) {
+        const pos = App._pendingRideNoteWaypoint;
+        App._pendingRideNoteWaypoint = null;
+        try { await App._insertWaypointAtPosition(pos); } catch (_) {}
+      }
       this.closeModal('noteModal');
       this.showToast(entryId ? 'Note updated' : 'Note added', 'success');
     }

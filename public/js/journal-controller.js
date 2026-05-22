@@ -251,6 +251,9 @@ Object.assign(App, {
     this.precomputeRouteMetrics();
     this.rideRerouting = false;
     this.offRouteCounter = 0;
+    // Route coordinates changed: reset sliding-window cursor so the next
+    // GPS tick recomputes nearest-point against the new path.
+    this._rideNearIdx = 0;
 
     // During ride mode, reroutes are ephemeral — update in-memory route for
     // navigation HUD only, but do NOT persist to the API.  This prevents the

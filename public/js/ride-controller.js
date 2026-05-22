@@ -15,9 +15,9 @@ Object.assign(App, {
       const position = MapManager.rideMarker ? MapManager.rideMarker.getLatLng() : null;
       document.getElementById('rideAddSheet')?.classList.add('hidden');
       if (!this.ensureEditable('add a note')) return;
-      if (createWaypoint && position) {
-        this._insertWaypointAtPosition(position);
-      }
+      // Defer waypoint creation until the note is actually saved — if the user
+      // cancels the note modal, we don't want an orphan waypoint left behind.
+      this._pendingRideNoteWaypoint = (createWaypoint && position) ? position : null;
       UI.openModal('noteModal');
     });
     document.getElementById('rideAddPhotoBtn')?.addEventListener('click', () => {
@@ -142,8 +142,11 @@ Object.assign(App, {
 
   enterRideMode() {
     if (!this.currentTrip) { UI.showToast('No trip loaded', 'error'); return; }
-    if (!this.currentTrip.route?.coordinates) {
+    if (!this.currentTrip.route?.coordinates?.length) {
       UI.showToast('Add a route first to start riding', 'error'); return;
+    }
+    if (!('geolocation' in navigator)) {
+      UI.showToast('Your device does not support GPS', 'error'); return;
     }
     this.isRiding = true;
     this.rideVisitedWaypoints = new Set();
@@ -156,12 +159,16 @@ Object.assign(App, {
     this._rideArrived = false;
     document.getElementById('rideOverlay')?.classList.remove('hidden');
     document.body.classList.add('ride-mode');
-    document.getElementById('rideTripName').textContent = this.currentTrip.name || 'Ride';
-    document.getElementById('rideStops').textContent = (this.currentTrip.waypoints?.length ?? 0).toString();
-    document.getElementById('rideDistanceRemaining').textContent = this.currentTrip.route?.distance ? this.formatDistance(this.currentTrip.route.distance) : '—';
-    document.getElementById('rideEta').textContent = this.currentTrip.route?.duration ? this.formatDuration(this.currentTrip.route.duration) : '—';
-    document.getElementById('rideNextInstruction').textContent = 'Follow the route';
-    document.getElementById('rideNextMeta').textContent = 'Waiting for GPS…';
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    };
+    setText('rideTripName', this.currentTrip.name || 'Ride');
+    setText('rideStops', (this.currentTrip.waypoints?.length ?? 0).toString());
+    setText('rideDistanceRemaining', this.currentTrip.route?.distance ? RideUtils.formatDistance(this.currentTrip.route.distance) : '—');
+    setText('rideEta', this.currentTrip.route?.duration ? RideUtils.formatDuration(this.currentTrip.route.duration) : '—');
+    setText('rideNextInstruction', 'Follow the route');
+    setText('rideNextMeta', 'Waiting for GPS…');
     this.precomputeRouteMetrics();
     MapManager.startRide(pos => this.onRidePosition(pos));
   },
