@@ -431,29 +431,31 @@
         <p class="modal-subtitle">Keep the link handy, choose what to include, and export if needed.</p>
         <div class="share-options">
           <div class="share-link-container">
-            <input type="text" id="shareLink" readonly>
-            <button id="copyLinkBtn" class="icon-btn" aria-label="Copy link">
+            <input type="text" id="shareLink" readonly aria-describedby="shareLinkStatus">
+            <button id="copyLinkBtn" class="icon-btn" aria-label="Copy link" disabled>
               <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
             </button>
           </div>
+          <div id="shareLinkStatus" class="share-link-status" role="status" aria-live="polite"></div>
           <div class="share-visibility">
             <div class="share-row">
               <div class="share-label">Link access</div>
               <label class="toggle-switch">
                 <input type="checkbox" id="sharePublicToggle">
                 <span class="toggle-track"></span>
-                <span class="toggle-label-text">Public (anyone with link)</span>
+                <span class="toggle-label-text">Public link active</span>
               </label>
             </div>
-            <div class="share-section-label">Include in shared view</div>
+            <div class="share-section-label">Shared page sections</div>
             <div class="share-checkbox-grid">
-              <label class="share-checkbox"><input type="checkbox" id="shareWaypoints" checked><span>Waypoints</span></label>
-              <label class="share-checkbox"><input type="checkbox" id="shareRoute" checked><span>Route</span></label>
-              <label class="share-checkbox"><input type="checkbox" id="sharePublicNotes" checked><span>Public notes</span></label>
+              <label class="share-checkbox"><input type="checkbox" id="shareWaypoints" checked><span>Show waypoints</span></label>
+              <label class="share-checkbox"><input type="checkbox" id="shareRoute" checked><span>Show route line</span></label>
+              <label class="share-checkbox"><input type="checkbox" id="sharePublicNotes" checked><span>Show public notes</span></label>
+              <label class="share-checkbox"><input type="checkbox" id="shareGallery" checked><span>Show photo gallery</span></label>
             </div>
           </div>
           <div class="share-buttons">
-            <button id="shareNativeBtn" class="share-btn">Share via...</button>
+            <button id="shareNativeBtn" class="share-btn" disabled>Share via...</button>
             <button id="exportJsonBtn" class="share-btn secondary" title="JSON (JavaScript Object Notation) - A universal data format that preserves all trip details including notes, waypoint types, and custom settings. Best for backing up or transferring between apps.">
               Export JSON
               <span class="tooltip-icon">?</span>

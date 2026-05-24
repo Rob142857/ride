@@ -7,6 +7,27 @@
  * request bodies sent TO the server (which expects them).
  */
 
+function _safeJsonParse(value, fallback) {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return fallback;
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function _normalizeShareSettings(settings, explicitShare) {
+  const share = explicitShare || settings?.share || {};
+  return {
+    includeWaypoints: share.includeWaypoints !== false,
+    includeRoute: share.includeRoute !== false,
+    includePublicNotes: share.includePublicNotes !== false,
+    includeGallery: share.includeGallery !== false,
+  };
+}
+
 /** Normalize a single journal entry from server snake_case → client camelCase */
 function _normalizeEntry(e) {
   if (!e) return e;
@@ -16,8 +37,8 @@ function _normalizeEntry(e) {
     waypointId: e.waypoint_id ?? e.waypointId ?? null,
     createdAt: e.created_at ?? e.createdAt,
     updatedAt: e.updated_at ?? e.updatedAt,
-    tags: typeof e.tags === 'string' ? JSON.parse(e.tags) : (e.tags || []),
-    location: typeof e.location === 'string' ? JSON.parse(e.location) : (e.location || null),
+    tags: _safeJsonParse(e.tags, []),
+    location: _safeJsonParse(e.location, null),
     attachments: e.attachments || [],
   };
 }
@@ -51,6 +72,8 @@ function _normalizeWaypoint(w) {
 /** Normalize a full trip (with embedded waypoints, journal, attachments, route) */
 function _normalizeTrip(t) {
   if (!t) return t;
+  const settings = _safeJsonParse(t.settings, {});
+  const share = _normalizeShareSettings(settings, t.share);
   const trip = {
     ...t,
     createdAt: t.created_at ?? t.createdAt,
@@ -62,7 +85,8 @@ function _normalizeTrip(t) {
     shortCode: t.short_code ?? t.shortCode ?? null,
     shortUrl: t.short_url ?? t.shortUrl ?? null,
     shareId: t.share_id ?? t.shareId ?? null,
-    settings: typeof t.settings === 'string' ? JSON.parse(t.settings || '{}') : (t.settings || {}),
+    settings,
+    share,
     version: Number(t.version ?? 0),
   };
   // Also keep snake_case aliases for server round-trips (update payloads)
@@ -87,6 +111,7 @@ function _normalizeTrip(t) {
 /** Normalize a trip-list item (no embedded children) */
 function _normalizeTripSummary(t) {
   if (!t) return t;
+  const settings = _safeJsonParse(t.settings, {});
   return {
     ...t,
     createdAt: t.created_at ?? t.createdAt,
@@ -94,6 +119,8 @@ function _normalizeTripSummary(t) {
     isPublic: !!(t.is_public ?? t.isPublic),
     shortCode: t.short_code ?? t.shortCode ?? null,
     shortUrl: t.short_url ?? t.shortUrl ?? null,
+    settings,
+    share: _normalizeShareSettings(settings, t.share),
     // keep snake_case aliases for UI compat
     is_public: !!(t.is_public ?? t.isPublic),
     short_code: t.short_code ?? t.shortCode ?? null,

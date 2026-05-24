@@ -6,6 +6,45 @@
 
 import { jsonResponse, errorResponse, generateId, createSession, setSessionCookie, clearSessionCookie, BASE_URL } from './utils.js';
 
+const ADMIN_PAGE_SIZES = [25, 50, 100, 250];
+const ADMIN_DEFAULT_PAGE_SIZE = 50;
+const ADMIN_MAX_SEARCH_LENGTH = 120;
+
+function getAdminListOptions(url, sortColumns, defaultSort = 'created_at') {
+  const requestedLimit = Number.parseInt(url.searchParams.get('limit') || String(ADMIN_DEFAULT_PAGE_SIZE), 10);
+  const limit = ADMIN_PAGE_SIZES.includes(requestedLimit) ? requestedLimit : ADMIN_DEFAULT_PAGE_SIZE;
+  const page = Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1);
+  const q = (url.searchParams.get('q') || '').trim().slice(0, ADMIN_MAX_SEARCH_LENGTH);
+  const requestedSort = url.searchParams.get('sort') || defaultSort;
+  const sort = sortColumns[requestedSort] ? requestedSort : defaultSort;
+  const dir = (url.searchParams.get('dir') || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  return { limit, page, offset: (page - 1) * limit, q, sort, sortExpr: sortColumns[sort], dir };
+}
+
+function paginationResponse(total, options) {
+  return {
+    page: options.page,
+    limit: options.limit,
+    total,
+    totalPages: Math.max(1, Math.ceil((total || 0) / options.limit)),
+  };
+}
+
+function likeTerm(q) {
+  return `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+}
+
+function normalizeAdminStatus(status) {
+  if (status === 'suspended') return 'paused';
+  if (status === 'banned') return 'blocked';
+  if (status === 'paused' || status === 'blocked' || status === 'active') return status;
+  return 'active';
+}
+
+function isAllowedAdminStatus(status) {
+  return ['active', 'paused', 'blocked', 'suspended', 'banned'].includes(status);
+}
+
 // OAuth provider configurations
 const PROVIDERS = {
   google: {
@@ -306,37 +345,126 @@ export const AuthHandler = {
    * Admin: list users with trip counts
    */
   async listUsersAdmin(context) {
-    const { env } = context;
+    const { env, url } = context;
+    const options = getAdminListOptions(url, {
+      name: 'u.name',
+      email: 'u.email',
+      provider: 'u.provider',
+      status: 'u.status',
+      trip_count: 'trip_count',
+      created_at: 'u.created_at',
+      last_login: 'u.last_login',
+    });
+
+    const filters = [];
+    const values = [];
+    if (options.q) {
+      filters.push('(u.email LIKE ? ESCAPE \'\\\' OR u.name LIKE ? ESCAPE \'\\\' OR u.provider LIKE ? ESCAPE \'\\\')');
+      const term = likeTerm(options.q);
+      values.push(term, term, term);
+    }
+    const status = url.searchParams.get('status');
+    if (status && status !== 'all') {
+      if (status === 'paused') {
+        filters.push("COALESCE(u.status, 'active') IN ('paused', 'suspended')");
+      } else if (status === 'blocked') {
+        filters.push("COALESCE(u.status, 'active') IN ('blocked', 'banned')");
+      } else {
+        filters.push('COALESCE(u.status, \'active\') = ?');
+        values.push(status);
+      }
+    }
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const count = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      `SELECT COUNT(*) AS c FROM users u ${where}`
+    ).bind(...values).first();
 
     const result = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      `SELECT u.id, u.email, u.name, u.avatar_url, u.provider, u.provider_id, u.status, u.created_at, u.updated_at, u.last_login,
+      `SELECT u.id, u.email, u.name, u.avatar_url, u.provider, u.provider_id,
+              COALESCE(u.status, 'active') AS status, u.created_at, u.updated_at, u.last_login,
               (SELECT COUNT(*) FROM trips t WHERE t.user_id = u.id) AS trip_count,
-              (SELECT COUNT(*) FROM auth_identities ai WHERE ai.user_id = u.id) AS identity_count
-       FROM users u ORDER BY u.created_at DESC`
-    ).all();
+              (SELECT COUNT(*) FROM auth_identities ai WHERE ai.user_id = u.id) AS identity_count,
+              (SELECT COUNT(*) FROM admin_notes an WHERE an.user_id = u.id) AS note_count,
+              (SELECT MAX(an.created_at) FROM admin_notes an WHERE an.user_id = u.id) AS last_admin_note_at
+       FROM users u
+       ${where}
+       ORDER BY ${options.sortExpr} ${options.dir}, u.id ASC
+       LIMIT ? OFFSET ?`
+    ).bind(...values, options.limit, options.offset).all();
 
-    return jsonResponse({ users: result.results || [] });
+    return jsonResponse({ users: result.results || [], pagination: paginationResponse(count?.c || 0, options) });
   },
 
   /**
    * Admin: recent login events
    */
   async listLoginsAdmin(context) {
-    const { env } = context;
+    const { env, url } = context;
+    const options = getAdminListOptions(url, {
+      created_at: 'created_at',
+      email: 'email',
+      provider: 'provider',
+      ip: 'ip',
+      user_agent: 'user_agent',
+    });
+
+    const filters = [];
+    const values = [];
+    if (options.q) {
+      filters.push('(email LIKE ? ESCAPE \'\\\' OR ip LIKE ? ESCAPE \'\\\' OR provider LIKE ? ESCAPE \'\\\' OR user_agent LIKE ? ESCAPE \'\\\' OR client_hints LIKE ? ESCAPE \'\\\')');
+      const term = likeTerm(options.q);
+      values.push(term, term, term, term, term);
+    }
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const count = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      `SELECT COUNT(*) AS c FROM login_events ${where}`
+    ).bind(...values).first();
 
     const result = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT id, user_id, email, provider, ip, user_agent, client_hints, created_at FROM login_events ORDER BY created_at DESC LIMIT 200'
-    ).all();
+      `SELECT id, user_id, email, provider, ip, user_agent, client_hints, created_at
+       FROM login_events
+       ${where}
+       ORDER BY ${options.sortExpr} ${options.dir}, id ASC
+       LIMIT ? OFFSET ?`
+    ).bind(...values, options.limit, options.offset).all();
 
-    return jsonResponse({ events: result.results || [] });
+    return jsonResponse({ events: result.results || [], pagination: paginationResponse(count?.c || 0, options) });
   },
 
   /**
    * Admin: share link view audit trail
    */
   async listShareViewsAdmin(context) {
-    const { env } = context;
+    const { env, url } = context;
     const db = env.RIDE_TRIP_PLANNER_DB;
+    const options = getAdminListOptions(url, {
+      created_at: 'sv.created_at',
+      trip_name: 't.name',
+      short_code: 'sv.short_code',
+      owner_name: 'u.name',
+      viewer_label: 'sv.viewer_label',
+      ip: 'sv.ip',
+      referrer: 'sv.referrer',
+    });
+
+    const filters = [];
+    const values = [];
+    if (options.q) {
+      filters.push('(sv.short_code LIKE ? ESCAPE \'\\\' OR sv.ip LIKE ? ESCAPE \'\\\' OR sv.viewer_label LIKE ? ESCAPE \'\\\' OR sv.referrer LIKE ? ESCAPE \'\\\' OR sv.client_hints LIKE ? ESCAPE \'\\\' OR t.name LIKE ? ESCAPE \'\\\' OR u.name LIKE ? ESCAPE \'\\\' OR u.email LIKE ? ESCAPE \'\\\')');
+      const term = likeTerm(options.q);
+      values.push(term, term, term, term, term, term, term, term);
+    }
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const count = await db.prepare(
+      `SELECT COUNT(*) AS c
+       FROM share_views sv
+       LEFT JOIN trips t ON t.id = sv.trip_id
+       LEFT JOIN users u ON u.id = t.user_id
+       ${where}`
+    ).bind(...values).first();
 
     const result = await db.prepare(
       `SELECT sv.id, sv.trip_id, sv.short_code, sv.viewer_label, sv.ip,
@@ -345,10 +473,12 @@ export const AuthHandler = {
        FROM share_views sv
        LEFT JOIN trips t ON t.id = sv.trip_id
        LEFT JOIN users u ON u.id = t.user_id
-       ORDER BY sv.created_at DESC LIMIT 500`
-    ).all();
+       ${where}
+       ORDER BY ${options.sortExpr} ${options.dir}, sv.id ASC
+       LIMIT ? OFFSET ?`
+    ).bind(...values, options.limit, options.offset).all();
 
-    return jsonResponse({ views: result.results || [] });
+    return jsonResponse({ views: result.results || [], pagination: paginationResponse(count?.c || 0, options) });
   },
 
   /**
@@ -373,7 +503,7 @@ export const AuthHandler = {
       db.prepare('SELECT a.id, a.trip_id, a.filename, a.original_name, a.mime_type, a.size_bytes, a.storage_key, a.is_cover, a.caption, a.created_at FROM attachments a JOIN trips t ON a.trip_id = t.id WHERE t.user_id = ?').bind(userId).all(),
       db.prepare('SELECT id, provider, provider_id, email, created_at, last_login FROM auth_identities WHERE user_id = ?').bind(userId).all(),
       db.prepare('SELECT email, provider, ip, user_agent, client_hints, created_at FROM login_events WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(userId).all(),
-      db.prepare('SELECT id, admin_email, action, content, created_at FROM admin_notes WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all(),
+      db.prepare('SELECT id, admin_email, action, content, created_at, updated_at FROM admin_notes WHERE user_id = ? ORDER BY COALESCE(updated_at, created_at) DESC').bind(userId).all(),
     ]);
 
     // Automated content scan
@@ -396,7 +526,7 @@ export const AuthHandler = {
     }));
 
     return jsonResponse({
-      user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url, provider: user.provider, status: user.status || 'active', created_at: user.created_at, last_login: user.last_login },
+      user: { id: user.id, email: user.email, name: user.name, avatar_url: user.avatar_url, provider: user.provider, status: normalizeAdminStatus(user.status), created_at: user.created_at, last_login: user.last_login },
       trips: trips.results || [],
       waypoints: waypoints.results || [],
       journals: journals.results || [],
@@ -409,16 +539,18 @@ export const AuthHandler = {
   },
 
   /**
-   * Admin: update user status (active / suspended / banned)
+  * Admin: update user status (active / paused / blocked)
    */
   async setUserStatus(context) {
     const { env, params, request } = context;
     const userId = params.id;
     const body = await request.json();
-    const { status, reason, adminEmail } = body;
+    const { status, reason } = body;
+    const adminEmail = context.user?.email || 'admin';
+    const normalizedStatus = normalizeAdminStatus(status);
 
-    if (!['active', 'suspended', 'banned'].includes(status)) {
-      return errorResponse('Invalid status. Must be active, suspended, or banned.', 400);
+    if (!isAllowedAdminStatus(status)) {
+      return errorResponse('Invalid status. Must be active, paused, or blocked.', 400);
     }
 
     const db = env.RIDE_TRIP_PLANNER_DB;
@@ -426,17 +558,17 @@ export const AuthHandler = {
     if (!user) return errorResponse('User not found', 404);
 
     // Update status
-    await db.prepare('UPDATE users SET status = ?, updated_at = datetime("now") WHERE id = ?').bind(status, userId).run();
+    await db.prepare('UPDATE users SET status = ?, updated_at = datetime("now") WHERE id = ?').bind(normalizedStatus, userId).run();
 
     // Record admin note
     const noteId = generateId();
-    const actionLabel = status === 'active' ? 'restore' : status;
+    const actionLabel = normalizedStatus === 'active' ? 'restore' : normalizedStatus;
     await db.prepare(
       'INSERT INTO admin_notes (id, user_id, admin_email, action, content, created_at) VALUES (?, ?, ?, ?, ?, datetime("now"))'
-    ).bind(noteId, userId, adminEmail || 'admin', actionLabel, reason || `Status changed to ${status}`).run();
+    ).bind(noteId, userId, adminEmail || 'admin', actionLabel, reason || `Status changed to ${normalizedStatus}`).run();
 
     // If banning/suspending, revoke all sessions
-    if (status !== 'active') {
+    if (normalizedStatus !== 'active') {
       try {
         const registryKey = `sessions:${userId}`;
         const raw = await env.RIDE_TRIP_PLANNER_SESSIONS.get(registryKey, 'json');
@@ -447,7 +579,7 @@ export const AuthHandler = {
       } catch (_) { /* best effort */ }
     }
 
-    return jsonResponse({ ok: true, status, userId });
+    return jsonResponse({ ok: true, status: normalizedStatus, userId });
   },
 
   /**
@@ -457,7 +589,8 @@ export const AuthHandler = {
     const { env, params, request } = context;
     const userId = params.id;
     const body = await request.json();
-    const { content, adminEmail } = body;
+    const { content } = body;
+    const adminEmail = context.user?.email || 'admin';
     if (!content) return errorResponse('Note content is required', 400);
 
     const db = env.RIDE_TRIP_PLANNER_DB;
@@ -469,7 +602,36 @@ export const AuthHandler = {
       'INSERT INTO admin_notes (id, user_id, admin_email, action, content, created_at) VALUES (?, ?, ?, ?, ?, datetime("now"))'
     ).bind(noteId, userId, adminEmail || 'admin', 'note', content).run();
 
-    return jsonResponse({ ok: true, id: noteId });
+    const note = await db.prepare('SELECT id, admin_email, action, content, created_at, updated_at FROM admin_notes WHERE id = ?').bind(noteId).first();
+    return jsonResponse({ ok: true, note });
+  },
+
+  /**
+   * Admin: update an existing note on a user's record
+   */
+  async updateAdminNote(context) {
+    const { env, params, request } = context;
+    const body = await request.json();
+    const content = (body.content || '').trim();
+    const adminEmail = context.user?.email || 'admin';
+    if (!content) return errorResponse('Note content is required', 400);
+
+    const db = env.RIDE_TRIP_PLANNER_DB;
+    const note = await db.prepare('SELECT id, user_id FROM admin_notes WHERE id = ? AND user_id = ?').bind(params.noteId, params.id).first();
+    if (!note) return errorResponse('Note not found', 404);
+
+    try {
+      await db.prepare(
+        'UPDATE admin_notes SET content = ?, admin_email = ?, updated_at = datetime("now") WHERE id = ? AND user_id = ?'
+      ).bind(content, adminEmail, params.noteId, params.id).run();
+    } catch (_) {
+      await db.prepare(
+        'UPDATE admin_notes SET content = ?, admin_email = ? WHERE id = ? AND user_id = ?'
+      ).bind(content, adminEmail, params.noteId, params.id).run();
+    }
+
+    const updated = await db.prepare('SELECT id, admin_email, action, content, created_at, updated_at FROM admin_notes WHERE id = ?').bind(params.noteId).first();
+    return jsonResponse({ ok: true, note: updated });
   },
 };
 

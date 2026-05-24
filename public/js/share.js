@@ -3,6 +3,155 @@
  * Export/import functionality is in export-import.js
  */
 const Share = {
+  getShareSettings() {
+    const settings = App.currentTrip?.settings || {};
+    const share = App.currentTrip?.share || settings.share || {};
+    return {
+      includeWaypoints: share.includeWaypoints !== false,
+      includeRoute: share.includeRoute !== false,
+      includePublicNotes: share.includePublicNotes !== false,
+      includeGallery: share.includeGallery !== false,
+    };
+  },
+
+  getCurrentShareUrl() {
+    const code = App.currentTrip?.shortCode || App.currentTrip?.short_code;
+    return App.currentTrip?.shortUrl || App.currentTrip?.short_url || (code ? `${window.location.origin.replace(/\/$/, '')}/${code}` : '');
+  },
+
+  setShareStatus(message, tone = 'muted') {
+    const status = document.getElementById('shareLinkStatus');
+    if (!status) return;
+    status.textContent = message || '';
+    status.dataset.tone = tone;
+  },
+
+  updateShareLinkUI() {
+    const input = document.getElementById('shareLink');
+    const copyBtn = document.getElementById('copyLinkBtn');
+    const nativeBtn = document.getElementById('shareNativeBtn');
+    const isPublic = !!(App.currentTrip?.isPublic ?? App.currentTrip?.is_public);
+    const shareUrl = isPublic ? this.getCurrentShareUrl() : '';
+
+    if (input) {
+      input.value = shareUrl;
+      input.placeholder = isPublic ? 'Generating share link...' : 'Turn on public access to activate a link';
+    }
+    if (copyBtn) copyBtn.disabled = !shareUrl;
+    if (nativeBtn) nativeBtn.disabled = !shareUrl;
+
+    if (isPublic) {
+      this.setShareStatus(shareUrl ? 'Public link is active.' : 'Generating public link...', shareUrl ? 'success' : 'muted');
+    } else {
+      this.setShareStatus('Private. Existing links are disabled until public access is turned on.', 'muted');
+    }
+  },
+
+  applyShareSettingsToInputs() {
+    const share = this.getShareSettings();
+    const mapping = {
+      shareWaypoints: 'includeWaypoints',
+      shareRoute: 'includeRoute',
+      sharePublicNotes: 'includePublicNotes',
+      shareGallery: 'includeGallery',
+    };
+
+    Object.entries(mapping).forEach(([id, key]) => {
+      const input = document.getElementById(id);
+      if (input) input.checked = share[key] !== false;
+    });
+  },
+
+  readShareSettingsFromInputs() {
+    return {
+      includeWaypoints: document.getElementById('shareWaypoints')?.checked ?? true,
+      includeRoute: document.getElementById('shareRoute')?.checked ?? true,
+      includePublicNotes: document.getElementById('sharePublicNotes')?.checked ?? true,
+      includeGallery: document.getElementById('shareGallery')?.checked ?? true,
+    };
+  },
+
+  async saveShareSettings() {
+    if (!App.currentTrip) return;
+    const previousShare = this.getShareSettings();
+    const share = this.readShareSettingsFromInputs();
+    App.currentTrip.settings = { ...(App.currentTrip.settings || {}), share };
+    App.currentTrip.share = share;
+
+    if (!App.useCloud || !App.currentUser) return;
+
+    try {
+      const updatedTrip = await API.trips.update(App.currentTrip.id, { settings: { share } });
+      App.currentTrip = { ...App.currentTrip, ...updatedTrip };
+      this.setShareStatus('Shared page sections saved.', 'success');
+    } catch (err) {
+      console.error('Failed to save share settings', err);
+      UI.showToast('Failed to save shared page sections', 'error');
+      App.currentTrip.settings = { ...(App.currentTrip.settings || {}), share: previousShare };
+      App.currentTrip.share = previousShare;
+      this.applyShareSettingsToInputs();
+    }
+  },
+
+  async publishCurrentTrip(publicToggle) {
+    if (!App.currentTrip) return;
+    if (!App.useCloud || !App.currentUser) {
+      if (publicToggle) publicToggle.checked = false;
+      UI.showToast('Sign in to publish trips', 'error');
+      this.updateShareLinkUI();
+      return;
+    }
+
+    try {
+      this.setShareStatus('Generating public link...', 'muted');
+      const result = await API.trips.share(App.currentTrip.id);
+      if (result?.shortCode) {
+        App.currentTrip.shortCode = result.shortCode;
+        App.currentTrip.short_code = result.shortCode;
+        App.currentTrip.shortUrl = result.shareUrl || `${window.location.origin.replace(/\/$/, '')}/${result.shortCode}`;
+        App.currentTrip.short_url = App.currentTrip.shortUrl;
+      }
+      App.currentTrip.isPublic = true;
+      App.currentTrip.is_public = 1;
+      if (publicToggle) publicToggle.checked = true;
+      this.updateShareLinkUI();
+      UI.showToast('Trip is now public', 'success');
+    } catch (err) {
+      console.error('Share link generation failed', err);
+      if (publicToggle) publicToggle.checked = false;
+      App.currentTrip.isPublic = false;
+      App.currentTrip.is_public = 0;
+      this.updateShareLinkUI();
+      UI.showToast('Failed to generate share link. Check you are online and signed in.', 'error');
+    }
+  },
+
+  async unpublishCurrentTrip(publicToggle) {
+    if (!App.currentTrip) return;
+    if (!App.useCloud || !App.currentUser) {
+      if (publicToggle) publicToggle.checked = true;
+      UI.showToast('Sign in to update sharing', 'error');
+      this.updateShareLinkUI();
+      return;
+    }
+
+    try {
+      await API.trips.update(App.currentTrip.id, { is_public: false });
+      App.currentTrip.isPublic = false;
+      App.currentTrip.is_public = 0;
+      if (publicToggle) publicToggle.checked = false;
+      this.updateShareLinkUI();
+      UI.showToast('Trip is now private', 'success');
+    } catch (err) {
+      console.error('Failed to unpublish trip', err);
+      if (publicToggle) publicToggle.checked = true;
+      App.currentTrip.isPublic = true;
+      App.currentTrip.is_public = 1;
+      this.updateShareLinkUI();
+      UI.showToast('Failed to update sharing', 'error');
+    }
+  },
+
   /**
    * Open share modal and generate link
    */
@@ -11,66 +160,23 @@ const Share = {
       UI.showToast('No trip to share', 'error');
       return;
     }
-    // Set public toggle state
+    this.applyShareSettingsToInputs();
+
     const publicToggle = document.getElementById('sharePublicToggle');
     if (publicToggle) {
       publicToggle.checked = !!(App.currentTrip?.isPublic ?? App.currentTrip?.is_public);
       publicToggle.onchange = async (e) => {
         if (!App.currentTrip) { e.target.checked = !e.target.checked; return; }
-        try {
-          await API.trips.update(App.currentTrip.id, { is_public: e.target.checked });
-          App.currentTrip.isPublic = e.target.checked;
-          App.currentTrip.is_public = e.target.checked ? 1 : 0;
-          UI.showToast(e.target.checked ? 'Trip is now public' : 'Trip is now private', 'success');
-        } catch {
-          UI.showToast('Failed to update sharing', 'error');
-          publicToggle.checked = !e.target.checked;
-        }
+        if (e.target.checked) await this.publishCurrentTrip(publicToggle);
+        else await this.unpublishCurrentTrip(publicToggle);
       };
     }
 
-    // Start with any server-provided link already on the trip (DB source)
-    let shareUrl = (App.currentTrip?.shortUrl || App.currentTrip?.short_url) && (App.currentTrip.isPublic || App.currentTrip.is_public)
-      ? (App.currentTrip.shortUrl || App.currentTrip.short_url)
-      : '';
-
-    // Cloud mode: only hit API if we need to create/refresh (no short code yet or not public)
-    if (App.useCloud && App.currentUser && (!(App.currentTrip.shortCode || App.currentTrip.short_code) || !(App.currentTrip.isPublic || App.currentTrip.is_public))) {
-      try {
-        const result = await API.trips.share(App.currentTrip.id);
-        if (result?.shortCode) {
-          App.currentTrip.shortCode = result.shortCode;
-          App.currentTrip.short_code = result.shortCode;
-          const url = result.shareUrl || `${window.location.origin.replace(/\/$/, '')}/${result.shortCode}`;
-          App.currentTrip.shortUrl = url;
-          App.currentTrip.short_url = url;
-          App.currentTrip.isPublic = true;
-          App.currentTrip.is_public = 1;
-          shareUrl = url;
-        }
-      } catch (err) {
-        console.error('Share link generation failed', err);
-        // If a short code already exists, fall back to it; otherwise fail loudly (no offline fallback in cloud mode)
-        if (App.currentTrip?.shortCode || App.currentTrip?.short_code) {
-          shareUrl = `${window.location.origin.replace(/\/$/, '')}/${App.currentTrip.shortCode || App.currentTrip.short_code}`;
-        } else {
-          UI.showToast('Failed to generate share link. Check you are online and signed in.', 'error');
-          return;
-        }
-      }
+    if ((App.currentTrip.isPublic || App.currentTrip.is_public) && !(App.currentTrip.shortCode || App.currentTrip.short_code)) {
+      await this.publishCurrentTrip(publicToggle);
     }
 
-    // Local/offline fallback
-    if (!shareUrl && App.currentTrip?.shortCode) {
-      const baseUrl = window.location.origin.replace(/\/$/, '');
-      shareUrl = `${baseUrl}/${App.currentTrip.shortCode}`;
-    }
-    if (!shareUrl) {
-      UI.showToast('Unable to generate share link', 'error');
-      return;
-    }
-
-    document.getElementById('shareLink').value = shareUrl;
+    this.updateShareLinkUI();
     UI.openModal('shareModal');
 
     this.bindShareModalEvents();
@@ -98,6 +204,11 @@ const Share = {
     document.getElementById('exportGpxBtn').onclick = () => {
       this.exportGPX();
     };
+
+    ['shareWaypoints', 'shareRoute', 'sharePublicNotes', 'shareGallery'].forEach(id => {
+      const input = document.getElementById(id);
+      if (input) input.onchange = () => this.saveShareSettings();
+    });
   },
 
   /**

@@ -1,3 +1,24 @@
+function safeJsonParse(value, fallback) {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return fallback;
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function normalizeShareSettings(settings, explicitShare) {
+  const share = explicitShare || settings?.share || {};
+  return {
+    includeWaypoints: share.includeWaypoints !== false,
+    includeRoute: share.includeRoute !== false,
+    includePublicNotes: share.includePublicNotes !== false,
+    includeGallery: share.includeGallery !== false,
+  };
+}
+
 function normalizeEntry(entry) {
   if (!entry) return entry;
   return {
@@ -6,8 +27,8 @@ function normalizeEntry(entry) {
     waypointId: entry.waypoint_id ?? entry.waypointId ?? null,
     createdAt: entry.created_at ?? entry.createdAt,
     updatedAt: entry.updated_at ?? entry.updatedAt,
-    tags: typeof entry.tags === 'string' ? JSON.parse(entry.tags) : (entry.tags || []),
-    location: typeof entry.location === 'string' ? JSON.parse(entry.location) : (entry.location || null),
+    tags: safeJsonParse(entry.tags, []),
+    location: safeJsonParse(entry.location, null),
     attachments: entry.attachments || [],
   };
 }
@@ -38,6 +59,8 @@ function normalizeWaypoint(waypoint) {
 
 function normalizeTrip(trip) {
   if (!trip) return trip;
+  const settings = safeJsonParse(trip.settings, {});
+  const share = normalizeShareSettings(settings, trip.share);
 
   const normalized = {
     ...trip,
@@ -54,7 +77,8 @@ function normalizeTrip(trip) {
     shortCode: trip.short_code ?? trip.shortCode ?? null,
     shortUrl: trip.short_url ?? trip.shortUrl ?? null,
     shareId: trip.share_id ?? trip.shareId ?? null,
-    settings: typeof trip.settings === 'string' ? JSON.parse(trip.settings || '{}') : (trip.settings || {}),
+    settings,
+    share,
     version: Number(trip.version ?? 0),
   };
 
@@ -85,6 +109,7 @@ function normalizeTrip(trip) {
 
 function normalizeTripSummary(trip) {
   if (!trip) return trip;
+  const settings = safeJsonParse(trip.settings, {});
   return {
     ...trip,
     createdAt: trip.created_at ?? trip.createdAt,
@@ -92,6 +117,8 @@ function normalizeTripSummary(trip) {
     isPublic: !!(trip.is_public ?? trip.isPublic),
     shortCode: trip.short_code ?? trip.shortCode ?? null,
     shortUrl: trip.short_url ?? trip.shortUrl ?? null,
+    settings,
+    share: normalizeShareSettings(settings, trip.share),
     is_public: !!(trip.is_public ?? trip.isPublic),
     short_code: trip.short_code ?? trip.shortCode ?? null,
     short_url: trip.short_url ?? trip.shortUrl ?? null,

@@ -27,3 +27,4 @@ bucket_name = "ride-attachments"
 [vars]
 ENVIRONMENT = "production"
 BASE_URL = "https://your-domain.example.com"
+ADMIN_EMAILS = "admin@example.com"

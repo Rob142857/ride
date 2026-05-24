@@ -5,6 +5,7 @@
 
 import { jsonResponse, errorResponse, generateId, generateShortCodeForId, parseBody, BASE_URL } from './utils.js';
 import { safeJsonParse, orderWaypointsWithTripSettings, parseIfMatchVersion, conflictResponse } from './handler-utils.js';
+import { serializeOwnedJourney } from './journey.js';
 
 export const TripsHandler = {
   /**
@@ -102,29 +103,14 @@ export const TripsHandler = {
       'SELECT * FROM route_data WHERE trip_id = ?'
     ).bind(params.id).first();
 
-    const attachmentsWithUrls = attachments.results.map(a => ({
-      ...a,
-      url: `${BASE_URL}/api/attachments/${a.id}`
-    }));
-
     return jsonResponse({
-      trip: {
-        ...trip,
-        settings: safeJsonParse(trip.settings || '{}', {}),
-        short_url: trip.short_code ? `${BASE_URL}/${trip.short_code}` : null,
+      trip: serializeOwnedJourney({
+        trip,
         waypoints: orderedWaypoints,
-        journal: journal.results.map(e => ({
-          ...e,
-          tags: JSON.parse(e.tags || '[]'),
-          location: JSON.parse(e.location || 'null')
-        })),
-        attachments: attachmentsWithUrls,
-        route: routeData ? {
-          coordinates: JSON.parse(routeData.coordinates || '[]'),
-          distance: routeData.distance,
-          duration: routeData.duration
-        } : null
-      }
+        journal: journal.results,
+        attachments: attachments.results,
+        routeData,
+      })
     });
   },
 

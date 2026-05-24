@@ -17,6 +17,7 @@
     "db:migrate:local": "wrangler d1 execute ride-db --file=./api/schema.sql --local",
     "kv:create": "wrangler kv:namespace create RIDE_TRIP_PLANNER_SESSIONS",
     "dev:remote": "wrangler dev --remote --d1=RIDE_TRIP_PLANNER_DB --kv=RIDE_TRIP_PLANNER_SESSIONS --r2=RIDE_TRIP_PLANNER_ATTACHMENTS",
+    "smoke": "node scripts/smoke.js",
     "setup": "echo 'Run: npm run db:create && npm run kv:create && update wrangler.toml with IDs && npm run db:migrate'"
   },
   "keywords": [

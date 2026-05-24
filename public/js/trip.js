@@ -137,7 +137,7 @@ const Trip = {
    * Get public journal entries only
    */
   getPublicJournal(trip) {
-    return trip.journal.filter(e => !e.isPrivate);
+    return trip.journal.filter(e => !(e.isPrivate ?? e.is_private));
   },
 
   /**
@@ -161,6 +161,12 @@ const Trip = {
     const includeWaypoints = options.includeWaypoints !== false;
     const includeRoute = options.includeRoute !== false;
     const includePublicNotes = options.includePublicNotes !== false;
+    const includeGallery = options.includeGallery !== false;
+    const waypoints = includeWaypoints ? (trip.waypoints || []) : [];
+    const journal = includePublicNotes ? this.getPublicJournal(trip) : [];
+    const attachments = includeGallery
+      ? (trip.attachments || []).filter(a => !(a.isPrivate ?? a.is_private))
+      : [];
 
     return {
       id: trip.shareId || trip.shortCode || trip.id,
@@ -169,11 +175,18 @@ const Trip = {
       coverImageUrl: trip.coverImageUrl || trip.cover_image_url || '',
       coverFocusX: trip.coverFocusX ?? trip.cover_focus_x ?? 50,
       coverFocusY: trip.coverFocusY ?? trip.cover_focus_y ?? 50,
-      waypoints: includeWaypoints ? trip.waypoints : [],
+      waypoints,
       route: includeRoute ? trip.route : null,
-      journal: includePublicNotes ? this.getPublicJournal(trip) : [],
+      journal,
+      attachments,
       createdAt: trip.createdAt,
-      stats: this.getStats(trip)
+      stats: {
+        waypointCount: waypoints.length,
+        journalCount: journal.length,
+        publicNotesCount: journal.length,
+        privateNotesCount: 0,
+        attachmentCount: attachments.length,
+      }
     };
   },
 

@@ -13,12 +13,12 @@ import { AttachmentsHandler } from './attachments.js';
 import { ShareHandler } from './share.js';
 import { AccountHandler } from './account.js';
 import { PlacesHandler } from './places.js';
-import { cors, jsonResponse, errorResponse, requireAuth, optionalAuth, BASE_URL } from './utils.js';
+import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
 
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-05-22T01';
+const BUILD_ID = '2026-05-24T04';
 
 const router = new Router();
 
@@ -30,14 +30,15 @@ router.get('/api/auth/login/:provider', AuthHandler.initiateLogin);
 router.get('/api/auth/callback/:provider', AuthHandler.handleCallback);
 router.get('/api/auth/me', requireAuth, AuthHandler.getCurrentUser);
 router.post('/api/auth/logout', AuthHandler.logout);
-router.get('/api/admin/stats', AuthHandler.adminStats);
-router.get('/api/admin/users', AuthHandler.listUsersAdmin);
-router.get('/api/admin/logins', AuthHandler.listLoginsAdmin);
-router.get('/api/admin/share-views', AuthHandler.listShareViewsAdmin);
-router.get('/api/admin/users/:id/audit', AuthHandler.auditUser);
-router.post('/api/admin/users/:id/status', AuthHandler.setUserStatus);
-router.post('/api/admin/users/:id/notes', AuthHandler.addAdminNote);
-router.get('/api/admin/places-usage', PlacesHandler.usageStats);
+router.get('/api/admin/stats', requireAdminUser, AuthHandler.adminStats);
+router.get('/api/admin/users', requireAdminUser, AuthHandler.listUsersAdmin);
+router.get('/api/admin/logins', requireAdminUser, AuthHandler.listLoginsAdmin);
+router.get('/api/admin/share-views', requireAdminUser, AuthHandler.listShareViewsAdmin);
+router.get('/api/admin/users/:id/audit', requireAdminUser, AuthHandler.auditUser);
+router.post('/api/admin/users/:id/status', requireAdminUser, AuthHandler.setUserStatus);
+router.post('/api/admin/users/:id/notes', requireAdminUser, AuthHandler.addAdminNote);
+router.put('/api/admin/users/:id/notes/:noteId', requireAdminUser, AuthHandler.updateAdminNote);
+router.get('/api/admin/places-usage', requireAdminUser, PlacesHandler.usageStats);
 
 // Trip routes (protected)
 router.get('/api/trips', requireAuth, TripsHandler.listTrips);

@@ -4,7 +4,8 @@
  */
 
 import { jsonResponse, errorResponse, generateShortCodeForId, BASE_URL } from './utils.js';
-import { verifyTripOwnership, safeJsonParse, orderWaypointsWithTripSettings } from './handler-utils.js';
+import { verifyTripOwnership, orderWaypointsWithTripSettings } from './handler-utils.js';
+import { serializePublicJourney } from './journey.js';
 
 export const ShareHandler = {
   /**
@@ -70,7 +71,7 @@ export const ShareHandler = {
 
     // Public attachments only
     const attachments = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT id, filename, original_name, mime_type, caption, is_cover, journal_entry_id FROM attachments WHERE trip_id = ? AND is_private = 0 ORDER BY is_cover DESC, created_at DESC'
+      'SELECT id, filename, original_name, mime_type, caption, is_cover, journal_entry_id, waypoint_id FROM attachments WHERE trip_id = ? AND is_private = 0 ORDER BY is_cover DESC, created_at DESC'
     ).bind(trip.id).all();
 
     // Route data
@@ -78,44 +79,14 @@ export const ShareHandler = {
       'SELECT * FROM route_data WHERE trip_id = ?'
     ).bind(trip.id).first();
 
-    // Cover image — only use explicit is_cover or trip.cover_image_url;
-    // fall back to first image only for the hero, but never remove journal
-    // attachments from the list.
-    const explicitCover = attachments.results.find(a => a.is_cover);
-    const fallbackCover = attachments.results.find(a => a.mime_type?.startsWith('image/'));
-    const coverUrl = trip.cover_image_url || (explicitCover ? `${BASE_URL}/api/attachments/${explicitCover.id}` : (fallbackCover ? `${BASE_URL}/api/attachments/${fallbackCover.id}` : null));
-    // Only exclude from attachments list if explicitly marked as cover (not a fallback)
-    const excludeCoverId = explicitCover?.id || null;
-
     return jsonResponse({
-      trip: {
-        short_code: trip.short_code,
-        title: trip.public_title || trip.name,
-        description: trip.public_description || trip.description || '',
-        contact: trip.public_contact || null,
-        cover_image: coverUrl,
-        cover_focus_x: trip.cover_focus_x ?? 50,
-        cover_focus_y: trip.cover_focus_y ?? 50,
-        created_at: trip.created_at,
-        waypoints: orderedWaypoints.map(w => ({
-          id: w.id, name: w.name, lat: w.lat, lng: w.lng, type: w.type, sort_order: w.sort_order
-        })),
-        journal: journal.results.map(e => ({
-          id: e.id, title: e.title, content: e.content,
-          tags: JSON.parse(e.tags || '[]'), created_at: e.created_at
-        })),
-        attachments: attachments.results
-          .filter(a => !excludeCoverId || a.id !== excludeCoverId)
-          .map(a => ({
-            id: a.id, name: a.original_name, type: a.mime_type,
-            caption: a.caption, url: `${BASE_URL}/api/attachments/${a.id}`,
-            journal_entry_id: a.journal_entry_id || null
-          })),
-        route: routeData ? {
-          coordinates: JSON.parse(routeData.coordinates || '[]'),
-          distance: routeData.distance, duration: routeData.duration
-        } : null
-      }
+      trip: serializePublicJourney({
+        trip,
+        waypoints: orderedWaypoints,
+        journal: journal.results,
+        attachments: attachments.results,
+        routeData,
+      })
     });
   }
 };

@@ -15,11 +15,13 @@ Object.assign(Share, {
     const includeWaypoints = document.getElementById('shareWaypoints')?.checked ?? true;
     const includeRoute = document.getElementById('shareRoute')?.checked ?? true;
     const includeNotes = document.getElementById('sharePublicNotes')?.checked ?? true;
+    const includeGallery = document.getElementById('shareGallery')?.checked ?? true;
 
     const data = Trip.getShareableData(App.currentTrip, {
       includeWaypoints,
       includeRoute,
-      includePublicNotes: includeNotes
+      includePublicNotes: includeNotes,
+      includeGallery
     });
 
     const json = JSON.stringify(data, null, 2);

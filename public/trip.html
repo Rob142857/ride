@@ -1054,7 +1054,7 @@
     </section>
     
     <!-- Map Section -->
-    <section class="map-section container">
+    <section id="map-section" class="map-section container">
       <div class="map-card">
         <div class="map-actions">
           <div class="action-group">
@@ -1205,7 +1205,13 @@
       const heroContainer = document.getElementById('hero-image-container');
       if (!heroContainer) return;
       heroContainer.className = 'hero-placeholder';
-      heroContainer.innerHTML = `<img class="hero-image" src="${url}" alt="${title}" style="object-position: ${focusX}% ${focusY}%">`;
+      heroContainer.textContent = '';
+      const img = document.createElement('img');
+      img.className = 'hero-image';
+      img.src = url;
+      img.alt = title;
+      img.style.objectPosition = `${focusX}% ${focusY}%`;
+      heroContainer.appendChild(img);
     }
 
 
@@ -1308,8 +1314,13 @@
       }
       document.getElementById('map-stats').innerHTML = statsHtml.join('');
       
-      // Initialize map
-      initMap(trip);
+      // Initialize map only when the shared journey exposes route/waypoint data.
+      const hasMapData = !!(trip.waypoints?.length || trip.route?.coordinates?.length);
+      const mapContainer = document.querySelector('.map-container');
+      const mapControls = document.getElementById('mapExpandBtn')?.closest('.action-group');
+      if (mapContainer) mapContainer.style.display = hasMapData ? '' : 'none';
+      if (mapControls) mapControls.style.display = hasMapData ? '' : 'none';
+      if (hasMapData) initMap(trip);
       
       // Description
       if (trip.description) {
@@ -1883,9 +1894,6 @@
     } else {
       showError();
     }
-
-    // Expand map handler
-    document.getElementById('mapExpandBtn').addEventListener('click', toggleMapFullscreen);
   </script>
   
 </body>

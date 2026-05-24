@@ -150,11 +150,11 @@ export async function requireAuth(context) {
       const row = await env.RIDE_TRIP_PLANNER_DB.prepare(
         'SELECT status FROM users WHERE id = ?'
       ).bind(sessionData.user.id).first();
-      if (row && row.status === 'banned') {
-        return errorResponse('Account has been suspended. Contact support.', 403);
+      if (row && (row.status === 'banned' || row.status === 'blocked')) {
+        return errorResponse('Account has been blocked. Contact support.', 403);
       }
-      if (row && row.status === 'suspended') {
-        return errorResponse('Account temporarily suspended. Contact support.', 403);
+      if (row && (row.status === 'suspended' || row.status === 'paused')) {
+        return errorResponse('Account temporarily paused. Contact support.', 403);
       }
     } catch (_) { /* status column may not exist yet */ }
 
@@ -296,6 +296,27 @@ export async function requireAdmin(context) {
   }
 
   // Continue to next handler
+  return;
+}
+
+function getAdminEmailSet(env) {
+  const raw = env.ADMIN_EMAILS || env.ADMIN_EMAIL || '';
+  return new Set(raw.split(/[\s,;]+/).map(email => email.trim().toLowerCase()).filter(Boolean));
+}
+
+/**
+ * Browser admin middleware - requires a valid Ride session whose email is allowlisted.
+ */
+export async function requireAdminUser(context) {
+  const authResult = await requireAuth(context);
+  if (authResult) return authResult;
+
+  const adminEmails = getAdminEmailSet(context.env);
+  if (!adminEmails.size) return errorResponse('Admin access not configured', 403);
+
+  const email = (context.user?.email || '').trim().toLowerCase();
+  if (!email || !adminEmails.has(email)) return errorResponse('Forbidden', 403);
+
   return;
 }
 

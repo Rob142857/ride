@@ -35,3 +35,4 @@ bucket_name = "ride-attachments"
 [vars]
 ENVIRONMENT = "production"
 BASE_URL = "https://ride.incitat.io"
+ADMIN_EMAILS = "robert.evans@rmesolutions.com.au,admin@incitat.io"
