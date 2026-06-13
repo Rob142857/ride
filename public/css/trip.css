@@ -1,0 +1,179 @@
+/*
+ * Trip Share Page Styles
+ * Extra styles beyond inline app.css for routing control + hero/
+ */
+
+/* ─────────────────────  Alternative route chips  ───────────────────── */
+.route-alternatives {
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  flex-wrap: wrap;
+}
+
+.route-alternatives-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: rgba(255,255,255,.55);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.route-alt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,.14);
+  color: rgba(255,255,255,.8);
+  background: rgba(255,255,255,.05);
+  cursor: pointer;
+  transition: all .15s ease;
+  user-select: none;
+}
+.route-alt-chip:hover {
+  background: rgba(255,255,255,.12);
+  border-color: rgba(255,255,255,.35);
+}
+.route-alt-chip.active {
+  border-color: var(--accent);
+  color: rgba(255,255,255,.95);
+  background: rgba(255,107,53,.22);
+}
+.route-alt-chip .swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.route-alt-chip .pill-label { white-space: nowrap; }
+.route-alt-chip .pill-dist {
+  font-weight: 500;
+  opacity: .75;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* ─────────────────────  Refresh button  ───────────────────── */
+.refresh-alt-routes-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.8);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.refresh-alt-routes-btn:hover {
+  background: rgba(255,255,255,.18);
+  border-color: rgba(255,255,255,.28);
+}
+.refresh-alt-routes-btn.spinning svg { animation: spin .7s linear infinite; }
+
+/* ─────────────────────  Hero Pinned + Cover  ───────────────────── */
+.hero {
+  position: relative;
+  height: 420px;
+  overflow: hidden;
+}
+.hero-pinned-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+}
+.hero-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+    rgba(0,0,0,0.12) 0%,
+    rgba(0,0,0,0.4) 60%,
+    rgba(0,0,0,0.85) 100%);
+}
+.hero-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0 clamp(16px, 4vw, 48px) clamp(20px, 3.5vh, 44px);
+}
+.hero-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.hero-top-bar .badge-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,.18);
+  color: rgba(255,255,255,.9);
+  background: rgba(0,0,0,.35);
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+
+.hero-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .2s ease;
+  box-shadow: 0 2px 10px rgba(255,107,53,.35);
+}
+.hero-open-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(255,107,53,.5);
+}
+
+.hero-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.hero-title,
+.hero-subtitle {
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,.4);
+  margin: 0;
+}
+.hero-title   { font-size: clamp(24px, 4vw, 42px); line-height: 1.1; font-weight: 700; }
+.hero-subtitle{ font-size: clamp(14px, 2.2vw, 20px); opacity: .88; font-weight: 500; }
+.hero-meta    { font-size: 13px; color: rgba(255,255,255,.75); display:flex; gap:4px; align-items:center; }
