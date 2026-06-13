@@ -126,7 +126,44 @@ Object.assign(App, {
     UI.renderJournal(trip.journal || []);
     MapManager.clear();
     MapManager.updateWaypoints(trip.waypoints || []);
+    this.restoreAlternativesToMap(trip);
     if (trip.waypoints?.length > 0) MapManager.fitToWaypoints(trip.waypoints);
+  },
+
+  /* --- Alternative routes persistence --- */
+
+  saveAlternativeRoutes(alternatives) {
+    if (!this.currentTrip) return;
+    this.currentTrip.alternatives = alternatives;
+    if (this.useCloud && this.currentUser &&
+        (!this._altSaveTimer || !this._pendingAltSave)) {
+      clearTimeout(this._altSaveTimer);
+      this._pendingAltSave = true;
+      this._altSaveTimer = setTimeout(() => {
+        this.saveCurrentTrip();
+        this._pendingAltSave = false;
+      }, 3000);
+    }
+  },
+
+  restoreAlternativesToMap(trip) {
+    const alts = trip?.alternatives;
+    if (!alts || !Array.isArray(alts.roots) || !alts.roots.length) return;
+    if (typeof MapManager.setAlternativeRoots === 'function') {
+      MapManager.setAlternativeRoots(alts.roots);
+    }
+    if (typeof MapManager.onAlternativesChange === 'function') {
+      MapManager.onAlternativesChange(alts.roots);
+    }
+    if (typeof MapManager.showAlternativeRoute === 'function') {
+      alts.roots.forEach(root => {
+        if (root.id !== alts.activeId) {
+          MapManager.showAlternativeRoute(root, false);
+        }
+      });
+      const active = alts.roots.find(r => r.id === alts.activeId);
+      if (active) MapManager.showAlternativeRoute(active, true);
+    }
   },
 
   attachJournalAttachments(trip) {
@@ -221,7 +258,8 @@ Object.assign(App, {
             coordinates: this.currentTrip.route.coordinates || [],
             distance: this.currentTrip.route.distance ?? null,
             duration: this.currentTrip.route.duration ?? this.currentTrip.route.time ?? null,
-            steps: this.currentTrip.route.steps || []
+            steps: this.currentTrip.route.steps || [],
+            travelMode: this.currentTrip.route.travelMode || 'drive'
           }
         : null;
       const updated = await API.trips.update(this.currentTrip.id, {
@@ -229,6 +267,7 @@ Object.assign(App, {
         description: this.currentTrip.description,
         settings: this.currentTrip.settings,
         route,
+        alternatives: this.currentTrip.alternatives || null,
         cover_image_url: this.currentTrip.coverImageUrl || this.currentTrip.cover_image_url,
         cover_focus_x: this.currentTrip.coverFocusX ?? this.currentTrip.cover_focus_x,
         cover_focus_y: this.currentTrip.coverFocusY ?? this.currentTrip.cover_focus_y

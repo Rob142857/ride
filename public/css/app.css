@@ -3377,20 +3377,19 @@ body.doc-page {
     font-size: 0.74rem;
   }
 
-  /* Hide old route choice panel on small mobile */
+  /* Hide old route choice panel on small mobile only */
   .route-choice-panel {
+    display: none;
+  }
+  .route-alternatives.visible ~ #routePanel .route-choice-panel,
+  .route-alternatives.visible ~ .route-choice-panel {
     display: none !important;
+  }
+  /* Show route-choice-panel on mobile when alternatives are hidden */
+  .route-alternatives.hidden ~ .route-choice-panel,
+  .route-alternatives.hidden ~ #routePanel .route-choice-panel {
+    display: flex !important;
   }
 }
 
-/* Show old route choice panel between 481px and 767px */
-@media (min-width: 481px) and (max-width: 767px) {
-  .route-alternatives {
-    display: none !important;
-  }
-}
-@media (min-width: 768px) {
-  .route-alternatives {
-    display: none !important;
-  }
-}
+/* route-alternatives panel visible on all screen sizes */

@@ -268,6 +268,8 @@ Object.assign(App, {
     }
 
     UI.updateTripStats(this.currentTrip);
+    await this.saveAlternativeRoutes(routeData, this.currentTrip);
+
     const ok = await this.saveCurrentTrip();
     if (ok) {
       this.markTripWritten(this.currentTrip.id);
