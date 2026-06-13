@@ -1006,6 +1006,147 @@
         font-size: 20px;
       }
     }
+
+    /* ─────────────── Route Selector ─────────────── */
+    .route-selector {
+      border-top: 1px solid var(--glass-border);
+      padding: 16px 24px 20px;
+    }
+
+    .route-selector-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+    }
+
+    .route-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px;
+      background: white;
+      border: 2px solid var(--glass-border);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all .18s var(--ease-out);
+      text-align: left;
+      position: relative;
+    }
+
+    .route-option:hover {
+      border-color: #b4ccf0;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .route-option.is-active {
+      border-color: #2563eb;
+      background: #eef5ff;
+    }
+
+    .route-option.is-active .route-check {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .route-option:focus-visible {
+      outline: 0;
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.3);
+    }
+
+    .route-badges {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 3px;
+    }
+
+    .route-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .route-badge.route-fastest {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .route-badge.route-shortest {
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .route-badge.route-saved {
+      background: #fef9c3;
+      color: #92400e;
+    }
+
+    .route-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .route-summary {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--text-body);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .route-meta-small {
+      font-size: .78rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .route-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #2563eb;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      opacity: 0;
+      transform: scale(0.7);
+      transition: all .2s var(--ease-out);
+    }
+
+    .route-option.is-active .route-check {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    @media (max-width: 640px) {
+      .route-selector {
+        padding: 12px 16px 16px;
+      }
+
+      .route-option {
+        padding: 12px;
+        gap: 10px;
+      }
+
+      .route-summary {
+        font-size: .85rem;
+      }
+
+      .route-meta-small {
+        font-size: .75rem;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1073,6 +1214,9 @@
         </div>
         <div id="map-stats" class="map-stats">
           <!-- Dynamically populated -->
+        </div>
+        <div id="route-selector" class="route-selector" style="display:none;">
+          <!-- Dynamically populated when alternative routes exist -->
         </div>
       </div>
       <!-- <div class="download-actions">
@@ -1185,6 +1329,9 @@
     let activeBasemap = 'streets';
     let basemapLayer = null;
     let basemapLayers = null;
+    let currentTripData = null;
+    let activeRouteIndex = 0;
+    let routePolylines = [];
     const pendingImportKey = 'ride:pendingImportShortCode';
     const useTripButtons = () => Array.from(document.querySelectorAll('.use-trip-btn'));
     const defaultOgImage = 'https://ride.incitat.io/icons/og-ride.png';
@@ -1239,7 +1386,25 @@
       document.getElementById('error').style.display = 'flex';
     }
     
+    function secondsToHMM(seconds) {
+      if (!seconds) return '0 min';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      return h > 0 ? `${h}h ${m}m` : `${m} min`;
+    }
+
+    function metersToString(meters) {
+      if (!meters) return '0 m';
+      const km = (meters / 1000).toFixed(1);
+      return meters >= 10000
+        ? (Math.round(meters / 100) / 10).toFixed(1).replace(/\.0$/, '') + ' km'
+        : (meters >= 1000 ? km.replace(/\.0$/, '') + ' km' : Math.round(meters) + ' m');
+    }
+
     function renderTrip(trip) {
+      currentTripData = trip;
+      activeRouteIndex = 0;
+
       // Update page title and meta
       document.title = `${trip.title} | Ride`;
       
@@ -1477,15 +1642,13 @@
         });
       }
       
-      // Draw route if available
-      if (trip.route?.coordinates?.length) {
-        const routeLine = L.polyline(trip.route.coordinates.map(c => [c.lat, c.lng]), {
-          color: '#3b82f6',
-          weight: 4,
-          opacity: 0.8
-        }).addTo(map);
-        
-        trip.route.coordinates.forEach(c => bounds.push([c.lat, c.lng]));
+      // Draw all route options
+      routePolylines = [];
+      drawRouteForIndex(trip, 0, bounds);
+      
+      // Alternative route selector
+      if (trip.alt_routes?.length) {
+        renderRouteSelector(trip);
       }
       
       // Fit bounds
@@ -1497,6 +1660,109 @@
         map.setView([-25.2744, 133.7751], 4);
         mapBounds = null;
       }
+    }
+
+    function drawRouteForIndex(trip, index, boundsAccumulator) {
+      // Clear existing route lines only (not markers)
+      routePolylines.forEach(p => { if (map.hasLayer(p)) map.removeLayer(p); });
+      routePolylines = [];
+
+      const allOptions = [trip.route, ...(trip.alt_routes || [])];
+      const selected = allOptions[index];
+      if (!selected?.coordinates?.length) return;
+
+      const coords = selected.coordinates.map(c => [c.lat, c.lng]);
+
+      const mainIndex = allOptions.findIndex(r => r.alt_idx === 0);
+      const isAlt = index !== mainIndex && mainIndex !== -1;
+      const color = isAlt ? '#7c3aed' : '#3b82f6';
+
+      const routeLine = L.polyline(coords, {
+        color,
+        weight: 4,
+        opacity: 0.85,
+        dashArray: isAlt ? '6, 6' : null
+      }).addTo(map);
+
+      routePolylines.push(routeLine);
+
+      if (boundsAccumulator) {
+        coords.forEach(c => boundsAccumulator.push(c));
+      }
+    }
+
+    function renderRouteSelector(trip) {
+      const container = document.getElementById('route-selector');
+      if (!container) return;
+
+      const allOptions = [trip.route, ...(trip.alt_routes || [])];
+      if (allOptions.length < 2) {
+        container.style.display = 'none';
+        return;
+      }
+
+      const fastest = allOptions.slice().sort((a, b) => (a.duration || Infinity) - (b.duration || Infinity))[0];
+      const shortest = allOptions.slice().sort((a, b) => (a.distance || Infinity) - (b.distance || Infinity))[0];
+      const mainIndex = allOptions.findIndex(r => r.alt_idx === 0);
+      const savedIndex = allOptions.findIndex(r => r.saved);
+
+      container.innerHTML = `<div class="route-selector-title">Route Options</div>` + allOptions.map((opt, idx) => {
+        const isFast = opt === fastest;
+        const isShort = opt === shortest && opt !== fastest;
+        const isSaved = opt.saved;
+        const label = isSaved ? 'Saved' : isFast ? 'Fastest' : isShort ? 'Shortest' : `Alternative ${idx + 1}`;
+        const badgeClass = isSaved ? 'route-saved' : isFast ? 'route-fastest' : 'route-shortest';
+        const summary = `${metersToString(opt.distance)} · ${secondsToHMM(opt.duration)}`;
+
+        return `
+          <button class="route-option${idx === activeRouteIndex ? ' is-active' : ''}" data-idx="${idx}" type="button">
+            <div class="route-info">
+              <div class="route-badges">
+                <span class="route-badge ${badgeClass}">${label}</span>
+              </div>
+              <div class="route-summary">${summary}</div>
+            </div>
+            <div class="route-check">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      container.style.display = 'block';
+
+      container.querySelectorAll('.route-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          if (idx === activeRouteIndex) return;
+
+          activeRouteIndex = idx;
+          drawRouteForIndex(trip, idx, null);
+
+          // Update active class
+          container.querySelectorAll('.route-option').forEach(b => b.classList.toggle('is-active', parseInt(b.dataset.idx, 10) === idx));
+
+          // Update displayed stats to reflect selected route
+          updateTripStatsForRoute(trip, idx);
+        });
+      });
+    }
+
+    function updateTripStatsForRoute(trip, idx) {
+      const allOptions = [trip.route, ...(trip.alt_routes || [])];
+      const selected = allOptions[idx];
+      if (!selected) return;
+
+      const statsHtml = [];
+      if (trip.waypoints?.length) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${trip.waypoints.length}</div><div class="stat-label">Stops</div></div>`);
+      }
+      statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDistance(selected.distance)}</div><div class="stat-label">Distance</div></div>`);
+      statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDuration(selected.duration)}</div><div class="stat-label">Duration</div></div>`);
+      if (trip.journal?.length) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${trip.journal.length}</div><div class="stat-label">Journal Entries</div></div>`);
+      }
+      document.getElementById('map-stats').innerHTML = statsHtml.join('');
     }
 
     function setBasemap(type) {

@@ -3128,3 +3128,73 @@ body.doc-page {
     height: 16px;
   }
 }
+
+/* ── Route Choice Panel ── */
+.route-choice-panel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  margin-left: 32px;
+  padding: 2px 0;
+}
+
+.route-choice-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.route-choice-options {
+  display: flex;
+  gap: 4px;
+}
+
+.route-chip {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.route-chip:hover {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.25);
+}
+
+.route-chip.active {
+  background: rgba(93, 156, 236, 0.15);
+  border-color: rgba(93, 156, 236, 0.45);
+  color: #5d9cec;
+  font-weight: 600;
+}
+
+.route-chip .route-chip-dist {
+  font-size: 0.62rem;
+  opacity: 0.8;
+  margin-left: 3px;
+}
+
+@media (max-width: 480px) {
+  .route-choice-panel {
+    margin-left: 0;
+    margin-top: 4px;
+    justify-content: flex-start;
+  }
+
+  .route-choice-label {
+    display: none;
+  }
+
+  .route-chip {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+  }
+}

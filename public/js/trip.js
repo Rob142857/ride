@@ -14,6 +14,8 @@ const Trip = {
       updatedAt: new Date().toISOString(),
       waypoints: [],
       route: null,
+      alternative_routes: [],
+      active_route_index: null,
       journal: [],
       coverImageUrl: '',
       cover_image_url: '',
@@ -177,6 +179,8 @@ const Trip = {
       coverFocusY: trip.coverFocusY ?? trip.cover_focus_y ?? 50,
       waypoints,
       route: includeRoute ? trip.route : null,
+      alternative_routes: includeRoute ? (trip.alternative_routes || []) : [],
+      active_route_index: trip.active_route_index ?? null,
       journal,
       attachments,
       createdAt: trip.createdAt,
@@ -202,10 +206,16 @@ const Trip = {
   </wpt>`
     ).join('\n');
 
+    // Determine route coordinates: active alternative route if set, otherwise trip.route or custom points
+    const activeAlt = (trip.alternative_routes || []).find(r => (
+      r.alt_idx !== undefined ? r.alt_idx === trip.active_route_index : r.route_index === trip.active_route_index
+    ));
+    const routeCoords = activeAlt?.coordinates?.length ? activeAlt.coordinates : (trip.route?.coordinates || trip.customRoutePoints || []);
+
     let route = '';
-    if (trip.customRoutePoints && trip.customRoutePoints.length > 0) {
-      const rtepts = trip.customRoutePoints.map(p => 
-        `    <rtept lat="${p.lat}" lon="${p.lng}"></rtept>`
+    if (routeCoords.length > 0) {
+      const rtepts = routeCoords.map(p => 
+        `    <rtept lat="${p.lat || p[1]}" lon="${p.lng || p[0]}"></rtept>`
       ).join('\n');
       route = `  <rte>
     <name>${this.escapeXml(trip.name)}</name>

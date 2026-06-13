@@ -1,20 +1,20 @@
 -- =============================================================================
--- Ride Trip Planner — D1 Schema v2
+-- Ride Trip Planner â€” D1 Schema v2
 -- =============================================================================
 -- Design principle: push all validation, consistency, and auto-maintenance
 -- into the database.  Application code becomes a thin pass-through.
 --
 -- What the DB now enforces (so app code no longer needs to):
---   • updated_at auto-set on every UPDATE (triggers)
---   • trips.version auto-bumped on any trip or child-table mutation (triggers)
---   • lat/lng range validation (CHECK)
---   • enum values for provider, waypoint type, boolean integers (CHECK)
---   • email lowercase normalisation (trigger)
---   • string length limits (CHECK)
---   • referential integrity with proper CASCADE/SET NULL (FK)
---   • attachment scoping to same trip as parent journal/waypoint (triggers)
---   • single cover image per trip (trigger)
---   • short_code format (CHECK)
+--   â€¢ updated_at auto-set on every UPDATE (triggers)
+--   â€¢ trips.version auto-bumped on any trip or child-table mutation (triggers)
+--   â€¢ lat/lng range validation (CHECK)
+--   â€¢ enum values for provider, waypoint type, boolean integers (CHECK)
+--   â€¢ email lowercase normalisation (trigger)
+--   â€¢ string length limits (CHECK)
+--   â€¢ referential integrity with proper CASCADE/SET NULL (FK)
+--   â€¢ attachment scoping to same trip as parent journal/waypoint (triggers)
+--   â€¢ single cover image per trip (trigger)
+--   â€¢ short_code format (CHECK)
 --
 -- Views provide pre-composed reads so handlers are one-liners.
 -- =============================================================================
@@ -384,10 +384,10 @@ CREATE INDEX IF NOT EXISTS idx_login_events_created ON login_events(created_at D
 CREATE INDEX IF NOT EXISTS idx_login_events_user    ON login_events(user_id);
 
 -- ---------------------------------------------------------------------------
--- 9. VIEWS — pre-composed reads for thin handler code
+-- 9. VIEWS â€” pre-composed reads for thin handler code
 -- ---------------------------------------------------------------------------
 
--- Trip list for a user (with counts) — replaces inline subquery SELECTs
+-- Trip list for a user (with counts) â€” replaces inline subquery SELECTs
 CREATE VIEW IF NOT EXISTS v_trip_list AS
 SELECT
   t.*,
@@ -414,7 +414,7 @@ SELECT
 FROM trips t
 LEFT JOIN route_data rd ON rd.trip_id = t.id;
 
--- Public trip view — ONLY safe-to-expose columns, no user_id
+-- Public trip view â€” ONLY safe-to-expose columns, no user_id
 CREATE VIEW IF NOT EXISTS v_trip_public AS
 SELECT
   t.short_code,
@@ -439,7 +439,7 @@ SELECT
   'https://ride.incitat.io/api/attachments/' || a.id AS url
 FROM attachments a;
 
--- Attachment access check (for serving files) — joins trip for ownership + public check
+-- Attachment access check (for serving files) â€” joins trip for ownership + public check
 CREATE VIEW IF NOT EXISTS v_attachment_access AS
 SELECT
   a.*,
@@ -452,20 +452,35 @@ JOIN trips t ON a.trip_id = t.id;
 -- ---------------------------------------------------------------------------
 -- NOTES
 -- ---------------------------------------------------------------------------
--- Removed: short_urls table (dead — short_code lives on trips directly)
--- Removed: share_id column (unused — replaced by short_code)
+-- Removed: short_urls table (dead â€” short_code lives on trips directly)
+-- Removed: share_id column (unused â€” replaced by short_code)
 --
 -- What triggers buy us (code we can DELETE from api/trips.js):
---   • bumpTripVersion() — entire function eliminated
---   • manual 'updated_at = datetime("now")' in every UPDATE — eliminated
---   • manual 'version = version + 1' in every UPDATE — eliminated
---   • manual cover image unsetting on new cover — eliminated
---   • manual cover image recompute on delete — eliminated
---   • manual journal/waypoint trip-scope validation in uploadAttachment — eliminated
+--   â€¢ bumpTripVersion() â€” entire function eliminated
+--   â€¢ manual 'updated_at = datetime("now")' in every UPDATE â€” eliminated
+--   â€¢ manual 'version = version + 1' in every UPDATE â€” eliminated
+--   â€¢ manual cover image unsetting on new cover â€” eliminated
+--   â€¢ manual cover image recompute on delete â€” eliminated
+--   â€¢ manual journal/waypoint trip-scope validation in uploadAttachment â€” eliminated
 --
 -- What CHECK constraints buy us (validation code we can DELETE):
---   • lat/lng range checks in addWaypoint, updateWaypoint
---   • name-required checks (DB will reject empty)
---   • short_code format validation in worker.js
---   • boolean normalisation for is_public, is_private, is_cover
+--   â€¢ lat/lng range checks in addWaypoint, updateWaypoint
+--   â€¢ name-required checks (DB will reject empty)
+--   â€¢ short_code format validation in worker.js
+--   â€¢ boolean normalisation for is_public, is_private, is_cover
 -- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS alternative_routes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  route_index INTEGER NOT NULL DEFAULT 0,
+  name TEXT,
+  summary TEXT,
+  color TEXT,
+  distance_meters REAL,
+  duration_seconds REAL,
+  is_selected BOOLEAN NOT NULL DEFAULT 0,
+  is_visible BOOLEAN NOT NULL DEFAULT 1,
+  coordinates TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(trip_id, route_index)
+);

@@ -246,7 +246,9 @@ Object.assign(App, {
     const duration = routeData?.duration ?? routeData?.time ?? null;
     this.currentTrip.route = {
       ...routeData, duration, time: duration,
-      coordinates: routeData?.coordinates || []
+      coordinates: routeData?.coordinates || [],
+      _selectedIndex: routeData?._selectedIndex ?? 0,
+      _allAlternatives: routeData?._allAlternatives || []
     };
     this.precomputeRouteMetrics();
     this.rideRerouting = false;

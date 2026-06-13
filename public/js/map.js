@@ -21,6 +21,10 @@ const MapManager = {
   _gpsRetryTimer: null,
   _headingUp: false,
 
+  // Alternative route UI state
+  _selectedRouteIndex: 0,
+  _cachedAlternatives: null,
+
   // Waypoint type icons
   waypointIcons: {
     stop: { color: '#e94560', icon: '📍' },
@@ -71,12 +75,9 @@ const MapManager = {
         const marker = this.waypointMarkers[id];
         if (marker?._wpType) marker.setIcon(this.createIcon(marker._wpType));
       });
-      // Update route line weight
+      // Update route line weight if routing control exists
       if (this.routingControl) {
-        const routes = this.routingControl._routes;
-        if (routes) {
-          this.routingControl.options.lineOptions.styles = this._routeStyles();
-        }
+        this._updateRouteLineStyles();
       }
     });
 
@@ -129,7 +130,7 @@ const MapManager = {
   handleMapClick(e) {
     if (this.isAddingWaypoint) {
       this.pendingLocation = { lat: e.latlng.lat, lng: e.latlng.lng };
-      
+
       // Update the modal inputs if open
       const latInput = document.getElementById('waypointLat');
       const lngInput = document.getElementById('waypointLng');
@@ -183,7 +184,7 @@ const MapManager = {
     this.pendingLocation = null;
     document.body.classList.remove('map-pick-mode');
     UI.setWaypointPlannerState('idle');
-    
+
     if (this.tempMarker) {
       this.map.removeLayer(this.tempMarker);
       this.tempMarker = null;
@@ -206,14 +207,164 @@ const MapManager = {
   },
 
   /**
-   * Get route line weight based on current zoom level
+   * Format seconds into "1h 23m" or "45m"
+   */
+  _fmtTime(seconds) {
+    if (!seconds && seconds !== 0) return '';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  },
+
+  /**
+   * Format metres into "12.5 km" or "800 m"
+   */
+  _fmtDist(metres) {
+    if (!metres && metres !== 0) return '';
+    if (metres >= 1000) return `${(metres / 1000).toFixed(1)} km`;
+    return `${Math.round(metres)} m`;
+  },
+
+  /**
+   * Route selector UI — render tappable cards beneath the map
+   */
+  _renderRouteSelector(routes) {
+    let panel = document.getElementById('route-selector-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'route-selector-panel';
+      panel.className = 'route-selector';
+      const mapEl = document.getElementById('map');
+      if (mapEl && mapEl.parentNode) {
+        mapEl.parentNode.insertBefore(panel, mapEl.nextSibling);
+      }
+    }
+    panel.innerHTML = '';
+
+    routes.forEach((r, idx) => {
+      const card = document.createElement('button');
+      card.className = 'route-card' + (idx === this._selectedRouteIndex ? ' route-card--active' : '');
+      card.type = 'button';
+      card.setAttribute('aria-pressed', idx === this._selectedRouteIndex ? 'true' : 'false');
+
+      const meta = document.createElement('div');
+      meta.className = 'route-card__meta';
+      const name = idx === 0 ? 'Fastest' : `Alternative ${idx}`;
+      meta.innerHTML = `<span class="route-card__name">${name}</span>` +
+        `<span class="route-card__stats">${this._fmtDist(r.summary.totalDistance)} · ${this._fmtTime(r.summary.totalTime)}</span>`;
+
+      const barWrap = document.createElement('div');
+      barWrap.className = 'route-card__bar';
+      const fastestTime = routes[0].summary.totalTime || 1;
+      const pct = Math.min(100, Math.max(15, (r.summary.totalTime / fastestTime) * 100));
+      barWrap.innerHTML = `<div class="route-card__bar-inner" style="height:${pct}%"></div>`;
+
+      card.appendChild(meta);
+      card.appendChild(barWrap);
+
+      card.addEventListener('click', () => this._selectRoute(idx, routes));
+      panel.appendChild(card);
+    });
+
+    panel.style.display = routes.length > 1 ? 'flex' : 'none';
+  },
+
+  /**
+   * Hide the route selector panel
+   */
+  _hideRouteSelector() {
+    const panel = document.getElementById('route-selector-panel');
+    if (panel) panel.style.display = 'none';
+  },
+
+  /**
+   * User tapped an alternative route card
+   */
+  _selectRoute(index, routes) {
+    if (index === this._selectedRouteIndex || !routes[index]) return;
+    this._selectedRouteIndex = index;
+
+    // Update panel UI
+    const panel = document.getElementById('route-selector-panel');
+    if (panel) {
+      Array.from(panel.children).forEach((c, i) => {
+        c.classList.toggle('route-card--active', i === index);
+        c.setAttribute('aria-pressed', i === index ? 'true' : 'false');
+      });
+    }
+
+    // Update polyline styles on map
+    this._updateRouteLineStyles();
+
+    // Save selected route to App state
+    const route = routes[index];
+    const steps = (route.instructions || []).map((instr) => ({
+      text: instr.text,
+      distance: instr.distance,
+      time: instr.time,
+      index: instr.index
+    }));
+
+    App.saveRouteData({
+      distance: route.summary.totalDistance,
+      duration: route.summary.totalTime,
+      coordinates: route.coordinates,
+      steps,
+      _selectedIndex: index,
+      _allAlternatives: routes.map(r => ({
+        distance: r.summary.totalDistance,
+        duration: r.summary.totalTime,
+        coordinates: r.coordinates,
+        steps: (r.instructions || []).map(i => ({
+          text: i.text,
+          distance: i.distance,
+          time: i.time,
+          index: i.index
+        }))
+      }))
+    });
+  },
+
+  /**
+   * Re-apply line styles so selected route pops, alternatives subdued
+   */
+  _updateRouteLineStyles() {
+    if (!this.routingControl) return;
+    const rc = this.routingControl;
+    const lines = [];
+    if (rc._line) lines.push(rc._line);
+    if (rc._alternatives) lines.push(...rc._alternatives);
+
+    lines.forEach((line, idx) => {
+      if (!line || !line.setStyle) return;
+      const isSel = idx === this._selectedRouteIndex;
+      line.setStyle({
+        opacity: isSel ? 0.9 : 0.45,
+        weight: isSel ? this._routeWeight() : Math.max(2, this._routeWeight() - 2)
+      });
+      if (isSel && line.bringToFront) line.bringToFront();
+    });
+  },
+
+  /**
+   * Route line weight based on zoom
+   */
+  _routeWeight() {
+    const z = this.map?.getZoom() || 13;
+    if (z >= 16) return 8;
+    if (z >= 13) return 6;
+    if (z >= 10) return 5;
+    return 3;
+  },
+
+  /**
+   * Get route line styles based on current zoom level
    */
   _routeStyles() {
-    const z = this.map?.getZoom() || 13;
-    // Thinner at low zoom, fuller when zoomed in
-    const w = z <= 8 ? 2 : z <= 11 ? 3 : z <= 14 ? 4 : 5;
+    const w = this._routeWeight();
     return [
-      { color: '#e94560', opacity: 0.85, weight: w },
+      { color: '#e94560', opacity: 0.9, weight: w },
       { color: '#ff6b6b', opacity: 0.3, weight: w + 3 }
     ];
   },
@@ -309,53 +460,71 @@ const MapManager = {
   },
 
   /**
-   * Update route between waypoints
+   * Update route between waypoints — now with alternatives
    */
   updateRoute(waypoints) {
-    // Clear existing route
     this.clearRoute();
+    this._hideRouteSelector();
+    this._selectedRouteIndex = 0;
+    this._cachedAlternatives = null;
 
     if (waypoints.length < 2) return;
 
-    // Create waypoints for routing
     const routeWaypoints = [...waypoints]
       .sort((a, b) => a.order - b.order)
       .map(wp => L.latLng(wp.lat, wp.lng));
 
-    // Create routing control
     this.routingControl = L.Routing.control({
       waypoints: routeWaypoints,
       serviceUrl: this.OSRM_SERVICE_URL,
       routeWhileDragging: true,
-      showAlternatives: false,
-      addWaypoints: true, // Allow adding waypoints by clicking on route
+      showAlternatives: true,
+      addWaypoints: true,
       fitSelectedRoutes: false,
       lineOptions: {
         styles: this._routeStyles()
       },
-      createMarker: () => null, // We manage our own markers
-      show: false // Hide the directions panel
+      altLineOptions: {
+        styles: [{ color: '#6B8E8E', opacity: 0.45, weight: 4 }]
+      },
+      createMarker: () => null,
+      show: false
     }).addTo(this.map);
 
-    // Handle route changes from dragging
     this.routingControl.on('routesfound', (e) => {
-      const route = e.routes[0];
-      if (route) {
-        const steps = (route.instructions || []).map((instr) => ({
-          text: instr.text,
-          distance: instr.distance,
-          time: instr.time,
-          index: instr.index
-        }));
+      const routes = e.routes;
+      if (!routes || !routes.length) return;
 
-        App.saveRouteData({
-          distance: route.summary.totalDistance,
-          duration: route.summary.totalTime,
-          coordinates: route.coordinates,
-          steps
-        });
+      this._cachedAlternatives = routes;
+      this._renderRouteSelector(routes);
+      this._updateRouteLineStyles();
 
-      }
+      const route = routes[this._selectedRouteIndex] || routes[0];
+      const steps = (route.instructions || []).map((instr) => ({
+        text: instr.text,
+        distance: instr.distance,
+        time: instr.time,
+        index: instr.index
+      }));
+
+      App.saveRouteData({
+        distance: route.summary.totalDistance,
+        duration: route.summary.totalTime,
+        coordinates: route.coordinates,
+        steps,
+        _selectedIndex: this._selectedRouteIndex,
+        _allAlternatives: routes.map(r => ({
+          distance: r.summary.totalDistance,
+          duration: r.summary.totalTime,
+          coordinates: r.coordinates,
+          steps: (r.instructions || []).map(i => ({
+            text: i.text,
+            distance: i.distance,
+            time: i.time,
+            index: i.index
+          }))
+        }))
+      });
     });
   },
 
@@ -367,6 +536,9 @@ const MapManager = {
       this.map.removeControl(this.routingControl);
       this.routingControl = null;
     }
+    this._hideRouteSelector();
+    this._selectedRouteIndex = 0;
+    this._cachedAlternatives = null;
   },
 
   /**
@@ -378,7 +550,7 @@ const MapManager = {
     const bounds = L.latLngBounds(
       waypoints.map(wp => [wp.lat, wp.lng])
     );
-    
+
     this.map.fitBounds(bounds, { padding: [50, 50] });
   },
 
@@ -388,7 +560,7 @@ const MapManager = {
   centerOnWaypoint(waypoint) {
     if (!waypoint) return;
     this.map.setView([waypoint.lat, waypoint.lng], 15);
-    
+
     // Open popup
     if (this.waypointMarkers[waypoint.id]) {
       this.waypointMarkers[waypoint.id].openPopup();

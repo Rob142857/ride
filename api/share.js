@@ -79,6 +79,12 @@ export const ShareHandler = {
       'SELECT * FROM route_data WHERE trip_id = ?'
     ).bind(trip.id).first();
 
+    // Alternative routes (publicly visible)
+    const altRoutes = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      'SELECT id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates ' +
+      'FROM alternative_routes WHERE trip_id = ? AND is_visible = 1 ORDER BY route_index'
+    ).bind(trip.id).all();
+
     return jsonResponse({
       trip: serializePublicJourney({
         trip,
@@ -86,6 +92,7 @@ export const ShareHandler = {
         journal: journal.results,
         attachments: attachments.results,
         routeData,
+        alternativeRoutes: altRoutes.results || [],
       })
     });
   }

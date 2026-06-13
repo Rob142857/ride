@@ -47,6 +47,10 @@ router.get('/api/trips/:id', requireAuth, TripsHandler.getTrip);
 router.put('/api/trips/:id', requireAuth, TripsHandler.updateTrip);
 router.delete('/api/trips/:id', requireAuth, TripsHandler.deleteTrip);
 
+// Alternative routes for a trip (protected)
+router.get('/api/trips/:id/alternatives', requireAuth, TripsHandler.listAlternativeRoutes);
+router.put('/api/trips/:id/alternatives', requireAuth, TripsHandler.saveAlternativeRoutes);
+
 // Waypoint routes (protected)
 router.post('/api/trips/:tripId/waypoints', requireAuth, WaypointsHandler.addWaypoint);
 router.put('/api/trips/:tripId/waypoints/:id', requireAuth, WaypointsHandler.updateWaypoint);

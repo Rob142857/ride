@@ -106,6 +106,14 @@ Object.assign(Share, {
     if (data.waypoints) trip.waypoints = data.waypoints;
     if (data.route) trip.route = data.route;
     if (data.journal) trip.journal = data.journal;
+    if (data.alternative_routes?.length) {
+      // Distinguish selected route on import
+      const saved = data.alternative_routes.find(r => r.saved) || data.alternative_routes[0];
+      trip.alternative_routes = data.alternative_routes;
+      if (saved && saved.coordinates?.length) {
+        trip.active_route_index = saved.alt_idx ?? 0;
+      }
+    }
 
     // Generate new IDs to avoid conflicts
     trip.id = Storage.generateId();

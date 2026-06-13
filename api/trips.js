@@ -103,6 +103,10 @@ export const TripsHandler = {
       'SELECT * FROM route_data WHERE trip_id = ?'
     ).bind(params.id).first();
 
+    const altRoutes = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      'SELECT id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, created_at FROM alternative_routes WHERE trip_id = ? ORDER BY route_index ASC'
+    ).bind(params.id).all();
+
     return jsonResponse({
       trip: serializeOwnedJourney({
         trip,
@@ -110,6 +114,7 @@ export const TripsHandler = {
         journal: journal.results,
         attachments: attachments.results,
         routeData,
+        alternativeRoutes: altRoutes.results || [],
       })
     });
   },
@@ -196,5 +201,83 @@ export const TripsHandler = {
     }
 
     return jsonResponse({ success: true });
-  }
+  },
+
+  // ---------------------------------------------------------------------------
+  // ALTERNATIVE ROUTES
+  // ---------------------------------------------------------------------------
+
+  /**
+   * List alternative routes for a trip (owned).
+   */
+  async listAlternativeRoutes(context) {
+    const { env, user, params } = context;
+
+    const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      'SELECT id FROM trips WHERE id = ? AND user_id = ?'
+    ).bind(params.id, user.id).first();
+    if (!trip) return errorResponse('Trip not found', 404);
+
+    const rows = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      'SELECT id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, created_at FROM alternative_routes WHERE trip_id = ? ORDER BY route_index ASC'
+    ).bind(params.id).all();
+
+    return jsonResponse({
+      routes: (rows.results || []).map(r => ({
+        id: r.id,
+        route_index: r.route_index,
+        name: r.name,
+        summary: r.summary,
+        color: r.color,
+        distance_meters: r.distance_meters,
+        duration_seconds: r.duration_seconds,
+        is_selected: !!r.is_selected,
+        is_visible: !!r.is_visible,
+        coordinates: safeJsonParse(r.coordinates, []),
+        created_at: r.created_at,
+      })),
+    });
+  },
+
+  /**
+   * Save (replace) alternative routes for a trip.
+   * Accepts body.routes = [{ name, summary, color, coordinates, distance_meters, duration_seconds, is_selected, is_visible }, ...]
+   */
+  async saveAlternativeRoutes(context) {
+    const { env, user, params, request } = context;
+    const body = await parseBody(request);
+
+    const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      'SELECT id FROM trips WHERE id = ? AND user_id = ?'
+    ).bind(params.id, user.id).first();
+    if (!trip) return errorResponse('Trip not found', 404);
+
+    const routes = Array.isArray(body.routes) ? body.routes : [];
+
+    await env.RIDE_TRIP_PLANNER_DB.prepare(
+      'DELETE FROM alternative_routes WHERE trip_id = ?'
+    ).bind(params.id).run();
+
+    for (let i = 0; i < routes.length; i++) {
+      const r = routes[i];
+      await env.RIDE_TRIP_PLANNER_DB.prepare(
+        `INSERT INTO alternative_routes (id, trip_id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        generateId(),
+        params.id,
+        i,
+        r.name || r.label || `Route ${i + 1}`,
+        r.summary || '',
+        r.color || null,
+        typeof r.distance_meters === 'number' ? r.distance_meters : (typeof r.distance === 'number' ? r.distance : null),
+        typeof r.duration_seconds === 'number' ? r.duration_seconds : (typeof r.duration === 'number' ? r.duration : null),
+        r.is_selected ? 1 : 0,
+        r.is_visible !== false ? 1 : 0,
+        JSON.stringify(r.coordinates || [])
+      ).run();
+    }
+
+    return jsonResponse({ success: true, count: routes.length });
+  },
 };

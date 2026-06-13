@@ -48,7 +48,7 @@ export function withAttachmentUrl(attachment) {
   };
 }
 
-export function serializeOwnedJourney({ trip, waypoints, journal, attachments, routeData }) {
+export function serializeOwnedJourney({ trip, waypoints, journal, attachments, routeData, alternativeRoutes }) {
   return {
     ...trip,
     settings: getJourneySettings(trip.settings),
@@ -62,10 +62,11 @@ export function serializeOwnedJourney({ trip, waypoints, journal, attachments, r
     })),
     attachments: (attachments || []).map(withAttachmentUrl),
     route: parseRouteData(routeData),
+    alternative_routes: alternativeRoutes || [],
   };
 }
 
-export function serializePublicJourney({ trip, waypoints, journal, attachments, routeData }) {
+export function serializePublicJourney({ trip, waypoints, journal, attachments, routeData, alternativeRoutes }) {
   const share = getShareSettings(trip.settings);
   const publicAttachments = (attachments || []).map(withAttachmentUrl);
   const explicitCover = publicAttachments.find(attachment => attachment.is_cover);
@@ -115,5 +116,16 @@ export function serializePublicJourney({ trip, waypoints, journal, attachments, 
       waypoint_id: attachment.waypoint_id || null,
     })),
     route: share.includeRoute ? parseRouteData(routeData) : null,
+    alternative_routes: share.includeRoute ? (alternativeRoutes || []).map(ar => ({
+      alt_idx: ar.route_index ?? ar.alt_idx ?? 0,
+      name: ar.name || '',
+      summary: ar.summary || '',
+      color: ar.color || null,
+      distance: ar.distance_meters ?? ar.distance ?? 0,
+      duration: ar.duration_seconds ?? ar.duration ?? 0,
+      saved: ar.is_selected ? true : (ar.saved ?? false),
+      visible: ar.is_visible !== undefined ? !!ar.is_visible : true,
+      coordinates: safeJsonParse(ar.coordinates || '[]', []),
+    })) : [],
   };
 }
