@@ -106,12 +106,15 @@ Object.assign(Share, {
     if (data.waypoints) trip.waypoints = data.waypoints;
     if (data.route) trip.route = data.route;
     if (data.journal) trip.journal = data.journal;
-    if (data.alternative_routes?.length) {
+    if (data.alternativeRoutes?.length || data.alternative_routes?.length) {
+      const alts = data.alternativeRoutes || data.alternative_routes || [];
       // Distinguish selected route on import
-      const saved = data.alternative_routes.find(r => r.saved) || data.alternative_routes[0];
-      trip.alternative_routes = data.alternative_routes;
+      const saved = alts.find(r => r.saved) || alts[0];
+      trip.alternativeRoutes = alts;
+      trip.alternative_routes = alts;
       if (saved && saved.coordinates?.length) {
-        trip.active_route_index = saved.alt_idx ?? 0;
+        trip.activeRouteIndex = saved.alt_idx ?? 0;
+        trip.active_route_index = trip.activeRouteIndex;
       }
     }
 

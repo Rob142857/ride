@@ -59,13 +59,15 @@
     contentEl = document.getElementById('content');
     if (!heroEl) return;
 
+    const isContentHero = contentEl && contentEl.contains(heroEl);
+
     if (shouldSkipHero()) {
       heroEl.style.display = 'none';
-      if (contentEl) contentEl.style.display = '';
+      if (contentEl && !isContentHero) contentEl.style.display = '';
       return;
     }
 
-    if (contentEl) contentEl.style.display = 'none';
+    if (contentEl && !isContentHero) contentEl.style.display = 'none';
 
     heroEl.addEventListener('touchstart', function(e) {
       touchStartY = e.touches[0].clientY;

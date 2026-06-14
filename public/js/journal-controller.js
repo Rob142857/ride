@@ -268,7 +268,11 @@ Object.assign(App, {
     }
 
     UI.updateTripStats(this.currentTrip);
-    await this.saveAlternativeRoutes(routeData, this.currentTrip);
+    const allRoutes = [this.currentTrip.route, ...(this.currentTrip.route?._allAlternatives || [])].filter(Boolean);
+    const selectedIdx = this.currentTrip.route?._selectedIndex ?? 0;
+    if (allRoutes.length > 1 || this.currentTrip.route?._allAlternatives?.length) {
+      await this.saveAlternativeRoutes(allRoutes, selectedIdx);
+    }
 
     const ok = await this.saveCurrentTrip();
     if (ok) {

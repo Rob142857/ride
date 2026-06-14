@@ -1256,6 +1256,11 @@
       color: #1d4ed8;
     }
 
+    .route-badge.route-alternative {
+      background: #f3f4f6;
+      color: #4b5563;
+    }
+
     .route-badge.route-saved {
       background: #fef9c3;
       color: #92400e;
@@ -1578,7 +1583,9 @@
 
     function renderTrip(trip) {
       currentTripData = trip;
-      activeRouteIndex = 0;
+      activeRouteIndex = trip.activeRouteIndex ?? trip.active_route_index ?? 0;
+      const allRoutes = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
+      const activeRoute = allRoutes[activeRouteIndex] || trip.route;
 
       // Update page title and meta
       document.title = `${trip.title} | Ride`;
@@ -1616,23 +1623,23 @@
           </span>
         `);
       }
-      if (trip.route?.distance) {
+      if (activeRoute?.distance) {
         metaHtml.push(`
           <span class="trip-meta-item">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
             </svg>
-            ${formatDistance(trip.route.distance)}
+            ${formatDistance(activeRoute.distance)}
           </span>
         `);
       }
-      if (trip.route?.duration) {
+      if (activeRoute?.duration) {
         metaHtml.push(`
           <span class="trip-meta-item">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-            ${formatDuration(trip.route.duration)}
+            ${formatDuration(activeRoute.duration)}
           </span>
         `);
       }
@@ -1643,11 +1650,11 @@
       if (trip.waypoints?.length) {
         statsHtml.push(`<div class="stat-item"><div class="stat-value">${trip.waypoints.length}</div><div class="stat-label">Stops</div></div>`);
       }
-      if (trip.route?.distance) {
-        statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDistance(trip.route.distance)}</div><div class="stat-label">Distance</div></div>`);
+      if (activeRoute?.distance) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDistance(activeRoute.distance)}</div><div class="stat-label">Distance</div></div>`);
       }
-      if (trip.route?.duration) {
-        statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDuration(trip.route.duration)}</div><div class="stat-label">Duration</div></div>`);
+      if (activeRoute?.duration) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDuration(activeRoute.duration)}</div><div class="stat-label">Duration</div></div>`);
       }
       if (trip.journal?.length) {
         statsHtml.push(`<div class="stat-item"><div class="stat-value">${trip.journal.length}</div><div class="stat-label">Journal Entries</div></div>`);
@@ -1827,10 +1834,11 @@
       
       // Draw all route options
       routePolylines = [];
-      drawRouteForIndex(trip, 0, bounds);
+      drawRouteForIndex(trip, activeRouteIndex, bounds);
       
       // Alternative route selector
-      if (trip.alt_routes?.length) {
+      const hasAlts = (trip.alternativeRoutes || trip.alt_routes || []).length;
+      if (hasAlts) {
         renderRouteSelector(trip);
       }
       
@@ -1850,35 +1858,33 @@
       routePolylines.forEach(p => { if (map.hasLayer(p)) map.removeLayer(p); });
       routePolylines = [];
 
-      const allOptions = [trip.route, ...(trip.alt_routes || [])];
-      const selected = allOptions[index];
-      if (!selected?.coordinates?.length) return;
+      const allOptions = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
+      if (!allOptions.length) return;
 
-      const coords = selected.coordinates.map(c => [c.lat, c.lng]);
-
-      const mainIndex = allOptions.findIndex(r => r.alt_idx === 0);
-      const isAlt = index !== mainIndex && mainIndex !== -1;
-      const color = isAlt ? '#7c3aed' : '#3b82f6';
-
-      const routeLine = L.polyline(coords, {
-        color,
-        weight: 4,
-        opacity: 0.85,
-        dashArray: isAlt ? '6, 6' : null
-      }).addTo(map);
-
-      routePolylines.push(routeLine);
-
-      if (boundsAccumulator) {
-        coords.forEach(c => boundsAccumulator.push(c));
-      }
+      // Draw all routes: active one in solid blue, alternatives in purple dashed
+      allOptions.forEach((opt, idx) => {
+        if (!opt?.coordinates?.length) return;
+        const coords = opt.coordinates.map(c => Array.isArray(c) ? [c[0], c[1]] : [c.lat, c.lng]);
+        const isActive = idx === index;
+        const color = isActive ? '#3b82f6' : '#7c3aed';
+        const routeLine = L.polyline(coords, {
+          color,
+          weight: isActive ? 5 : 4,
+          opacity: isActive ? 0.9 : 0.6,
+          dashArray: isActive ? null : '6, 6'
+        }).addTo(map);
+        routePolylines.push(routeLine);
+        if (boundsAccumulator) {
+          coords.forEach(c => boundsAccumulator.push(c));
+        }
+      });
     }
 
     function renderRouteSelector(trip) {
       const container = document.getElementById('route-selector');
       if (!container) return;
 
-      const allOptions = [trip.route, ...(trip.alt_routes || [])];
+      const allOptions = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
       if (allOptions.length < 2) {
         container.style.display = 'none';
         return;
@@ -1886,15 +1892,15 @@
 
       const fastest = allOptions.slice().sort((a, b) => (a.duration || Infinity) - (b.duration || Infinity))[0];
       const shortest = allOptions.slice().sort((a, b) => (a.distance || Infinity) - (b.distance || Infinity))[0];
-      const mainIndex = allOptions.findIndex(r => r.alt_idx === 0);
+      const mainIndex = 0;
       const savedIndex = allOptions.findIndex(r => r.saved);
+      const resolvedSavedIndex = savedIndex !== -1 ? savedIndex : (trip.activeRouteIndex ?? trip.active_route_index ?? 0);
 
       container.innerHTML = `<div class="route-selector-title">Route Options</div>` + allOptions.map((opt, idx) => {
         const isFast = opt === fastest;
-        const isShort = opt === shortest && opt !== fastest;
-        const isSaved = opt.saved;
-        const label = isSaved ? 'Saved' : isFast ? 'Fastest' : isShort ? 'Shortest' : `Alternative ${idx + 1}`;
-        const badgeClass = isSaved ? 'route-saved' : isFast ? 'route-fastest' : 'route-shortest';
+        const isSaved = idx === resolvedSavedIndex;
+        const label = isSaved ? 'Saved' : isFast ? 'Fastest' : 'Alternative';
+        const badgeClass = isSaved ? 'route-saved' : isFast ? 'route-fastest' : 'route-alternative';
         const summary = `${metersToString(opt.distance)} · ${secondsToHMM(opt.duration)}`;
 
         return `
@@ -1920,6 +1926,7 @@
           if (idx === activeRouteIndex) return;
 
           activeRouteIndex = idx;
+          window.activeRouteIndex = idx;
           drawRouteForIndex(trip, idx, null);
 
           // Update active class
@@ -1932,7 +1939,7 @@
     }
 
     function updateTripStatsForRoute(trip, idx) {
-      const allOptions = [trip.route, ...(trip.alt_routes || [])];
+      const allOptions = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
       const selected = allOptions[idx];
       if (!selected) return;
 
@@ -2340,10 +2347,72 @@
 
     if (shortCode) {
       loadPublicTrip(shortCode);
+    } else if (new URLSearchParams(window.location.search).get('test') === '1') {
+      window.trip = {
+        title: 'Sydney to Blue Mountains Test Trip',
+        description: 'A scenic ride through the Blue Mountains with multiple route options.',
+        short_code: 'abc123',
+        cover_image: null,
+        cover_focus_x: 50,
+        cover_focus_y: 50,
+        created_at: '2025-01-15T08:00:00Z',
+        share: { includeWaypoints: true, includeRoute: true, includePublicNotes: true, includeGallery: true },
+        waypoints: [
+          { id: 1, name: 'Sydney CBD', lat: -33.8688, lng: 151.2093, type: 'start', sort_order: 0 },
+          { id: 2, name: 'Katoomba', lat: -33.7120, lng: 150.3111, type: 'stop', sort_order: 1 },
+          { id: 3, name: 'Blackheath', lat: -33.6350, lng: 150.2840, type: 'end', sort_order: 2 }
+        ],
+        journal: [],
+        attachments: [],
+        route: {
+          distance: 12500,
+          duration: 2700,
+          coordinates: [
+            [-33.8688, 151.2093], [-33.8600, 151.1800], [-33.8500, 151.1200],
+            [-33.8200, 151.0000], [-33.7800, 150.8500], [-33.7500, 150.7000],
+            [-33.7200, 150.5000], [-33.7120, 150.3111], [-33.6700, 150.3000], [-33.6350, 150.2840]
+          ]
+        },
+        alternativeRoutes: [
+          {
+            routeIndex: 1,
+            alt_idx: 1,
+            name: 'M4 Motorway Route',
+            summary: 'Via M4 motorway - faster but less scenic',
+            distance: 10200,
+            duration: 1620,
+            saved: false,
+            visible: true,
+            coordinates: [
+              [-33.8688, 151.2093], [-33.8650, 151.1500], [-33.8500, 151.0500],
+              [-33.8000, 150.9000], [-33.7600, 150.7500], [-33.7300, 150.5500],
+              [-33.7120, 150.3111], [-33.6700, 150.3000], [-33.6350, 150.2840]
+            ]
+          },
+          {
+            routeIndex: 2,
+            alt_idx: 2,
+            name: 'Scenic Bells Line Route',
+            summary: 'Via Bell Line of Road - very scenic, saved by user',
+            distance: 14800,
+            duration: 3300,
+            saved: true,
+            visible: true,
+            coordinates: [
+              [-33.8688, 151.2093], [-33.8700, 151.2200], [-33.8600, 151.2500],
+              [-33.8400, 151.3000], [-33.8000, 151.2500], [-33.7600, 151.1000],
+              [-33.7300, 150.9000], [-33.7150, 150.6000], [-33.7120, 150.3111],
+              [-33.6700, 150.3200], [-33.6500, 150.3100], [-33.6350, 150.2840]
+            ]
+          }
+        ],
+        activeRouteIndex: 2
+      };
+      renderTrip(window.trip);
     } else {
       showError();
     }
   </script>
-  
+  <script src="js/share-patch.js"></script>
 </body>
 </html>

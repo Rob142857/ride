@@ -120,6 +120,7 @@ Object.assign(App, {
     this.attachJournalAttachments(trip);
     this.currentTrip = trip;
     this.cacheTripData(trip);
+    this._resetWaypointHistory();
     UI.updateTripTitle(trip.name);
     UI.updateTripStats(trip);
     UI.renderWaypoints(trip.waypoints || []);
@@ -128,41 +129,102 @@ Object.assign(App, {
     MapManager.updateWaypoints(trip.waypoints || []);
     this.restoreAlternativesToMap(trip);
     if (trip.waypoints?.length > 0) MapManager.fitToWaypoints(trip.waypoints);
+    // Render route-alternatives panel (SPA) if module available
+    if (typeof window.RouteAlternatives !== 'undefined') {
+      const panel = window.RouteAlternatives.renderPanel(trip);
+      if (panel) {
+        const mapEl = document.getElementById('map');
+        if (mapEl && mapEl.parentNode) {
+          mapEl.parentNode.insertBefore(panel, mapEl.nextSibling);
+        }
+        // One-time listener for route selection
+        if (!this._routeAltListenerSet) {
+          this._routeAltListenerSet = true;
+          window.addEventListener('ride:routeSelected', (ev) => {
+            const { routeIndex } = ev.detail || {};
+            if (routeIndex == null || !this.currentTrip) return;
+            const allOptions = [this.currentTrip.route, ...(this.currentTrip.alternativeRoutes || this.currentTrip.alternative_routes || [])];
+            const selected = allOptions[routeIndex];
+            if (!selected?.coordinates?.length) return;
+            this.currentTrip.activeRouteIndex = routeIndex;
+            this.currentTrip.active_route_index = routeIndex;
+            if (typeof MapManager.clear === 'function') MapManager.clear();
+            if (typeof MapManager.updateWaypoints === 'function') MapManager.updateWaypoints(this.currentTrip.waypoints || []);
+            if (typeof MapManager.drawRoute === 'function') MapManager.drawRoute(selected.coordinates);
+            this.currentTrip.distance = selected.distance;
+            this.currentTrip.duration = selected.duration;
+            UI.updateTripStats(this.currentTrip);
+            this.saveAlternativeRoutes(allOptions, routeIndex);
+          });
+        }
+      }
+    }
   },
 
   /* --- Alternative routes persistence --- */
 
-  saveAlternativeRoutes(alternatives) {
+  /**
+   * Save alternative routes to backend.
+   * @param {Array|Object} alternatives - Array of route objects, or legacy { roots, activeId }
+   * @param {number} [selectedIndex] - Index of currently selected route
+   */
+  saveAlternativeRoutes(alternatives, selectedIndex) {
     if (!this.currentTrip) return;
-    this.currentTrip.alternatives = alternatives;
-    if (this.useCloud && this.currentUser &&
-        (!this._altSaveTimer || !this._pendingAltSave)) {
+    let routesArray = alternatives;
+    let activeIdx = selectedIndex ?? this.currentTrip.activeRouteIndex ?? 0;
+    if (alternatives && !Array.isArray(alternatives) && Array.isArray(alternatives.roots)) {
+      routesArray = alternatives.roots;
+      activeIdx = alternatives.activeId ?? activeIdx;
+    }
+    if (!Array.isArray(routesArray)) return;
+    const backendRoutes = routesArray.map((r, i) => ({
+      name: r.name || r.label || `Route ${i + 1}`,
+      summary: r.summary || '',
+      color: r.color || null,
+      coordinates: r.coordinates || r.inputWaypoints?.map(w => [w.lng, w.lat]) || [],
+      distance_meters: typeof r.distance === 'number' ? r.distance : (typeof r.distance_meters === 'number' ? r.distance_meters : null),
+      duration_seconds: typeof r.duration === 'number' ? r.duration : (typeof r.time === 'number' ? r.time : (typeof r.duration_seconds === 'number' ? r.duration_seconds : null)),
+      is_selected: i === activeIdx,
+      is_visible: true,
+    }));
+    this.currentTrip.activeRouteIndex = activeIdx;
+    this.currentTrip.active_route_index = activeIdx;
+    this.currentTrip.alternativeRoutes = routesArray.slice(1);
+    this.currentTrip.alternatives = routesArray;
+    this.currentTrip._allAlternatives = routesArray;
+    if (this.useCloud && this.currentUser) {
       clearTimeout(this._altSaveTimer);
       this._pendingAltSave = true;
-      this._altSaveTimer = setTimeout(() => {
-        this.saveCurrentTrip();
+      this._altSaveTimer = setTimeout(async () => {
+        try {
+          await API.trips.saveAlternativeRoutes(this.currentTrip.id, backendRoutes);
+          await API.trips.update(this.currentTrip.id, { active_route_index: activeIdx });
+        } catch (err) {
+          console.error('Failed to save alternative routes:', err);
+        }
         this._pendingAltSave = false;
-      }, 3000);
+      }, 1500);
     }
   },
 
   restoreAlternativesToMap(trip) {
-    const alts = trip?.alternatives;
-    if (!alts || !Array.isArray(alts.roots) || !alts.roots.length) return;
+    const altRoutes = trip?.alternativeRoutes || trip?.alternative_routes || trip?.alternatives?.roots;
+    if (!Array.isArray(altRoutes) || !altRoutes.length) return;
+    const allRoutes = [trip?.route, ...altRoutes].filter(Boolean);
+    if (!allRoutes.length) return;
     if (typeof MapManager.setAlternativeRoots === 'function') {
-      MapManager.setAlternativeRoots(alts.roots);
+      MapManager.setAlternativeRoots(allRoutes.map((r, i) => ({ id: i, ...r })));
     }
     if (typeof MapManager.onAlternativesChange === 'function') {
-      MapManager.onAlternativesChange(alts.roots);
+      MapManager.onAlternativesChange(allRoutes.map((r, i) => ({ id: i, ...r })));
     }
     if (typeof MapManager.showAlternativeRoute === 'function') {
-      alts.roots.forEach(root => {
-        if (root.id !== alts.activeId) {
-          MapManager.showAlternativeRoute(root, false);
-        }
+      const activeIdx = trip?.activeRouteIndex ?? trip?.active_route_index ?? 0;
+      allRoutes.forEach((r, i) => {
+        if (i !== activeIdx) MapManager.showAlternativeRoute({ id: i, ...r }, false);
       });
-      const active = alts.roots.find(r => r.id === alts.activeId);
-      if (active) MapManager.showAlternativeRoute(active, true);
+      const active = allRoutes[activeIdx];
+      if (active) MapManager.showAlternativeRoute({ id: activeIdx, ...active }, true);
     }
   },
 
@@ -267,7 +329,7 @@ Object.assign(App, {
         description: this.currentTrip.description,
         settings: this.currentTrip.settings,
         route,
-        alternatives: this.currentTrip.alternatives || null,
+        active_route_index: this.currentTrip.activeRouteIndex ?? this.currentTrip.active_route_index ?? 0,
         cover_image_url: this.currentTrip.coverImageUrl || this.currentTrip.cover_image_url,
         cover_focus_x: this.currentTrip.coverFocusX ?? this.currentTrip.cover_focus_x,
         cover_focus_y: this.currentTrip.coverFocusY ?? this.currentTrip.cover_focus_y

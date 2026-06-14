@@ -22,8 +22,87 @@ const App = {
   waypointSaveToastAt: 0,
   isReorderingWaypoints: false,
   tripWriteClock: {},
+  _waypointHistory: [],
+  _waypointHistoryIndex: -1,
+
+  /* --- Waypoint history (undo / redo) --- */
+
+  /** Return a deep clone of the given waypoints array */
+  _cloneWaypoints(waypoints) {
+    return (waypoints || []).map(wp => ({ ...wp }));
+  },
+
+  /** Reset the waypoints history stack. Call whenever a trip is loaded. */
+  _resetWaypointHistory() {
+    this._waypointHistory = [];
+    this._waypointHistoryIndex = -1;
+    if (this.currentTrip?.waypoints) {
+      this._waypointHistory.push(this._cloneWaypoints(this.currentTrip.waypoints));
+      this._waypointHistoryIndex = 0;
+    }
+    this._updateUndoRedoButtons();
+  },
+
+  /** Push current waypoints state onto the history stack, truncating any redo branch */
+  _pushWaypointHistory() {
+    if (!this.currentTrip) return;
+    const snapshot = this._cloneWaypoints(this.currentTrip.waypoints);
+    // Truncate any redo entries ahead of the current position
+    if (this._waypointHistoryIndex < this._waypointHistory.length - 1) {
+      this._waypointHistory = this._waypointHistory.slice(0, this._waypointHistoryIndex + 1);
+    }
+    this._waypointHistory.push(snapshot);
+    this._waypointHistoryIndex++;
+    // Limit history depth to 30 to avoid memory bloat
+    if (this._waypointHistory.length > 30) {
+      this._waypointHistory.shift();
+      this._waypointHistoryIndex--;
+    }
+    this._updateUndoRedoButtons();
+  },
+
+  /** Restore waypoints from a history snapshot and refresh UI */
+  _restoreWaypointsFromHistory(waypoints) {
+    if (!this.currentTrip) return;
+    this.currentTrip.waypoints = this._cloneWaypoints(waypoints);
+    if (!this.currentTrip.settings || typeof this.currentTrip.settings !== 'object') {
+      this.currentTrip.settings = {};
+    }
+    this.currentTrip.settings.waypoint_order = this.currentTrip.waypoints.map(w => w.id);
+    UI.renderWaypoints(this.currentTrip.waypoints);
+    MapManager.updateWaypoints(this.currentTrip.waypoints);
+    if (this.currentTrip.waypoints.length >= 2) {
+      MapManager.updateRoute(this.currentTrip.waypoints);
+    } else {
+      MapManager.clearRoute();
+    }
+  },
+
+  undoWaypointChange() {
+    if (this._waypointHistoryIndex <= 0) return;
+    this._waypointHistoryIndex--;
+    this._restoreWaypointsFromHistory(this._waypointHistory[this._waypointHistoryIndex]);
+    this._updateUndoRedoButtons();
+  },
+
+  redoWaypointChange() {
+    if (this._waypointHistoryIndex >= this._waypointHistory.length - 1) return;
+    this._waypointHistoryIndex++;
+    this._restoreWaypointsFromHistory(this._waypointHistory[this._waypointHistoryIndex]);
+    this._updateUndoRedoButtons();
+  },
+
+  _updateUndoRedoButtons() {
+    const undoBtn = document.getElementById('undoWaypointBtn');
+    const redoBtn = document.getElementById('redoWaypointBtn');
+    if (undoBtn) undoBtn.disabled = this._waypointHistoryIndex <= 0;
+    if (redoBtn) redoBtn.disabled = this._waypointHistoryIndex >= this._waypointHistory.length - 1;
+  },
+
+  /* --- /Waypoint history --- */
 
   async init() {
+
     console.log('Ride Trip Planner initializing...');
 
     this.isOnline = navigator.onLine;
@@ -122,6 +201,13 @@ const App = {
     // Ensure coverImageUrl alias
     if (!normalized.coverImageUrl) normalized.coverImageUrl = normalized.cover_image_url || '';
     normalized.cover_image_url = normalized.coverImageUrl;
+    // Normalize alternative routes
+    if (!Array.isArray(normalized.alternativeRoutes)) {
+      normalized.alternativeRoutes = Array.isArray(normalized.alternative_routes) ? normalized.alternative_routes : [];
+    }
+    normalized.activeRouteIndex = normalized.active_route_index ?? normalized.activeRouteIndex ?? 0;
+    normalized.alternative_routes = normalized.alternativeRoutes;
+    normalized.active_route_index = normalized.activeRouteIndex;
     return normalized;
   },
 

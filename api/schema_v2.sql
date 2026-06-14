@@ -470,8 +470,8 @@ JOIN trips t ON a.trip_id = t.id;
 --   â€¢ boolean normalisation for is_public, is_private, is_cover
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS alternative_routes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
   route_index INTEGER NOT NULL DEFAULT 0,
   name TEXT,
   summary TEXT,

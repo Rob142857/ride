@@ -228,6 +228,8 @@
             <button id="refreshWaypointsBtn" class="icon-btn heading-refresh" aria-label="Refresh waypoints">↻</button>
           </div>
           <div class="panel-actions">
+            <button id="undoWaypointBtn" class="icon-btn" title="Undo last change" disabled aria-label="Undo">↩</button>
+            <button id="redoWaypointBtn" class="icon-btn" title="Redo" disabled aria-label="Redo">↪</button>
             <button id="addWaypointBtn" class="primary-btn">Pick on map</button>
           </div>
         </div>
@@ -694,5 +696,6 @@
       installBanner?.classList.add('hidden');
     }
   </script>
+  <script src="js/share-patch.js"></script>
 </body>
 </html>

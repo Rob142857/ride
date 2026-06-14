@@ -105,6 +105,12 @@ function _normalizeTrip(t) {
     const duration = trip.route.duration ?? trip.route.time ?? null;
     trip.route = { ...trip.route, duration, time: duration, coordinates: trip.route.coordinates || [] };
   }
+  // Normalize alternative routes
+  trip.alternativeRoutes = Array.isArray(t.alternative_routes) ? t.alternative_routes : (Array.isArray(t.alternativeRoutes) ? t.alternativeRoutes : []);
+  trip.activeRouteIndex = t.active_route_index ?? t.activeRouteIndex ?? 0;
+  // Keep snake_case aliases for round-trips
+  trip.alternative_routes = trip.alternativeRoutes;
+  trip.active_route_index = trip.activeRouteIndex;
   return trip;
 }
 
@@ -285,6 +291,14 @@ const API = {
 
     async share(id) {
       const data = await API.request(`/trips/${id}/share`, { method: 'POST' });
+      return data;
+    },
+
+    async saveAlternativeRoutes(id, routes) {
+      const data = await API.request(`/trips/${id}/alternatives`, {
+        method: 'PUT',
+        body: { routes },
+      });
       return data;
     },
   },

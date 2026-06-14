@@ -62,7 +62,8 @@ export function serializeOwnedJourney({ trip, waypoints, journal, attachments, r
     })),
     attachments: (attachments || []).map(withAttachmentUrl),
     route: parseRouteData(routeData),
-    alternative_routes: alternativeRoutes || [],
+    alternativeRoutes: alternativeRoutes || [],
+    activeRouteIndex: trip.active_route_index ?? 0,
   };
 }
 
@@ -116,7 +117,8 @@ export function serializePublicJourney({ trip, waypoints, journal, attachments, 
       waypoint_id: attachment.waypoint_id || null,
     })),
     route: share.includeRoute ? parseRouteData(routeData) : null,
-    alternative_routes: share.includeRoute ? (alternativeRoutes || []).map(ar => ({
+    alternativeRoutes: share.includeRoute ? (alternativeRoutes || []).map(ar => ({
+      routeIndex: ar.route_index ?? ar.alt_idx ?? 0,
       alt_idx: ar.route_index ?? ar.alt_idx ?? 0,
       name: ar.name || '',
       summary: ar.summary || '',
@@ -127,5 +129,6 @@ export function serializePublicJourney({ trip, waypoints, journal, attachments, 
       visible: ar.is_visible !== undefined ? !!ar.is_visible : true,
       coordinates: safeJsonParse(ar.coordinates || '[]', []),
     })) : [],
+    activeRouteIndex: trip.active_route_index ?? 0,
   };
 }

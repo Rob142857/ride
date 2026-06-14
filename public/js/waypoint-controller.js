@@ -37,6 +37,11 @@ Object.assign(App, {
         await this.uploadWaypointAttachment(waypointId, file);
       });
     }
+    // Undo / redo waypoint changes
+    const undoBtn = document.getElementById('undoWaypointBtn');
+    const redoBtn = document.getElementById('redoWaypointBtn');
+    if (undoBtn) undoBtn.addEventListener('click', () => this.undoWaypointChange());
+    if (redoBtn) redoBtn.addEventListener('click', () => this.redoWaypointChange());
   },
 
   openWaypointDetails(waypointId) {
@@ -127,6 +132,7 @@ Object.assign(App, {
 
   async addWaypoint(data) {
     if (!this.currentTrip || !this.ensureEditable('add waypoints')) return null;
+    this._pushWaypointHistory(); // snapshot before mutation
     let waypoint;
     try {
       const res = await API.waypoints.add(this.currentTrip.id, data, { headers: this.getTripIfMatchHeaders() });
@@ -154,6 +160,7 @@ Object.assign(App, {
 
   async updateWaypointPosition(waypointId, lat, lng) {
     if (!this.currentTrip || !this.ensureEditable('move waypoints')) return;
+    this._pushWaypointHistory(); // snapshot before mutation
     try {
       const res = await API.waypoints.update(this.currentTrip.id, waypointId, { lat, lng }, { headers: this.getTripIfMatchHeaders() });
       this.applyTripMetaFromResponse(this.currentTrip, res);
@@ -183,6 +190,7 @@ Object.assign(App, {
 
   async deleteWaypoint(waypointId) {
     if (!this.currentTrip || !this.ensureEditable('delete waypoints')) return;
+    this._pushWaypointHistory(); // snapshot before mutation
     try {
       const res = await API.waypoints.delete(this.currentTrip.id, waypointId, { headers: this.getTripIfMatchHeaders() });
       this.applyTripMetaFromResponse(this.currentTrip, res);
@@ -204,6 +212,7 @@ Object.assign(App, {
 
   async reorderWaypoints(orderIds) {
     if (!this.currentTrip || !this.ensureEditable('reorder waypoints')) return;
+    this._pushWaypointHistory(); // snapshot before mutation
     if (this.isReorderingWaypoints) return;
     this.isReorderingWaypoints = true;
     this.setWaypointsSaving(true);

@@ -14,8 +14,8 @@ const Trip = {
       updatedAt: new Date().toISOString(),
       waypoints: [],
       route: null,
-      alternative_routes: [],
-      active_route_index: null,
+      alternativeRoutes: [],
+      activeRouteIndex: 0,
       journal: [],
       coverImageUrl: '',
       cover_image_url: '',
@@ -179,8 +179,8 @@ const Trip = {
       coverFocusY: trip.coverFocusY ?? trip.cover_focus_y ?? 50,
       waypoints,
       route: includeRoute ? trip.route : null,
-      alternative_routes: includeRoute ? (trip.alternative_routes || []) : [],
-      active_route_index: trip.active_route_index ?? null,
+      alternativeRoutes: includeRoute ? (trip.alternativeRoutes || trip.alternative_routes || []) : [],
+      activeRouteIndex: trip.activeRouteIndex ?? trip.active_route_index ?? 0,
       journal,
       attachments,
       createdAt: trip.createdAt,
@@ -207,8 +207,8 @@ const Trip = {
     ).join('\n');
 
     // Determine route coordinates: active alternative route if set, otherwise trip.route or custom points
-    const activeAlt = (trip.alternative_routes || []).find(r => (
-      r.alt_idx !== undefined ? r.alt_idx === trip.active_route_index : r.route_index === trip.active_route_index
+    const activeAlt = (trip.alternativeRoutes || trip.alternative_routes || []).find(r => (
+      r.alt_idx !== undefined ? r.alt_idx === (trip.activeRouteIndex ?? trip.active_route_index ?? 0) : r.route_index === (trip.activeRouteIndex ?? trip.active_route_index ?? 0)
     ));
     const routeCoords = activeAlt?.coordinates?.length ? activeAlt.coordinates : (trip.route?.coordinates || trip.customRoutePoints || []);
 
