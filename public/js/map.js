@@ -25,6 +25,10 @@ const MapManager = {
   _selectedRouteIndex: 0,
   _cachedAlternatives: null,
 
+  // Extracted UI components
+  routeSelector: null,
+  routeEditor: null,
+
   // Waypoint type icons
   waypointIcons: {
     stop: { color: '#e94560', icon: '📍' },
@@ -62,6 +66,18 @@ const MapManager = {
 
     // Map click handler for adding waypoints
     this.map.on('click', (e) => this.handleMapClick(e));
+
+    // Accessible route-alternatives UI and visible midpoint route editor.
+    this.routeSelector = window.RouteSelector?.create(this.map, {
+      position: 'top',
+      onSelect: (idx) => this._selectRoute(idx)
+    });
+    this.routeEditor = window.RouteEditor?.create(this.map);
+    this.routeEditor?.onInsertWaypoint((detail) => {
+      if (typeof App.addWaypointOnRoute === 'function') {
+        App.addWaypointOnRoute(detail);
+      }
+    });
 
     // Handle resize
     window.addEventListener('resize', () => {
@@ -227,71 +243,34 @@ const MapManager = {
   },
 
   /**
-   * Route selector UI — render tappable cards beneath the map
+   * Route selector UI — delegates to RouteSelector component
    */
   _renderRouteSelector(routes) {
-    let panel = document.getElementById('route-selector-panel');
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.id = 'route-selector-panel';
-      panel.className = 'route-selector';
-      const mapEl = document.getElementById('map');
-      if (mapEl && mapEl.parentNode) {
-        mapEl.parentNode.insertBefore(panel, mapEl.nextSibling);
-      }
+    if (this.routeSelector) {
+      this.routeSelector.render(routes, this._selectedRouteIndex);
     }
-    panel.innerHTML = '';
-
-    routes.forEach((r, idx) => {
-      const card = document.createElement('button');
-      card.className = 'route-card' + (idx === this._selectedRouteIndex ? ' route-card--active' : '');
-      card.type = 'button';
-      card.setAttribute('aria-pressed', idx === this._selectedRouteIndex ? 'true' : 'false');
-
-      const meta = document.createElement('div');
-      meta.className = 'route-card__meta';
-      const name = idx === 0 ? 'Fastest' : `Alternative ${idx}`;
-      meta.innerHTML = `<span class="route-card__name">${name}</span>` +
-        `<span class="route-card__stats">${this._fmtDist(r.summary.totalDistance)} · ${this._fmtTime(r.summary.totalTime)}</span>`;
-
-      const barWrap = document.createElement('div');
-      barWrap.className = 'route-card__bar';
-      const fastestTime = routes[0].summary.totalTime || 1;
-      const pct = Math.min(100, Math.max(15, (r.summary.totalTime / fastestTime) * 100));
-      barWrap.innerHTML = `<div class="route-card__bar-inner" style="height:${pct}%"></div>`;
-
-      card.appendChild(meta);
-      card.appendChild(barWrap);
-
-      card.addEventListener('click', () => this._selectRoute(idx, routes));
-      panel.appendChild(card);
-    });
-
-    panel.style.display = routes.length > 1 ? 'flex' : 'none';
   },
 
   /**
    * Hide the route selector panel
    */
   _hideRouteSelector() {
-    const panel = document.getElementById('route-selector-panel');
-    if (panel) panel.style.display = 'none';
+    if (this.routeSelector) {
+      this.routeSelector.clear();
+    }
   },
 
   /**
    * User tapped an alternative route card
    */
   _selectRoute(index, routes) {
-    if (index === this._selectedRouteIndex || !routes[index]) return;
+    routes = routes || this._cachedAlternatives;
+    if (index === this._selectedRouteIndex || !routes || !routes[index]) return;
     this._selectedRouteIndex = index;
 
-    // Update panel UI
-    const panel = document.getElementById('route-selector-panel');
-    if (panel) {
-      Array.from(panel.children).forEach((c, i) => {
-        c.classList.toggle('route-card--active', i === index);
-        c.setAttribute('aria-pressed', i === index ? 'true' : 'false');
-      });
+    // Keep the selector component in sync.
+    if (this.routeSelector) {
+      this.routeSelector.selectRoute(index);
     }
 
     // Update polyline styles on map
@@ -457,6 +436,11 @@ const MapManager = {
     } else {
       this.clearRoute();
     }
+
+    // Keep midpoint handles in sync while editing.
+    if (this.routeEditor && waypoints.length >= 2) {
+      this.routeEditor.update(waypoints, null);
+    }
   },
 
   /**
@@ -477,15 +461,15 @@ const MapManager = {
     this.routingControl = L.Routing.control({
       waypoints: routeWaypoints,
       serviceUrl: this.OSRM_SERVICE_URL,
-      routeWhileDragging: true,
+      routeWhileDragging: false,
       showAlternatives: true,
-      addWaypoints: true,
+      addWaypoints: false,
       fitSelectedRoutes: false,
       lineOptions: {
         styles: this._routeStyles()
       },
       altLineOptions: {
-        styles: [{ color: '#6B8E8E', opacity: 0.45, weight: 4 }]
+        styles: [{ color: '#6B8E8E', opacity:0.45, weight: 4 }]
       },
       createMarker: () => null,
       show: false
@@ -506,6 +490,11 @@ const MapManager = {
         time: instr.time,
         index: instr.index
       }));
+
+      // Render visible midpoint drag handles on the selected route.
+      if (this.routeEditor) {
+        this.routeEditor.update(waypoints, route.coordinates);
+      }
 
       App.saveRouteData({
         distance: route.summary.totalDistance,
@@ -537,6 +526,7 @@ const MapManager = {
       this.routingControl = null;
     }
     this._hideRouteSelector();
+    if (this.routeEditor) this.routeEditor.clear();
     this._selectedRouteIndex = 0;
     this._cachedAlternatives = null;
   },
@@ -576,6 +566,8 @@ const MapManager = {
       this.map.removeLayer(this.waypointMarkers[id]);
     });
     this.waypointMarkers = {};
+    if (this.routeEditor) this.routeEditor.clear();
+    if (this.routeSelector) this.routeSelector.clear();
   }
 };
 

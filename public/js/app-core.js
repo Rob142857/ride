@@ -32,16 +32,53 @@ const App = {
     return (waypoints || []).map(wp => ({ ...wp }));
   },
 
-  /** Reset the waypoints history stack. Call whenever a trip is loaded. */
-  _resetWaypointHistory() {
-    this._waypointHistory = [];
-    this._waypointHistoryIndex = -1;
-    if (this.currentTrip?.waypoints) {
-      this._waypointHistory.push(this._cloneWaypoints(this.currentTrip.waypoints));
-      this._waypointHistoryIndex = 0;
-    }
-    this._updateUndoRedoButtons();
-  },
+   /** Reset the waypoints history stack. Call whenever a trip is loaded. */
+   _resetWaypointHistory() {
+     this._waypointHistory = [];
+     this._waypointHistoryIndex = -1;
+     if (this.currentTrip?.waypoints) {
+       this._waypointHistory.push(this._cloneWaypoints(this.currentTrip.waypoints));
+       this._waypointHistoryIndex =0;
+     }
+     this._updateUndoRedoButtons();
+   },
+
+   /** Test whether two waypoint arrays represent the same edits (for refresh preservation). */
+   _waypointsEqual(a, b) {
+     const left = (a || []).slice().sort((x, y) => x.id.localeCompare(y.id));
+     const right = (b || []).slice().sort((x, y) => x.id.localeCompare(y.id));
+     if (left.length !== right.length) return false;
+     return left.every((wp, i) => {
+       const other = right[i];
+       if (!wp || !other) return false;
+       return wp.id === other.id &&
+         wp.order === other.order &&
+         Math.abs((wp.lat ?? 0) - (other.lat ?? 0)) <1e-8 &&
+         Math.abs((wp.lng ??0) - (other.lng ?? 0)) < 1e-8;
+     });
+   },
+
+   /**
+    * If a new/refresh response has the same waypoints as the currently edited trip,
+    * preserve the user's undo/redo stack so refreshes don't silently wipe history.
+    * Returns a clone of the stack/index, or null if nothing to preserve.
+    */
+   _preserveWaypointHistoryIfUnchanged(newTrip) {
+     if (!newTrip?.id || newTrip.id !== this.currentTrip?.id) return null;
+     if (!this._waypointsEqual(this.currentTrip.waypoints, newTrip.waypoints)) return null;
+     return {
+       stack: this._waypointHistory.map(s => this._cloneWaypoints(s)),
+       index: this._waypointHistoryIndex
+     };
+   },
+
+   /** Restore a preserved history stack (used after loadTripData resets history). */
+   _restoreWaypointHistory(saved) {
+     if (!saved || !Array.isArray(saved.stack)) return;
+     this._waypointHistory = saved.stack;
+     this._waypointHistoryIndex = Math.max(0, Math.min(saved.index, saved.stack.length - 1));
+     this._updateUndoRedoButtons();
+   },
 
   /** Push current waypoints state onto the history stack, truncating any redo branch */
   _pushWaypointHistory() {
@@ -93,11 +130,23 @@ const App = {
   },
 
   _updateUndoRedoButtons() {
-    const undoBtn = document.getElementById('undoWaypointBtn');
-    const redoBtn = document.getElementById('redoWaypointBtn');
-    if (undoBtn) undoBtn.disabled = this._waypointHistoryIndex <= 0;
-    if (redoBtn) redoBtn.disabled = this._waypointHistoryIndex >= this._waypointHistory.length - 1;
-  },
+     const undoBtn = document.getElementById('undoWaypointBtn');
+     const redoBtn = document.getElementById('redoWaypointBtn');
+     const hasUndo = this._waypointHistoryIndex > 0;
+     const hasRedo = this._waypointHistoryIndex < this._waypointHistory.length - 1;
+     if (undoBtn) {
+       undoBtn.disabled = !hasUndo;
+       undoBtn.setAttribute('aria-disabled', hasUndo ? 'false' : 'true');
+       undoBtn.title = hasUndo ? 'Undo last waypoint change' : 'Nothing to undo';
+       undoBtn.classList.toggle('has-history', hasUndo);
+     }
+     if (redoBtn) {
+       redoBtn.disabled = !hasRedo;
+       redoBtn.setAttribute('aria-disabled', hasRedo ? 'false' : 'true');
+       redoBtn.title = hasRedo ? 'Redo waypoint change' : 'Nothing to redo';
+       redoBtn.classList.toggle('has-history', hasRedo);
+     }
+   },
 
   /* --- /Waypoint history --- */
 

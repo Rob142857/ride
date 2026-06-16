@@ -112,15 +112,18 @@ Object.assign(App, {
     }
   },
 
-  loadTripData(trip) {
+   loadTripData(trip) {
     if (trip.waypoints) trip.waypoints = Trip.normalizeWaypointOrder(trip.waypoints);
     trip = this.normalizeTrip(trip);
     if (!Number.isFinite(Number(trip.version))) trip.version = 0;
     else trip.version = Number(trip.version);
     this.attachJournalAttachments(trip);
+    // Preserve undo/redo stack when refreshing data if waypoints haven't changed.
+    const preservedHistory = this._preserveWaypointHistoryIfUnchanged(trip);
     this.currentTrip = trip;
     this.cacheTripData(trip);
     this._resetWaypointHistory();
+    if (preservedHistory) this._restoreWaypointHistory(preservedHistory);
     UI.updateTripTitle(trip.name);
     UI.updateTripStats(trip);
     UI.renderWaypoints(trip.waypoints || []);

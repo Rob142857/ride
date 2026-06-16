@@ -128,9 +128,90 @@ Object.assign(App, {
       if (err.status === 409 || err.status === 428) { await this.handleTripConflict(err); return; }
       UI.showToast('Attachment upload failed', 'error');
     }
-  },
+   },
 
-  async addWaypoint(data) {
+   /**
+    * Insert a waypoint at a location chosen from the route line (midpoint drag or
+    * click-to-insert). Places the new waypoint immediately after the anchor
+    * segment so the route reshapes in a predictable way. This keeps route editing
+    * as one undoable action.
+    */
+   async addWaypointOnRoute({ lat, lng, insertAfterWaypointId }) {
+     if (!this.currentTrip || !this.ensureEditable('edit route')) return null;
+     this._pushWaypointHistory();
+
+     const ordered = (this.currentTrip.waypoints || []).slice().sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+     let insertIndex = ordered.length;
+     if (insertAfterWaypointId) {
+       const idx = ordered.findIndex(w => w.id === insertAfterWaypointId);
+       if (idx >= 0) insertIndex = idx +1;
+     }
+
+     const payload = {
+       lat,
+       lng,
+       name: 'Via point',
+       type: 'stop',
+       order: insertIndex,
+       sort_order: insertIndex
+     };
+
+     let serverWaypoint = null;
+     try {
+       const res = await API.waypoints.add(this.currentTrip.id, payload, { headers: this.getTripIfMatchHeaders() });
+       this.applyTripMetaFromResponse(this.currentTrip, res);
+       serverWaypoint = res?.waypoint;
+     } catch (error) {
+       console.error('Failed to insert waypoint on route:', error);
+       if (error.status ===409 || error.status === 428) {
+         await this.handleTripConflict(error);
+       } else {
+         UI.showToast('Could not insert route waypoint (not saved)', 'error');
+       }
+       return null;
+     }
+
+     if (!serverWaypoint) {
+       UI.showToast('Could not insert route waypoint (no response)', 'error');
+       return null;
+     }
+
+     // Build target order: existing waypoints with the new one placed
+     // immediately after its anchor segment.
+     const targetIds = [...ordered.map(w => w.id)];
+     targetIds.splice(insertIndex,0, serverWaypoint.id);
+
+     this.currentTrip.waypoints.push(serverWaypoint);
+     this.currentTrip.waypoints = Trip.normalizeWaypointOrder(this.currentTrip.waypoints);
+
+     // If server didn't honour the requested position, explicitly reorder.
+     const currentIds = (this.currentTrip.waypoints || []).map(w => w.id);
+     let reordered = false;
+     if (JSON.stringify(currentIds) !== JSON.stringify(targetIds)) {
+       try {
+         const reorderRes = await API.waypoints.reorder(this.currentTrip.id, targetIds, { headers: this.getTripIfMatchHeaders() });
+         this.applyTripMetaFromResponse(this.currentTrip, reorderRes);
+         Trip.reorderWaypoints(this.currentTrip, targetIds);
+         reordered = true;
+       } catch (error) {
+         console.error('Failed to place inserted waypoint in order:', error);
+         if (error.status === 409 || error.status === 428) { await this.handleTripConflict(error); return null; }
+       }
+     }
+
+     this.currentTrip.waypoints = Trip.normalizeWaypointOrder(this.currentTrip.waypoints);
+     if (!this.currentTrip.settings || typeof this.currentTrip.settings !== 'object') this.currentTrip.settings ={};
+     this.currentTrip.settings.waypoint_order = this.currentTrip.waypoints.map(w => w.id);
+     this.markTripWritten(this.currentTrip.id);
+
+     UI.renderWaypoints(this.currentTrip.waypoints);
+     MapManager.updateWaypoints(this.currentTrip.waypoints);
+     UI.showToast(reordered ? 'Waypoint inserted and reordered' : 'Waypoint inserted', 'success');
+     await this.refreshTripsList();
+     return serverWaypoint;
+   },
+
+   async addWaypoint(data) {
     if (!this.currentTrip || !this.ensureEditable('add waypoints')) return null;
     this._pushWaypointHistory(); // snapshot before mutation
     let waypoint;

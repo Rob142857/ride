@@ -1,0 +1,248 @@
+/* ==========================================================================
+   Route Selector + Route Editor components
+   Companion stylesheet for js/route-selector.js and js/route-editor.js.
+   Uses the theme variables defined in app.css.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Route Selector — floating pill bar for route alternatives
+   -------------------------------------------------------------------------- */
+.route-selector {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right:12px;
+  z-index: 600; /* above Leaflet controls, below markers/tooltips */
+  display: flex;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.route-selector__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap:8px;
+  max-width: 100%;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(22,33, 62, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 08px 24px rgba(0, 0, 0,0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+.route-selector__pill {
+  appearance: none;
+  -webkit-appearance: none;
+  border:1px solid rgba(255, 255, 255,0.08);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding:8px 14px;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  transition: background0.15s ease, color0.15s ease, border-color0.15s ease, box-shadow0.15s ease;
+}
+
+.route-selector__pill:hover,
+.route-selector__pill:focus-visible {
+  background: rgba(255, 255, 255,0.12);
+  border-color: rgba(233, 69, 96, 0.45);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.route-selector__pill--active,
+.route-selector__pill--active:hover,
+.route-selector__pill--active:focus-visible {
+  background: rgba(233, 69, 96, 0.18);
+  border-color: rgba(233,69, 96,0.85);
+  color: #fff;
+  box-shadow: 0001px rgba(233,69, 96, 0.35),04px 14px rgba(233, 69, 96,0.2);
+}
+
+.route-selector__route-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.route-selector__stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.route-selector__pill--active .route-selector__stats {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.route-selector__bar {
+  width:4px;
+  height: 14px;
+  border-radius: 2px;
+  background: rgba(255,255, 255,0.12);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.route-selector__bar-inner {
+  position: absolute;
+  bottom:0;
+  left: 0;
+  right: 0;
+  border-radius: 2px2px00;
+  background: var(--accent);
+  min-height:3px;
+}
+
+.route-selector__empty,
+.route-selector__error {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding:8px 14px;
+}
+
+.route-selector__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(22, 33, 62, 0.92);
+  color: var(--text-secondary);
+  margin-left: 6px;
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+}
+
+.route-selector__close:hover,
+.route-selector__close:focus-visible {
+  color: #fff;
+  background: rgba(233, 69, 96, 0.25);
+  outline: none;
+}
+
+/* Mobile: turn the pill bar into a bottom sheet to stay clear of the top bar */
+@media (max-width:640px) {
+  .route-selector {
+    top: auto;
+    bottom: 12px;
+    left:12px;
+    right: 12px;
+    justify-content: center;
+  }
+
+  .route-selector__list {
+    border-radius: 16px;
+    max-width:100%;
+    justify-content: center;
+    padding:8px;
+  }
+
+  .route-selector__pill {
+    padding: 10px 12px;
+    font-size:0.8rem;
+  }
+
+  .route-selector__close {
+    display: none; /* save space on small screens; the sheet hides automatically */
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Route Editor — visible midpoint drag handles and click-to-insert track
+   -------------------------------------------------------------------------- */
+.route-midpoint-handle {
+  background: transparent !important;
+  border: none !important;
+}
+
+.route-midpoint-handle-inner {
+  width:18px;
+  height: 18px;
+  background: #fff;
+  border:2px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: 02px 8px rgba(0, 0, 0,0.35);
+  transform: translate(-50%, -50%) rotate(45deg);
+  transform-origin: center center;
+  cursor: grab;
+  transition: transform0.15s var(--ease-bounce, ease),
+              box-shadow0.15s ease,
+              border-color0.15s ease;
+  will-change: transform;
+}
+
+.route-midpoint-handle:hover .route-midpoint-handle-inner,
+.route-midpoint-handle:focus-within .route-midpoint-handle-inner {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1.25);
+  border-color: var(--accent-hover, #ff6b6b);
+  box-shadow: 0 004px rgba(233,69, 96, 0.25), 04px 12px rgba(0, 0, 0, 0.4);
+}
+
+.route-midpoint-handle--dragging .route-midpoint-handle-inner,
+.route-midpoint-handle--dragging:hover .route-midpoint-handle-inner {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) rotate(45deg) scale(1.4);
+  border-color: var(--accent-hover, #ff6b6b);
+  box-shadow: 0006px rgba(233,69, 96, 0.35), 06px 18px rgba(0, 0, 0,0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-midpoint-handle-inner,
+  .route-selector__pill {
+    transition: none !important;
+  }
+}
+
+/* Transparent tappable corridor over the route line for click-to-insert */
+.route-click-line path,
+.route-click-line {
+  pointer-events: stroke !important;
+  cursor: crosshair;
+}
+
+.route-click-line:hover {
+  stroke: rgba(233,69, 96, 0.25);
+  stroke-opacity: 0.25;
+}
+
+/* --------------------------------------------------------------------------
+   Undo / redo buttons — make active state more visible
+   -------------------------------------------------------------------------- */
+#undoWaypointBtn:not([disabled]),
+#redoWaypointBtn:not([disabled]) {
+  color: var(--accent);
+}
+
+#undoWaypointBtn:not([disabled]):hover,
+#undoWaypointBtn:not([disabled]):focus-visible,
+#redoWaypointBtn:not([disabled]):hover,
+#redoWaypointBtn:not([disabled]):focus-visible {
+  color: var(--accent-hover, #ff6b6b);
+  background: rgba(233,69, 96, 0.12);
+  box-shadow: 0002px rgba(233, 69, 96,0.25);
+  outline: none;
+}
+
+#undoWaypointBtn[disabled],
+#redoWaypointBtn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
