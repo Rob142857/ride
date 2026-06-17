@@ -161,21 +161,21 @@ const UI = {
     const addPTR = (elementId, view) => {
       const el = document.getElementById(elementId);
       if (!el) return;
-      let startY = 0;
+      let startY =0;
       let pulling = false;
       let triggered = false;
-      const threshold = 60;
+      const threshold =60;
 
       const onStart = (e) => {
-        if (el.scrollTop > 0) return;
-        startY = e.touches?.[0]?.clientY ?? 0;
+        if (el.scrollTop >0) return;
+        startY = e.touches?.[0]?.clientY ??0;
         pulling = true;
         triggered = false;
       };
 
       const onMove = (e) => {
         if (!pulling) return;
-        const currentY = e.touches?.[0]?.clientY ?? 0;
+        const currentY = e.touches?.[0]?.clientY ??0;
         const delta = currentY - startY;
         if (delta > 10 && el.scrollTop <= 0) {
           // Prevent native overscroll bounce while pulling
@@ -196,7 +196,7 @@ const UI = {
       el.addEventListener('touchstart', onStart, { passive: true });
       el.addEventListener('touchmove', onMove, { passive: false });
       el.addEventListener('touchend', onEnd, { passive: true });
-      el.addEventListener('touchcancel', onEnd, { passive: true });
+      el.addEventListener('touchcancel', onEnd, { passive:true });
     };
 
     addPTR('waypointsList', 'waypoints');
@@ -222,7 +222,7 @@ const UI = {
    */
   switchView(view) {
     this.currentView = view;
-    
+
     // Update nav buttons
     document.querySelectorAll('.nav-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.view === view);
@@ -245,6 +245,7 @@ const UI = {
       MapManager.disableAddWaypointMode();
     } else {
       this.setWaypointPlannerState(MapManager.isAddingWaypoint ? 'pick' : 'idle');
+      this._showWaypointsHelpIfNew();
     }
 
     // Trigger map resize when switching to map view
@@ -256,6 +257,22 @@ const UI = {
     const locateBtn = document.getElementById('locateBtn');
     if (locateBtn) {
       locateBtn.classList.toggle('hidden', !['map', 'waypoints'].includes(view));
+    }
+  },
+
+  /**
+   * Show the waypoints help modal once per browser/device.
+   */
+  _showWaypointsHelpIfNew() {
+    let seen = false;
+    try {
+      seen = localStorage.getItem('ride_waypoints_help_seen') === '1';
+    } catch (_) {}
+    if (!seen) {
+      this.openModal('waypointsHelpModal');
+      try {
+        localStorage.setItem('ride_waypoints_help_seen', '1');
+      } catch (_) {}
     }
   },
 
@@ -273,7 +290,7 @@ const UI = {
     const openMenu = () => {
       if (isDesktop()) {
         document.body.classList.remove('sidebar-collapsed');
-        setTimeout(() => MapManager.map?.invalidateSize(), 350);
+        setTimeout(() => MapManager.map?.invalidateSize(),350);
       } else {
         sideMenu.classList.remove('hidden');
         menuOverlay.classList.remove('hidden');
@@ -283,7 +300,7 @@ const UI = {
     const closeMenuFn = () => {
       if (isDesktop()) {
         document.body.classList.add('sidebar-collapsed');
-        setTimeout(() => MapManager.map?.invalidateSize(), 350);
+        setTimeout(() => MapManager.map?.invalidateSize(),350);
       } else {
         sideMenu.classList.add('hidden');
         menuOverlay.classList.add('hidden');
@@ -344,6 +361,11 @@ const UI = {
       });
     });
 
+    // Waypoints help button
+    document.getElementById('waypointsHelpBtn')?.addEventListener('click', () => {
+      this.openModal('waypointsHelpModal');
+    });
+
     // Add waypoint button
     document.getElementById('addWaypointBtn').addEventListener('click', () => {
       this.startWaypointMapPick();
@@ -366,7 +388,7 @@ const UI = {
         return;
       }
       try {
-        await MapManager.locateUser({ toast: true, animate: true });
+        await MapManager.locateUser({ toast:true, animate: true });
       } catch (_) {}
     });
 
@@ -411,11 +433,11 @@ const UI = {
     const modal = document.getElementById(modalId);
     if (modal) {
       modal.classList.add('hidden');
-      
+
       // Reset forms
       const form = modal.querySelector('form');
       if (form) form.reset();
-      
+
       // Disable waypoint mode if it was the waypoint modal
       if (modalId === 'waypointModal') {
         MapManager.disableAddWaypointMode();
@@ -571,7 +593,7 @@ const UI = {
     const distance = trip?.route?.distance;
     const time = trip?.route?.time;
 
-    const parts = [];
+    const parts =[];
     if (typeof distance === 'number') parts.push(this.formatDistance(distance));
     if (typeof time === 'number') parts.push(this.formatDuration(time));
 
@@ -591,7 +613,7 @@ const UI = {
     const price = parseFloat(settings.fuelPrice);
     if (!rate || !price || rate <= 0 || price <= 0) return null;
     const km = distanceMeters / 1000;
-    return ((km / 100) * rate * price).toFixed(2);
+    return ((km /100) * rate * price).toFixed(2);
   },
 
   openSettingsModal() {
@@ -639,7 +661,7 @@ const UI = {
   formatDuration(seconds) {
     if (seconds === undefined || seconds === null) return '';
     const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
+    const minutes = Math.floor((seconds % 3600) /60);
     if (hours > 0) return `${hours}h ${minutes}m`;
     return `${minutes}m`;
   },
@@ -651,7 +673,7 @@ const UI = {
     const toast = document.getElementById('toast');
     toast.textContent = message;
     toast.className = type;
-    
+
     // Clear any existing timeout
     if (this.toastTimeout) {
       clearTimeout(this.toastTimeout);
@@ -660,12 +682,12 @@ const UI = {
     // Show toast
     setTimeout(() => {
       toast.classList.remove('hidden');
-    }, 10);
+    },10);
 
     // Hide after delay
     this.toastTimeout = setTimeout(() => {
       toast.classList.add('hidden');
-    }, 3000);
+    },3000);
   },
 
   /**
@@ -685,17 +707,17 @@ const UI = {
     const date = new Date(isoString);
     const now = new Date();
     const diff = now - date;
-    
-    // Less than 24 hours
-    if (diff < 86400000) {
+
+    // Less than24 hours
+    if (diff <86400000) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    
-    // Less than 7 days
+
+    // Less than7 days
     if (diff < 604800000) {
       return date.toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
     }
-    
+
     return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
   }
 };

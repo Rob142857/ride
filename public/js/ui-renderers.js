@@ -324,7 +324,7 @@ Object.assign(UI, {
       if (trip.id === currentTripId) item.classList.add('active');
       item.tabIndex = 0;
       node.querySelector('.trip-name').textContent = this.escapeHtml(trip.name);
-      node.querySelector('.trip-meta').innerHTML = `<span>📍 ${waypointCount} waypoints</span> <span>📝 ${journalCount} notes</span>`;
+      node.querySelector('.trip-meta').innerHTML = `<span>📍 ${waypointCount} waypoints</span><span>📝 ${journalCount} notes</span>`;
       const statusPill = node.querySelector('.trip-status-pill');
       const copyBtn = node.querySelector('.trip-copy-link');
       const makePublicBtn = node.querySelector('.trip-make-public');
@@ -333,28 +333,32 @@ Object.assign(UI, {
       if (trip.is_public) {
         statusPill.textContent = 'Public';
         statusPill.className = 'trip-status-pill public';
-        copyBtn.style.display = 'inline-flex';
-        makePublicBtn.style.display = 'none';
-        copyBtn.onclick = async (e) => {
-          e.stopPropagation();
-          if (!link) { UI.showToast('No link yet', 'info'); return; }
-          try {
-            await navigator.clipboard.writeText(link);
-            UI.showToast('Link copied', 'success');
-          } catch (err) {
-            console.error(err);
-            UI.showToast('Copy failed', 'error');
-          }
-        };
+        if (copyBtn) {
+          copyBtn.style.display = 'inline-flex';
+          copyBtn.onclick = async (e) => {
+            e.stopPropagation();
+            if (!link) { UI.showToast('No link yet', 'info'); return; }
+            try {
+              await navigator.clipboard.writeText(link);
+              UI.showToast('Link copied', 'success');
+            } catch (err) {
+              console.error(err);
+              UI.showToast('Copy failed', 'error');
+            }
+          };
+        }
+        if (makePublicBtn) makePublicBtn.style.display = 'none';
       } else {
         statusPill.textContent = 'Private';
         statusPill.className = 'trip-status-pill private';
-        copyBtn.style.display = 'none';
-        makePublicBtn.style.display = 'inline-flex';
-        makePublicBtn.onclick = (e) => {
-          e.stopPropagation();
-          App.openTripDetails(trip.id);
-        };
+        if (copyBtn) copyBtn.style.display = 'none';
+        if (makePublicBtn) {
+          makePublicBtn.style.display = 'inline-flex';
+          makePublicBtn.onclick = (e) => {
+            e.stopPropagation();
+            App.openTripDetails(trip.id);
+          };
+        }
       }
       const detailsBtn = node.querySelector('.trip-details-btn');
       if (detailsBtn) {

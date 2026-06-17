@@ -14,6 +14,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const WORKER_PATH = path.resolve(__dirname, '..', 'api', 'worker.js');
+const INDEX_PATH = path.resolve(__dirname, '..', 'public', 'index.html');
 
 // Read current worker source
 let src = fs.readFileSync(WORKER_PATH, 'utf8');
@@ -41,6 +42,17 @@ src = src.replace(
 fs.writeFileSync(WORKER_PATH, src, 'utf8');
 
 console.log(`\n  BUILD_ID: ${oldId || '(none)'} → ${newId}\n`);
+
+// Update CSS cache-busting query param in public/index.html
+if (fs.existsSync(INDEX_PATH)) {
+  let html = fs.readFileSync(INDEX_PATH, 'utf8');
+  html = html.replace(
+    /css\/app\.css\?v=[^"']+/,
+    `css/app.css?v=${newId}`
+  );
+  fs.writeFileSync(INDEX_PATH, html, 'utf8');
+  console.log(`  Updated cache-bust in public/index.html: css/app.css?v=${newId}\n`);
+}
 
 // Run wrangler deploy (vanilla JS served from public/ — no build step)
 try {

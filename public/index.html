@@ -38,16 +38,16 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
   
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
   
-  <link rel="stylesheet" href="css/global.css">
-   <link rel="stylesheet" href="css/app.css">
-   <link rel="stylesheet" href="css/ride-mode.css">
-   <link rel="stylesheet" href="css/route-components.css">
+   <link rel="stylesheet" href="css/global.css">
+    <link rel="stylesheet" href="css/app.css?v=2026-06-17T08">
+    <link rel="stylesheet" href="css/ride-mode.css">
+    <link rel="stylesheet" href="css/route-components.css">
   </head>
 <body class="geistsans_47a3c9f1-module__2HyNMa__variable geistmono_cfbefb1d-module__tUxLBG__variable antialiased">
   <div id="app">
@@ -223,29 +223,41 @@
     <!-- Panels -->
     <section id="waypointsPanel" class="panel hidden">
       <div class="waypoints-drawer">
-        <div class="panel-header">
+        <div class="panel-header waypoints-header">
           <div class="panel-title">
             <h2>Waypoints</h2>
-            <button id="refreshWaypointsBtn" class="icon-btn heading-refresh" aria-label="Refresh waypoints">↻</button>
+            <button id="waypointsHelpBtn" class="icon-btn heading-help" title="How to use waypoints" aria-label="How to use waypoints">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75c-.91 1.21-2.48 1.68-2.98 2.03-.64.46-.93.76-1.08 1.26-.12.38-.03 1.05.08 1.36h-2.16c-.18-.56-.23-1.18-.02-1.79.35-.96 1.22-1.64 2.13-2.22.84-.54 1.36-.93 1.36-1.74 0-.77-.7-1.36-1.62-1.36-.86 0-1.54.56-1.72 1.36H8.64c.21-1.92 1.92-3.36 4.06-3.36 2.35 0 4.04 1.56 4.04 3.46 0 1.19-.62 1.67-2.67 2.9z"/></svg>
+            </button>
+            <button id="refreshWaypointsBtn" class="icon-btn heading-refresh" aria-label="Refresh waypoints">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            </button>
           </div>
-          <div class="panel-actions">
-            <button id="undoWaypointBtn" class="icon-btn" title="Undo last change" disabled aria-label="Undo">↩</button>
-            <button id="redoWaypointBtn" class="icon-btn" title="Redo" disabled aria-label="Redo">↪</button>
-            <button id="addWaypointBtn" class="primary-btn">Pick on map</button>
+          <div class="panel-actions waypoints-toolbar">
+            <button id="undoWaypointBtn" class="toolbar-btn" title="Undo last waypoint change" disabled aria-label="Undo last waypoint change">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.65 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+              <span>Undo</span>
+            </button>
+            <button id="redoWaypointBtn" class="toolbar-btn" title="Redo last waypoint change" disabled aria-label="Redo last waypoint change">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.5 8c2.65 0 5.05.99 6.9 2.6L21 7v9h-9l3.62-3.62c-1.39-1.16-3.16-1.88-5.12-1.88-3.54 0-6.55 2.31-7.65 5.5l-2.37-.78C2.92 11.03 6.85 8 11.5 8z"/></svg>
+              <span>Redo</span>
+            </button>
+            <button id="fitWaypointsBtn" class="toolbar-btn" title="Fit map to all waypoints" aria-label="Fit map to all waypoints">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v2H6.11L12 12.89 17.89 7H15V5h6v6h-2V8.11l-5.89 5.89L18 19.89V17h2v6h-6v-2h2.89L12 15.11 6.11 21H9v2H3v-6h2v2.89l5.89-5.89L5 8.11V11H3V5h6z"/></svg>
+              <span>Fit trip</span>
+            </button>
+            <button id="addWaypointBtn" class="toolbar-btn primary" title="Drop a waypoint on the map" aria-label="Drop a waypoint on the map">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+              <span>Drop</span>
+            </button>
+            <button id="searchWaypointPlaceBtn" class="toolbar-btn" title="Search for a place" aria-label="Search for a place">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zM9.5 14C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+              <span>Search</span>
+            </button>
           </div>
         </div>
         <div class="waypoints-panel-body">
-          <div class="waypoint-planner-card">
-            <div class="waypoint-planner-copy">
-              <div class="waypoint-planner-kicker">Planning mode</div>
-              <h3>Keep the map in view while you build the route</h3>
-              <p>Drop a waypoint directly on the map, or search for a place and apply it to the next stop.</p>
-            </div>
-            <div class="waypoint-planner-actions">
-              <button id="pickWaypointOnMapBtn" type="button" class="primary-btn">Tap map to place</button>
-              <button id="searchWaypointPlaceBtn" type="button" class="secondary-btn">Search places</button>
-              <button id="fitWaypointsBtn" type="button" class="secondary-btn">Fit trip</button>
-            </div>
+          <div class="waypoint-planner-card slim">
             <div id="waypointPlannerStatus" class="waypoint-planner-status">Ready. Choose a waypoint source to begin.</div>
           </div>
           <div id="waypointsList" class="waypoints-list"></div>
@@ -276,21 +288,21 @@
       </div>
       <div id="tripsList" class="panel-content"></div>
           <template id="tripItemTemplate">
-            <div class="trip-item" data-id="">
+            <div class="trip-item" data-id="" tabindex="0">
               <div class="trip-name"></div>
-              <div class="trip-meta"></div>
-              <div class="trip-status-row">
+              <div class="trip-header-right">
                 <span class="trip-status-pill"></span>
-                <button class="link-btn trip-copy-link">Copy link</button>
-                <button class="link-btn trip-make-public">Make public</button>
-              </div>
-              <div class="trip-actions-row">
-                <button class="link-btn trip-details-btn">Details</button>
-                <button class="link-btn trip-delete-btn">Delete</button>
                 <div class="trip-reorder">
                   <button class="icon-btn trip-move-up" aria-label="Move up">▲</button>
                   <button class="icon-btn trip-move-down" aria-label="Move down">▼</button>
                 </div>
+              </div>
+              <div class="trip-meta"></div>
+              <div class="trip-actions">
+                <button class="link-btn trip-details-btn">Details</button>
+                <button class="link-btn trip-copy-link">Copy</button>
+                <button class="link-btn trip-make-public">Share</button>
+                <button class="link-btn trip-delete-btn">Delete</button>
               </div>
             </div>
           </template>
@@ -605,6 +617,37 @@
         <div class="form-actions">
           <button type="button" id="settingsCancel" class="secondary-btn">Cancel</button>
           <button type="button" id="settingsSave" class="primary-btn">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Waypoints help modal -->
+    <div id="waypointsHelpModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>How to use Waypoints</h3>
+          <button type="button" class="modal-close" data-close aria-label="Close">×</button>
+        </div>
+        <div class="waypoints-help-body waypoints-help-body--elegant">
+          <div class="help-step">
+            <strong>Add stops</strong>
+            <span>Tap <em>Drop</em> or <em>Search</em> to build your route, or press anywhere on the map.</span>
+          </div>
+          <div class="help-step">
+            <strong>Detour via a diamond</strong>
+            <span>Drag a white via diamond off the route to the spot you want to visit — a new waypoint is added in the right sequence.</span>
+          </div>
+          <div class="help-step">
+            <strong>Reorder & remove</strong>
+            <span>Open a stop to edit, drag the handle to reorder, or delete one you no longer need.</span>
+          </div>
+          <div class="help-step">
+            <strong>Undo & fit</strong>
+            <span>Use the toolbar to undo or redo changes, and tap <em>Fit trip</em> to see your whole route.</span>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="primary-btn" data-close>Got it</button>
+          </div>
         </div>
       </div>
     </div>
