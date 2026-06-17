@@ -43,15 +43,19 @@ fs.writeFileSync(WORKER_PATH, src, 'utf8');
 
 console.log(`\n  BUILD_ID: ${oldId || '(none)'} → ${newId}\n`);
 
-// Update CSS cache-busting query param in public/index.html
+// Update CSS/JS cache-busting query params in public/index.html
 if (fs.existsSync(INDEX_PATH)) {
   let html = fs.readFileSync(INDEX_PATH, 'utf8');
   html = html.replace(
     /css\/app\.css\?v=[^"']+/,
     `css/app.css?v=${newId}`
   );
+  html = html.replace(
+    /js\/map\.js\?v=[^"']+/,
+    `js/map.js?v=${newId}`
+  );
   fs.writeFileSync(INDEX_PATH, html, 'utf8');
-  console.log(`  Updated cache-bust in public/index.html: css/app.css?v=${newId}\n`);
+  console.log(`  Updated cache-bust in public/index.html: css/app.css?v=${newId}, js/map.js?v=${newId}\n`);
 }
 
 // Run wrangler deploy (vanilla JS served from public/ — no build step)

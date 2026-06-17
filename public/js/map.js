@@ -49,11 +49,12 @@ const MapManager = {
       attributionControl: true
     }).setView([-34.5386, 146.5933], 12);
 
-    // Add tile layer (CARTO Voyager — full-color streets, good contrast)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19
+    // Add tile layer (OpenStreetMap default renderer — strong road / topology detail)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      subdomains: 'abc',
+      maxZoom: 19,
+      crossOrigin: true
     }).addTo(this.map);
 
     // Disable heading-up when user manually drags/pans the map

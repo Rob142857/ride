@@ -598,13 +598,12 @@ body.doc-page {
   z-index:1;
 }
 
-/* Aggressive tile grade: push roads to the front so they read clearly
-   on phone screens even under route lines and panels. */
+/* OSM default renderer already has strong road/topology contrast.
+   Avoid heavy filters — they blow out highlights to white. */
 #map .leaflet-tile-pane {
-  filter: contrast(3.2) saturate(1.75) brightness(0.98);
+  filter: none;
 }
 
-/* Boost road labels and small text on CARTO Voyager tiles */
 #map .leaflet-tile-pane img {
   image-rendering: auto;
 }

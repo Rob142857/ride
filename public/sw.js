@@ -12,7 +12,7 @@
  * and post a 'ride:update' message to all clients so they can reload.
  */
 
-const CACHE_NAME = 'ride-v6';
+const CACHE_NAME = 'ride-v7';
 const TILES_CACHE = 'ride-tiles';
 
 const STATIC_ASSETS = [
@@ -162,6 +162,7 @@ self.addEventListener('fetch', (event) => {
 
   // ── Map tiles: stale-while-revalidate ──
   if (url.hostname.includes('basemaps.cartocdn.com') ||
+      url.hostname.includes('tile.openstreetmap.org') ||
       url.hostname.includes('arcgisonline.com')) {
     event.respondWith(
       caches.open(TILES_CACHE).then((cache) =>
