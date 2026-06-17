@@ -317,8 +317,38 @@ const App = {
       if (this._coverBlobUrl) { URL.revokeObjectURL(this._coverBlobUrl); this._coverBlobUrl = null; }
       this.updateCoverFocusUI();
     });
-    if (focusXInput) focusXInput.addEventListener('input', () => this.updateCoverFocusUI());
-    if (focusYInput) focusYInput.addEventListener('input', () => this.updateCoverFocusUI());
+
+    // Wire 2-D focal-point picker (click/drag to set focus)
+    const picker = document.getElementById('tripDetailCoverFocusPicker');
+    if (picker) {
+      const applyPointer = (clientX, clientY) => {
+        const rect = picker.getBoundingClientRect();
+        const x = Math.round(Math.max(0, Math.min(100, (clientX - rect.left) / rect.width * 100)));
+        const y = Math.round(Math.max(0, Math.min(100, (clientY - rect.top) / rect.height * 100)));
+        const fx = document.getElementById('tripDetailCoverFocusX');
+        const fy = document.getElementById('tripDetailCoverFocusY');
+        if (fx) fx.value = x;
+        if (fy) fy.value = y;
+        this.updateCoverFocusUI();
+      };
+      let _pickerDragging = false;
+      picker.addEventListener('mousedown', (e) => {
+        _pickerDragging = true;
+        picker.classList.add('is-dragging');
+        applyPointer(e.clientX, e.clientY);
+        e.preventDefault();
+      });
+      picker.addEventListener('touchstart', (e) => {
+        _pickerDragging = true;
+        picker.classList.add('is-dragging');
+        applyPointer(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      document.addEventListener('mousemove', (e) => { if (_pickerDragging) applyPointer(e.clientX, e.clientY); });
+      document.addEventListener('touchmove', (e) => { if (_pickerDragging) applyPointer(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+      const stopPick = () => { _pickerDragging = false; picker.classList.remove('is-dragging'); };
+      document.addEventListener('mouseup', stopPick);
+      document.addEventListener('touchend', stopPick);
+    }
 
     if (copyBtn) {
       copyBtn.addEventListener('click', async () => {
@@ -335,24 +365,28 @@ const App = {
 
   updateCoverFocusUI() {
     const coverInput = document.getElementById('tripDetailCover');
-    const preview = document.getElementById('tripDetailCoverPreview');
+    const img = document.getElementById('tripDetailCoverFocusImg');
+    const dot = document.getElementById('tripDetailCoverFocusDot');
+    const emptyState = document.getElementById('tripDetailCoverFocusEmpty');
     const focusXInput = document.getElementById('tripDetailCoverFocusX');
     const focusYInput = document.getElementById('tripDetailCoverFocusY');
-    const focusXValue = document.getElementById('tripDetailCoverFocusXValue');
-    const focusYValue = document.getElementById('tripDetailCoverFocusYValue');
     const xRaw = Number(focusXInput?.value);
     const yRaw = Number(focusYInput?.value);
     const x = Number.isFinite(xRaw) ? xRaw : 50;
     const y = Number.isFinite(yRaw) ? yRaw : 50;
-    if (focusXValue) focusXValue.textContent = `${x}%`;
-    if (focusYValue) focusYValue.textContent = `${y}%`;
-    if (preview) {
-      // Prefer local blob preview (file just picked), then fall back to URL input
-      const imageUrl = this._coverBlobUrl || coverInput?.value?.trim() || '';
-      preview.style.backgroundImage = imageUrl ? `url('${imageUrl}')` : 'none';
-      preview.style.backgroundPosition = `${x}% ${y}%`;
-      preview.style.backgroundSize = 'cover';
+    // Prefer local blob preview (file just picked), then fall back to URL input
+    const imageUrl = this._coverBlobUrl || coverInput?.value?.trim() || '';
+    const hasImage = !!imageUrl;
+    if (img) {
+      img.src = imageUrl || '';
+      img.style.objectPosition = `${x}% ${y}%`;
     }
+    if (dot) {
+      dot.style.display = hasImage ? 'block' : 'none';
+      dot.style.left = `${x}%`;
+      dot.style.top = `${y}%`;
+    }
+    if (emptyState) emptyState.style.display = hasImage ? 'none' : 'flex';
   },
 
   /* --- Import & share --- */

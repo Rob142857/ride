@@ -34,11 +34,11 @@
   /* ── Hero dismiss logic ─────────────────────────────────────────── */
 
   function shouldSkipHero() {
-    try { return localStorage.getItem(HERO_KEY) === '1'; } catch(e) { return false; }
+    return false; // Hero is a page header — always show on load
   }
 
   function markHeroSeen() {
-    try { localStorage.setItem(HERO_KEY, '1'); } catch(e) {}
+    // Intentionally disabled — hero must show on every visit
   }
 
   function dismissHero() {
@@ -51,7 +51,7 @@
       heroEl.style.display = 'none';
       if (contentEl) contentEl.style.display = '';
     }, 450);
-    markHeroSeen();
+    // markHeroSeen() intentionally removed — no localStorage persistence
   }
 
   function initHero() {
@@ -99,18 +99,7 @@
       }
     }, { passive: true });
 
-    // Also dismiss on scroll down past hero
-    let scrollTick = false;
-    window.addEventListener('scroll', function() {
-      if (isDismissed) return;
-      if (!scrollTick) {
-        requestAnimationFrame(() => {
-          if (window.scrollY > heroEl.offsetHeight * 0.6) dismissHero();
-          scrollTick = false;
-        });
-        scrollTick = true;
-      }
-    }, { passive: true });
+    // Scroll-based auto-dismiss removed — hero is a page header, not a splash overlay
   }
 
   /* ── Sticky stats bar ───────────────────────────────────────────── */

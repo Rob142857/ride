@@ -18,7 +18,7 @@ import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optio
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-06-17T17';
+const BUILD_ID = '2026-06-17T23';
 
 const router = new Router();
 
@@ -220,7 +220,7 @@ const CSP = [
   "script-src 'self' 'unsafe-inline' https://unpkg.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://server.arcgisonline.com https://ride.incitat.io https://lh3.googleusercontent.com https://*.microsoft.com",
+  "img-src 'self' data: blob: https: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://server.arcgisonline.com https://ride.incitat.io https://lh3.googleusercontent.com https://*.microsoft.com",
   "connect-src 'self' https://ride.incitat.io https://maps.incitat.io https://unpkg.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",

@@ -2349,9 +2349,18 @@ body.doc-page {
   gap: 8px 12px;
 }
 
-.cover-focus-grid {
-  display: grid;
-  gap: 10px;
+.cover-focus-picker {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-card);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  cursor: crosshair;
+  background: rgba(255, 255, 255, 0.04);
+  user-select: none;
+  touch-action: none;
+  margin-top: 8px;
 }
 
 /* Cover picker: choose from existing trip images */
@@ -2403,31 +2412,72 @@ body.doc-page {
   letter-spacing: 0.3px;
 }
 
-.cover-focus-preview {
+.cover-focus-picker img {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius-card);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.03);
-  background-size: cover;
-  background-position: 50% 50%;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  -webkit-user-drag: none;
 }
 
-.cover-focus-controls {
-  display: grid;
-  gap: 6px;
+.cover-focus-crosshair {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2.5px solid #3b82f6;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.35);
+  transform: translate(-50%, -50%);
+  left: 50%;
+  top: 50%;
+  z-index: 10;
+  pointer-events: none;
+  transition: box-shadow 0.15s ease;
 }
 
-.cover-focus-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
+.cover-focus-crosshair::before,
+.cover-focus-crosshair::after {
+  content: '';
+  position: absolute;
+  background: #3b82f6;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.cover-focus-crosshair::before {
+  width: 1.5px;
+  height: 10px;
+}
+
+.cover-focus-crosshair::after {
+  height: 1.5px;
+  width: 10px;
+}
+
+.cover-focus-picker.is-dragging .cover-focus-crosshair {
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5), 0 0 0 4px rgba(59, 130, 246, 0.18);
+}
+
+.cover-focus-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  pointer-events: none;
 }
 
-.cover-focus-row input[type="range"] {
-  width: 100%;
+.cover-focus-empty svg {
+  opacity: 0.35;
 }
 
 .share-checkbox {

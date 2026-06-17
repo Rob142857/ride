@@ -190,9 +190,6 @@
       origShowTrip(trip);
       injectMobileShareUI();
       showMobileUI(true);
-      if (trip && (trip.alternativeRoutes?.length || trip.alt_routes?.length)) {
-        renderRouteSelectorPortable(trip);
-      }
     };
   }
 
@@ -203,9 +200,6 @@
       origRenderTrip(trip);
       injectMobileShareUI();
       showMobileUI(true);
-      if (trip && (trip.alternativeRoutes?.length || trip.alt_routes?.length)) {
-        renderRouteSelectorPortable(trip);
-      }
     };
   }
 

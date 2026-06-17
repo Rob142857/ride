@@ -45,7 +45,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
   
    <link rel="stylesheet" href="css/global.css">
-    <link rel="stylesheet" href="css/app.css?v=2026-06-17T17">
+    <link rel="stylesheet" href="css/app.css?v=2026-06-17T23">
     <link rel="stylesheet" href="css/ride-mode.css">
     <link rel="stylesheet" href="css/route-components.css">
   </head>
@@ -549,22 +549,19 @@
             </div>
           </div>
 
-          <div class="field-row cover-focus-grid">
-            <div>
-              <label class="field-label">Cover focus</label>
-              <p class="microcopy">Drag to re-center the cover around your subject. Works for the app header and the shared page.</p>
-              <div class="cover-focus-controls">
-                <div class="cover-focus-row">
-                  <input type="range" id="tripDetailCoverFocusX" min="0" max="100" value="50">
-                  <span class="microcopy" id="tripDetailCoverFocusXValue">50%</span>
-                </div>
-                <div class="cover-focus-row">
-                  <input type="range" id="tripDetailCoverFocusY" min="0" max="100" value="50">
-                  <span class="microcopy" id="tripDetailCoverFocusYValue">50%</span>
-                </div>
+          <div class="field-row">
+            <label class="field-label">Cover focus</label>
+            <p class="microcopy">Click or drag on the image to choose which part stays centred when cropped.</p>
+            <div class="cover-focus-picker" id="tripDetailCoverFocusPicker">
+              <img id="tripDetailCoverFocusImg" src="" alt="Cover preview" draggable="false">
+              <div class="cover-focus-crosshair" id="tripDetailCoverFocusDot"></div>
+              <div class="cover-focus-empty" id="tripDetailCoverFocusEmpty">
+                <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                <span>Add a cover image above to position it</span>
               </div>
             </div>
-            <div class="cover-focus-preview" id="tripDetailCoverPreview"></div>
+            <input type="hidden" id="tripDetailCoverFocusX" value="50">
+            <input type="hidden" id="tripDetailCoverFocusY" value="50">
           </div>
 
           <div class="form-section">
@@ -670,7 +667,7 @@
   <script src="js/storage.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/trip.js"></script>
-    <script src="js/map.js?v=2026-06-17T17"></script>
+    <script src="js/map.js?v=2026-06-17T23"></script>
   <script src="js/map-ride.js"></script>
   <script src="js/route-alternatives.js"></script>
   <script src="js/ui.js"></script>
