@@ -173,6 +173,9 @@ Object.assign(App, {
     this._rideNearIdx = 0;           // sliding window cursor
     this._rideStartTime = Date.now();
     this._rideArrived = false;
+    // GPS breadcrumb track — sampled during ride, saved as private log on exit
+    this._rideTrack = [];
+    this._rideTrackLastPt = null;
     document.getElementById('rideOverlay')?.classList.remove('hidden');
     document.body.classList.add('ride-mode');
     const setText = (id, value) => {
@@ -203,6 +206,15 @@ Object.assign(App, {
     document.getElementById('rideOverlay')?.classList.add('hidden');
     document.body.classList.remove('ride-mode');
     MapManager.stopRide();
+
+    // Save GPS track as a private journal entry + ride log (async, non-blocking)
+    const track = this._rideTrack || [];
+    const startTime = this._rideStartTime;
+    this._rideTrack = [];
+    this._rideTrackLastPt = null;
+    if (track.length >= 3) {
+      this._saveRideLog(track, startTime).catch(err => console.warn('Ride log save failed:', err));
+    }
   },
 
   /**
@@ -385,6 +397,106 @@ Object.assign(App, {
     } else if (!this._rideArrived) {
       document.getElementById('rideNextInstruction').textContent = 'Continue to destination';
       document.getElementById('rideNextMeta').textContent = RideUtils.formatDistance(remaining) + ' remaining';
+    }
+
+    // Append breadcrumb to GPS track (sampled, not every tick)
+    this._recordTrackPoint(pos);
+  },
+
+  /**
+   * Sample GPS position into the ride track at most once every 5 seconds and
+   * only when the rider has moved ≥ 5 m, to keep track size sensible.
+   */
+  _recordTrackPoint(pos) {
+    const now = Date.now();
+    const pt = { lat: pos.lat, lng: pos.lng, t: now };
+    if (this._rideTrack.length === 0) {
+      this._rideTrack.push(pt);
+      this._rideTrackLastPt = pt;
+      return;
+    }
+    const last = this._rideTrackLastPt;
+    const dt = (now - last.t) / 1000;   // seconds since last sample
+    const dm = this.haversine(last, pt); // meters moved
+    if (dt >= 5 && dm >= 5) {
+      this._rideTrack.push(pt);
+      this._rideTrackLastPt = pt;
+      // Cap at 3000 points to keep storage reasonable
+      if (this._rideTrack.length > 3000) this._rideTrack.splice(0, 1);
+    }
+  },
+
+  /**
+   * Build a private journal entry and persist the ride log to the API.
+   * Called asynchronously after exitRideMode() so it never blocks the UI.
+   */
+  async _saveRideLog(track, startedAtMs) {
+    if (!this.currentTrip || !this.useCloud || !this.currentUser) return;
+
+    // Compute distance from track
+    let distMeters = 0;
+    for (let i = 1; i < track.length; i++) {
+      distMeters += this.haversine(track[i - 1], track[i]);
+    }
+    if (distMeters < 100) return; // too short (stationary / accidental) — skip
+
+    const endedAtMs = Date.now();
+    const durationSec = Math.round((endedAtMs - (startedAtMs || endedAtMs)) / 1000);
+    const startedAtISO = new Date(startedAtMs || endedAtMs).toISOString();
+    const endedAtISO   = new Date(endedAtMs).toISOString();
+    const startPt = track[0];
+
+    const distStr    = RideUtils.formatDistance(distMeters);
+    const durStr     = RideUtils.formatDuration(durationSec);
+    const avgKmh     = durationSec > 0 ? ((distMeters / durationSec) * 3.6).toFixed(1) : '—';
+    const dateStr    = new Date(startedAtMs || endedAtMs).toLocaleDateString(undefined, {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+    const timeStr    = new Date(startedAtMs || endedAtMs).toLocaleTimeString(undefined, {
+      hour: '2-digit', minute: '2-digit'
+    });
+
+    const title   = `Ride — ${dateStr} at ${timeStr}`;
+    const content = `🏍️ **${distStr}** · ${durStr} · avg ${avgKmh} km/h\n\n_Automatically recorded during navigation._`;
+
+    let entry = null;
+    try {
+      entry = await API.journal.add(this.currentTrip.id, {
+        title,
+        content,
+        is_private: true,
+        tags: ['ride-log'],
+        location: { lat: startPt.lat, lng: startPt.lng }
+      });
+      entry.attachments = [];
+      if (!this.currentTrip.journal) this.currentTrip.journal = [];
+      this.currentTrip.journal.unshift(entry);
+      UI.renderJournal(this.currentTrip.journal);
+    } catch (err) {
+      console.error('Ride journal entry failed:', err);
+    }
+
+    try {
+      await API.rideLogs.save(this.currentTrip.id, {
+        journal_entry_id: entry?.id || null,
+        started_at: startedAtISO,
+        ended_at: endedAtISO,
+        distance_meters: Math.round(distMeters),
+        duration_seconds: durationSec,
+        track
+      });
+    } catch (err) {
+      console.error('Ride log save failed:', err);
+    }
+
+    UI.showToast(`Ride logged — ${distStr} in ${durStr} 📍`, 'success');
+
+    // Refresh ride logs on the map so the new track shows immediately
+    if (this.currentTrip) {
+      try {
+        const logs = await API.rideLogs.list(this.currentTrip.id);
+        MapManager.drawRideLogs(logs);
+      } catch (_) {}
     }
   }
 });

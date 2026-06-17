@@ -569,6 +569,45 @@ const MapManager = {
     this.waypointMarkers = {};
     if (this.routeEditor) this.routeEditor.clear();
     if (this.routeSelector) this.routeSelector.clear();
+    this.clearRideLogs();
+  },
+
+  /**
+   * Draw historical ride-log tracks for the current trip.
+   * Each track is a subtle dashed emerald polyline, distinct from the planned route.
+   * @param {Array} logs — array of {id, started_at, track: [{lat,lng,t}], distance_meters, duration_seconds}
+   */
+  drawRideLogs(logs) {
+    this.clearRideLogs();
+    if (!Array.isArray(logs) || !logs.length) return;
+    logs.forEach(log => {
+      const pts = Array.isArray(log.track) ? log.track : [];
+      if (pts.length < 2) return;
+      const latlngs = pts.map(p => [p.lat, p.lng]);
+      const dist = log.distance_meters ? RideUtils.formatDistance(log.distance_meters) : '';
+      const dur  = log.duration_seconds ? RideUtils.formatDuration(log.duration_seconds) : '';
+      const date = log.started_at
+        ? new Date(log.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+        : '';
+      const layer = L.polyline(latlngs, {
+        color: '#10b981',
+        weight: 3,
+        opacity: 0.55,
+        dashArray: '6 4',
+        className: 'ride-log-track'
+      }).addTo(this.map);
+      const label = [date, dist, dur].filter(Boolean).join(' · ');
+      if (label) layer.bindTooltip(label, { sticky: true, className: 'ride-log-tooltip' });
+      (this._rideLogLayers = this._rideLogLayers || []).push(layer);
+    });
+  },
+
+  /**
+   * Remove all historical ride-log track layers.
+   */
+  clearRideLogs() {
+    (this._rideLogLayers || []).forEach(l => { try { this.map.removeLayer(l); } catch (_) {} });
+    this._rideLogLayers = [];
   }
 };
 

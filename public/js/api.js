@@ -411,4 +411,20 @@ const API = {
       return data.results || [];
     },
   },
+
+  // Ride logs — actual GPS tracks recorded during navigation
+  rideLogs: {
+    async save(tripId, logData) {
+      const data = await API.request(`/trips/${tripId}/ride-logs`, {
+        method: 'POST',
+        body: logData,
+      });
+      return data;
+    },
+
+    async list(tripId) {
+      const data = await API.request(`/trips/${tripId}/ride-logs`);
+      return data.logs || [];
+    },
+  },
 };

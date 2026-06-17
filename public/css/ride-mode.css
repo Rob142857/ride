@@ -219,6 +219,57 @@ body.ride-mode .leaflet-control-zoom {
   }
 }
 
+/* ── Recording indicator ─────────────────────────────────── */
+
+.ride-rec-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f87171;
+  box-shadow: 0 0 0 0 rgba(248,113,113,0.6);
+  animation: ride-rec-pulse 1.8s ease-in-out infinite;
+  margin-right: 4px;
+}
+
+@keyframes ride-rec-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(248,113,113,0.6); }
+  60%  { box-shadow: 0 0 0 6px rgba(248,113,113,0); }
+  100% { box-shadow: 0 0 0 0 rgba(248,113,113,0); }
+}
+
+/* ── Follow-mode indicator on recenter FAB ───────────────── */
+
+.ride-fab-following {
+  background: rgba(59, 130, 246, 0.85) !important;
+  border-color: rgba(255,255,255,0.4) !important;
+  box-shadow: 0 4px 16px rgba(59,130,246,0.5), 0 0 0 3px rgba(59,130,246,0.25) !important;
+}
+
+/* ── Live trail (drawn behind rider during navigation) ───── */
+
+.ride-trail-live {
+  pointer-events: none;
+}
+
+/* ── Historical ride-log track (dashed emerald) ──────────── */
+
+.ride-log-track {
+  pointer-events: visibleStroke;
+  cursor: pointer;
+}
+
+.ride-log-tooltip {
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(16,24,40,0.92);
+  color: #d1fae5;
+  border: 1px solid rgba(16,185,129,0.4);
+  border-radius: 6px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
 .ride-action-btn {
   width: 100%;
   padding: 16px;

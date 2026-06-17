@@ -13,6 +13,7 @@ import { AttachmentsHandler } from './attachments.js';
 import { ShareHandler } from './share.js';
 import { AccountHandler } from './account.js';
 import { PlacesHandler } from './places.js';
+import { RideLogsHandler } from './ride-logs.js';
 import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
 
 // Build fingerprint — changes on every deploy. Used by service worker and client
@@ -50,6 +51,10 @@ router.delete('/api/trips/:id', requireAuth, TripsHandler.deleteTrip);
 // Alternative routes for a trip (protected)
 router.get('/api/trips/:id/alternatives', requireAuth, TripsHandler.listAlternativeRoutes);
 router.put('/api/trips/:id/alternatives', requireAuth, TripsHandler.saveAlternativeRoutes);
+
+// Ride logs (actual GPS tracks) for a trip (protected)
+router.post('/api/trips/:tripId/ride-logs', requireAuth, RideLogsHandler.saveRideLog);
+router.get('/api/trips/:tripId/ride-logs', requireAuth, RideLogsHandler.listRideLogs);
 
 // Waypoint routes (protected)
 router.post('/api/trips/:tripId/waypoints', requireAuth, WaypointsHandler.addWaypoint);

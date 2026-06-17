@@ -58,6 +58,31 @@ Object.assign(MapManager, {
     this.ridePositionCb = onPosition;
     this._gpsErrors = 0;
 
+    // Follow mode: true = auto-pan to rider; false = user has panned away
+    this._rideFollowing = true;
+    this._rideInitialZoomDone = false;
+
+    // Detect user-initiated map moves and break follow mode.
+    // Leaflet populates e.originalEvent only for user gestures (touch/mouse);
+    // programmatic moves (panTo, setView) have no originalEvent.
+    this._onRideMoveStart = (e) => {
+      if (e.originalEvent && !this._programmaticMove && this._rideFollowing) {
+        this._rideFollowing = false;
+        this._updateFollowBtn();
+      }
+    };
+    this.map.on('movestart', this._onRideMoveStart);
+
+    // Live trail polyline — drawn as the rider moves
+    this._rideTrailCoords = [];
+    if (this._rideTrailLayer) this.map.removeLayer(this._rideTrailLayer);
+    this._rideTrailLayer = L.polyline([], {
+      color: '#34d399',
+      weight: 4,
+      opacity: 0.75,
+      className: 'ride-trail-live'
+    }).addTo(this.map);
+
     this._startGpsWatch();
   },
 
@@ -78,11 +103,30 @@ Object.assign(MapManager, {
         // Rotate the rider arrow to point in direction of travel
         this.rideMarker.setIcon(this.createRideIcon(heading || 0));
 
-        // Auto-pan to rider
-        const currentCenter = this.map.getCenter();
-        const distToCenter = this.haversineLatLng(currentCenter, latlng);
-        if (distToCenter > 30) {
-          this.map.panTo(latlng, { animate: true });
+        // First GPS fix: fly to the rider's position at a navigation-friendly
+        // zoom (15), then never force-zoom again — honour the user's choice.
+        if (!this._rideInitialZoomDone) {
+          this._rideInitialZoomDone = true;
+          this._rideFollowing = true;
+          this._updateFollowBtn();
+          this._programmaticMove = true;
+          this.map.setView(latlng, Math.max(this.map.getZoom(), 15), { animate: true });
+          setTimeout(() => { this._programmaticMove = false; }, 600);
+        } else if (this._rideFollowing) {
+          // Auto-pan only — never change zoom after the first fix
+          const currentCenter = this.map.getCenter();
+          const distToCenter = this.haversineLatLng(currentCenter, latlng);
+          if (distToCenter > 30) {
+            this._programmaticMove = true;
+            this.map.panTo(latlng, { animate: true, duration: 0.5 });
+            setTimeout(() => { this._programmaticMove = false; }, 600);
+          }
+        }
+
+        // Grow live trail
+        this._rideTrailCoords.push(latlng);
+        if (this._rideTrailLayer) {
+          this._rideTrailLayer.setLatLngs(this._rideTrailCoords);
         }
 
         if (!this.rideAccuracyCircle) {
@@ -127,6 +171,15 @@ Object.assign(MapManager, {
     this.rideWatchId = null;
     this.ridePositionCb = null;
     this._gpsErrors = 0;
+    this._rideFollowing = false;
+    this._rideInitialZoomDone = false;
+    this._programmaticMove = false;
+
+    if (this._onRideMoveStart) {
+      this.map.off('movestart', this._onRideMoveStart);
+      this._onRideMoveStart = null;
+    }
+
     this._releaseWakeLock();
     if (this.rideMarker) {
       this.map.removeLayer(this.rideMarker);
@@ -135,6 +188,28 @@ Object.assign(MapManager, {
     if (this.rideAccuracyCircle) {
       this.map.removeLayer(this.rideAccuracyCircle);
       this.rideAccuracyCircle = null;
+    }
+    // Remove live trail (historical logs will be drawn separately)
+    if (this._rideTrailLayer) {
+      this.map.removeLayer(this._rideTrailLayer);
+      this._rideTrailLayer = null;
+      this._rideTrailCoords = [];
+    }
+    this._updateFollowBtn();
+  },
+
+  /**
+   * Update the recenter button appearance to reflect follow-mode state.
+   */
+  _updateFollowBtn() {
+    const btn = document.getElementById('rideRecenterBtn');
+    if (!btn) return;
+    if (this._rideFollowing) {
+      btn.classList.add('ride-fab-following');
+      btn.setAttribute('aria-label', 'Following — tap to stop');
+    } else {
+      btn.classList.remove('ride-fab-following');
+      btn.setAttribute('aria-label', 'Recenter on rider');
     }
   },
 
@@ -204,11 +279,18 @@ Object.assign(MapManager, {
   },
 
   /**
-   * Recenter on rider (also re-enables heading-up if it was on)
+   * Recenter on rider.
+   * Re-enables follow mode; pans to rider at current zoom (floor 13 so the
+   * map is still useful for navigation if the user had zoomed way out).
    */
   recenterRide() {
     if (this.rideMarker) {
-      this.map.setView(this.rideMarker.getLatLng(), Math.max(this.map.getZoom(), 15));
+      this._rideFollowing = true;
+      this._updateFollowBtn();
+      this._programmaticMove = true;
+      const targetZoom = Math.max(this.map.getZoom(), 13);
+      this.map.setView(this.rideMarker.getLatLng(), targetZoom, { animate: true });
+      setTimeout(() => { this._programmaticMove = false; }, 600);
     }
   }
 });

@@ -367,7 +367,23 @@ BEGIN
 END;
 
 -- ---------------------------------------------------------------------------
--- 8. LOGIN EVENTS (audit log)
+-- 8. RIDE LOGS — actual GPS tracks recorded during navigation
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ride_logs (
+  id                TEXT PRIMARY KEY CHECK(length(id) > 0),
+  trip_id           TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  journal_entry_id  TEXT REFERENCES journal_entries(id) ON DELETE SET NULL,
+  started_at        TEXT,
+  ended_at          TEXT,
+  distance_meters   REAL CHECK(distance_meters IS NULL OR distance_meters >= 0),
+  duration_seconds  REAL CHECK(duration_seconds IS NULL OR duration_seconds >= 0),
+  track             TEXT NOT NULL DEFAULT '[]',  -- JSON [{lat, lng, t}]
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ride_logs_trip ON ride_logs(trip_id, started_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- 9. LOGIN EVENTS (audit log)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS login_events (
   id            TEXT PRIMARY KEY CHECK(length(id) > 0),
