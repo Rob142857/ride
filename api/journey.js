@@ -36,8 +36,31 @@ export function parseRouteData(routeData) {
   if (!routeData) return null;
   return {
     coordinates: safeJsonParse(routeData.coordinates || '[]', []),
+    steps: safeJsonParse(routeData.steps || '[]', []),
     distance: routeData.distance,
     duration: routeData.duration,
+  };
+}
+
+/**
+ * Normalize a stored alternative_routes row into the client route shape,
+ * parsing JSON columns (coordinates, steps) into arrays.
+ */
+export function parseAlternativeRoute(ar) {
+  return {
+    id: ar.id,
+    route_index: ar.route_index ?? ar.alt_idx ?? 0,
+    name: ar.name || '',
+    summary: ar.summary || '',
+    color: ar.color || null,
+    distance: ar.distance_meters ?? ar.distance ?? 0,
+    distance_meters: ar.distance_meters ?? ar.distance ?? 0,
+    duration: ar.duration_seconds ?? ar.duration ?? 0,
+    duration_seconds: ar.duration_seconds ?? ar.duration ?? 0,
+    is_selected: !!ar.is_selected,
+    is_visible: ar.is_visible !== undefined ? !!ar.is_visible : true,
+    coordinates: safeJsonParse(ar.coordinates || '[]', []),
+    steps: safeJsonParse(ar.steps || '[]', []),
   };
 }
 
@@ -62,7 +85,7 @@ export function serializeOwnedJourney({ trip, waypoints, journal, attachments, r
     })),
     attachments: (attachments || []).map(withAttachmentUrl),
     route: parseRouteData(routeData),
-    alternativeRoutes: alternativeRoutes || [],
+    alternativeRoutes: (alternativeRoutes || []).map(parseAlternativeRoute),
     activeRouteIndex: trip.active_route_index ?? 0,
   };
 }

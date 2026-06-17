@@ -334,6 +334,7 @@ CREATE TABLE IF NOT EXISTS route_data (
   id          TEXT PRIMARY KEY CHECK(length(id) > 0),
   trip_id     TEXT NOT NULL UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
   coordinates TEXT DEFAULT '[]',    -- JSON array of {lat, lng}
+  steps       TEXT DEFAULT '[]',    -- JSON array of {text, distance, time, index}
   distance    REAL CHECK(distance IS NULL OR distance >= 0),
   duration    REAL CHECK(duration IS NULL OR duration >= 0),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))

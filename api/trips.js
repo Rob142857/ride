@@ -104,7 +104,7 @@ export const TripsHandler = {
     ).bind(params.id).first();
 
     const altRoutes = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, created_at FROM alternative_routes WHERE trip_id = ? ORDER BY route_index ASC'
+      'SELECT id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, steps, created_at FROM alternative_routes WHERE trip_id = ? ORDER BY route_index ASC'
     ).bind(params.id).all();
 
     return jsonResponse({
@@ -173,11 +173,12 @@ export const TripsHandler = {
     // Update route data if provided (triggers auto-bump trip version)
     if (body.route) {
       await env.RIDE_TRIP_PLANNER_DB.prepare(
-        `INSERT OR REPLACE INTO route_data (id, trip_id, coordinates, distance, duration)
-         VALUES (?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO route_data (id, trip_id, coordinates, steps, distance, duration)
+         VALUES (?, ?, ?, ?, ?, ?)`
       ).bind(
         generateId(), params.id,
         JSON.stringify(body.route.coordinates || []),
+        JSON.stringify(body.route.steps || []),
         body.route.distance || null,
         body.route.duration || null
       ).run();
@@ -220,7 +221,7 @@ export const TripsHandler = {
     if (!trip) return errorResponse('Trip not found', 404);
 
     const rows = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, created_at FROM alternative_routes WHERE trip_id = ? ORDER BY route_index ASC'
+      'SELECT id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, steps, created_at FROM alternative_routes WHERE trip_id = ? ORDER BY route_index ASC'
     ).bind(params.id).all();
 
     return jsonResponse({
@@ -235,6 +236,7 @@ export const TripsHandler = {
         is_selected: !!r.is_selected,
         is_visible: !!r.is_visible,
         coordinates: safeJsonParse(r.coordinates, []),
+        steps: safeJsonParse(r.steps, []),
         created_at: r.created_at,
       })),
     });
@@ -262,8 +264,8 @@ export const TripsHandler = {
     for (let i = 0; i < routes.length; i++) {
       const r = routes[i];
       await env.RIDE_TRIP_PLANNER_DB.prepare(
-        `INSERT INTO alternative_routes (id, trip_id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO alternative_routes (id, trip_id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, steps)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         generateId(),
         params.id,
@@ -275,7 +277,8 @@ export const TripsHandler = {
         typeof r.duration_seconds === 'number' ? r.duration_seconds : (typeof r.duration === 'number' ? r.duration : null),
         r.is_selected ? 1 : 0,
         r.is_visible !== false ? 1 : 0,
-        JSON.stringify(r.coordinates || [])
+        JSON.stringify(r.coordinates || []),
+        JSON.stringify(r.steps || [])
       ).run();
     }
 

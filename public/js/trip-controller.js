@@ -185,6 +185,7 @@ Object.assign(App, {
       summary: r.summary || '',
       color: r.color || null,
       coordinates: r.coordinates || r.inputWaypoints?.map(w => [w.lng, w.lat]) || [],
+      steps: Array.isArray(r.steps) ? r.steps : [],
       distance_meters: typeof r.distance === 'number' ? r.distance : (typeof r.distance_meters === 'number' ? r.distance_meters : null),
       duration_seconds: typeof r.duration === 'number' ? r.duration : (typeof r.time === 'number' ? r.time : (typeof r.duration_seconds === 'number' ? r.duration_seconds : null)),
       is_selected: i === activeIdx,

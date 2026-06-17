@@ -142,11 +142,27 @@ Object.assign(App, {
 
   enterRideMode() {
     if (!this.currentTrip) { UI.showToast('No trip loaded', 'error'); return; }
-    if (!this.currentTrip.route?.coordinates?.length) {
+    const activeRoute = this.getActiveRoute();
+    if (!activeRoute?.coordinates?.length) {
       UI.showToast('Add a route first to start riding', 'error'); return;
     }
     if (!('geolocation' in navigator)) {
       UI.showToast('Your device does not support GPS', 'error'); return;
+    }
+    // Navigate the ACTIVE route (the alternative the rider selected), not just
+    // the primary. We temporarily point currentTrip.route at the active route
+    // so the existing HUD / metrics / reroute code all operate on the same
+    // geometry the rider sees drawn on the map. The real primary is restored on
+    // exit so we never persist the swapped value.
+    if (activeRoute !== this.currentTrip.route) {
+      this._primaryRouteBackup = this.currentTrip.route;
+      this.currentTrip.route = {
+        ...activeRoute,
+        coordinates: activeRoute.coordinates,
+        steps: Array.isArray(activeRoute.steps) ? activeRoute.steps : []
+      };
+    } else {
+      this._primaryRouteBackup = null;
     }
     this.isRiding = true;
     this.rideVisitedWaypoints = new Set();
@@ -179,9 +195,42 @@ Object.assign(App, {
     this.rideRerouting = false;
     this.offRouteCounter = 0;
     this._rideArrived = false;
+    // Restore the real (primary) route if ride mode swapped in an alternative.
+    if (this._primaryRouteBackup) {
+      this.currentTrip.route = this._primaryRouteBackup;
+      this._primaryRouteBackup = null;
+    }
     document.getElementById('rideOverlay')?.classList.add('hidden');
     document.body.classList.remove('ride-mode');
     MapManager.stopRide();
+  },
+
+  /**
+   * Resolve the route the rider should actually navigate, honouring the
+   * selected alternative (activeRouteIndex). Index 0 is the primary route
+   * (currentTrip.route); higher indices map to a stored alternative. Falls
+   * back to the primary route if the active alternative has no geometry.
+   */
+  getActiveRoute() {
+    const trip = this.currentTrip;
+    if (!trip) return null;
+    const idx = Number(trip.activeRouteIndex ?? trip.active_route_index ?? 0) || 0;
+    if (idx > 0) {
+      const alts = trip.alternativeRoutes || trip.alternative_routes || [];
+      // alts may be keyed by route_index (0 = primary included) OR be the
+      // primary-excluded slice form (0-based = idx-1). Try both.
+      let match = alts.find(r => Number(r.route_index ?? r.routeIndex ?? r.alt_idx) === idx);
+      if (!match) match = alts[idx - 1];
+      if (match?.coordinates?.length) {
+        return {
+          coordinates: match.coordinates,
+          steps: Array.isArray(match.steps) ? match.steps : [],
+          distance: match.distance ?? match.distance_meters ?? null,
+          duration: match.duration ?? match.duration_seconds ?? match.time ?? null
+        };
+      }
+    }
+    return trip.route;
   },
 
   precomputeRouteMetrics() {
