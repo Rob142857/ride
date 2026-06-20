@@ -50,7 +50,7 @@ export function orderWaypointsWithTripSettings(waypointsRows, tripSettings) {
 export function parseIfMatchVersion(request) {
   const raw = request?.headers?.get('If-Match');
   if (!raw) return null;
-  const trimmed = raw.trim().replace(/^\"|\"$/g, '');
+  const trimmed = raw.trim().replace(/^"|"$/g, '');
   const n = Number.parseInt(trimmed, 10);
   return Number.isFinite(n) ? n : null;
 }

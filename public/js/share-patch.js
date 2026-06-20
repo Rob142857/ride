@@ -247,7 +247,7 @@
 
   // ── PWA Install Prompt (share pages only) ───────────────────────────
   const INSTALL_STORAGE_KEY = 'ride_share_install_dismissed';
-  const INSTALL_COOLDOWN_MS =7 * 24 * 60 * 60 * 1000; //7 days
+  const INSTALL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
   function isInstallDismissed() {
     try {
@@ -269,12 +269,7 @@
     btn.id = 'rideShareInstallBtn';
     btn.className = 'footer-cta ride-install-btn';
     btn.type = 'button';
-    btn.innerHTML = `
-      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 02424" style="vertical-align:middle;margin-right:4px;">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M416v1a330003 3h10a3 30003-3v-1m-4-4-44m00-4-4m44V4"/>
-      </svg>
-      Install Ride
-    `;
+    btn.innerHTML = '⬇ Install Ride';
     return btn;
   }
 
@@ -294,8 +289,7 @@
   function attachInstallButton() {
     const container = document.querySelector('.footer-actions');
     if (!container) return;
-    const existing = document.getElementById('rideShareInstallBtn');
-    if (existing) return;
+    if (document.getElementById('rideShareInstallBtn')) return;
     const btn = createInstallButton();
     if (!btn) return;
     btn.addEventListener('click', triggerInstall);
@@ -310,21 +304,18 @@
       attachInstallButton();
     }
 
-    window.addEventListener('beforeinstallprompt', (e) => {
+    window.addEventListener('beforeinstallprompt', () => {
       if (isInstallDismissed()) return;
       attachInstallButton();
     });
   }
 
-  const installRun = () => {
-    injectMobileShareUI();
-    initInstallPrompt();
-  };
-
+  // Run install prompt init alongside mobile UI init
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', installRun);
+    document.addEventListener('DOMContentLoaded', initInstallPrompt);
   } else {
-    installRun();
+    initInstallPrompt();
   }
+
 
 })();

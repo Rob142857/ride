@@ -12,6 +12,8 @@
     "dev": "npx serve -p 3000",
     "start": "npx serve -p 3000",
     "deploy": "node scripts/deploy.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "db:create": "wrangler d1 create ride-db",
     "db:migrate": "wrangler d1 execute ride-db --file=./api/schema.sql",
     "db:migrate:local": "wrangler d1 execute ride-db --file=./api/schema.sql --local",
@@ -31,6 +33,8 @@
   "author": "Robert Evans - Objective Artefacts Australia",
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
+    "@eslint/js": "^9.0",
+    "eslint": "^9.0.0",
     "sharp": "^0.34.5",
     "wrangler": "^4.80.0"
   }
