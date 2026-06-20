@@ -174,11 +174,12 @@ const API = {
     try {
       const response = await fetch(url, config);
       let data;
+      const clonedResponse = response.clone();
       try {
         data = await response.json();
       } catch (_) {
         // Fallback for non-JSON responses (HTML error pages, empty bodies)
-        const text = await response.text();
+        const text = await clonedResponse.text();
         data = text ? { error: text } : {};
       }
 
@@ -214,7 +215,7 @@ const API = {
 
       return data;
     } catch (error) {
-      console.error('API Error:', error);
+      if (!options.silent) console.error('API Error:', error);
       // Normalize network failures
       if (!error.status) {
         error.status = 0;
@@ -238,7 +239,7 @@ const API = {
   auth: {
     async getUser() {
       try {
-        const data = await API.request('/auth/me');
+        const data = await API.request('/auth/me', { silent: true });
         return data.user;
       } catch (err) {
         if (err.status === 401) return null;

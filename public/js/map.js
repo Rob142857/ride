@@ -127,7 +127,10 @@ const MapManager = {
           resolve({ lat: latitude, lng: longitude });
         },
         (error) => {
-          console.log('Geolocation error:', error);
+          if (error?.code !== 1) {
+            // Log unexpected geolocation errors, but ignore permission denials
+            console.warn('Geolocation error:', error);
+          }
           if (toast) {
             const msg = error?.code === 1
               ? 'Location permission denied'

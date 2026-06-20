@@ -17,7 +17,6 @@ Object.assign(App, {
     const prev = this._authState;
     if (prev === state && state !== 'CHECKING') return; // no-op for same state (allow re-CHECKING)
     this._authState = state;
-    console.debug(`[auth] ${prev} → ${state}${reason ? ': ' + reason : ''}`);
 
     switch (state) {
       case 'CHECKING':
@@ -39,10 +38,10 @@ Object.assign(App, {
           // Was logged in, now logged out — clear trip state
           this._clearTripUI();
         }
-        if (reason) UI.showToast(reason, prev === 'AUTHENTICATED' ? 'error' : 'info');
+        if (reason && prev !== 'CHECKING') UI.showToast(reason, prev === 'AUTHENTICATED' ? 'error' : 'info');
         if (!this.isSharedView && !UI.isLandingGateVisible()) {
           UI.closeModal('loginModal');
-          UI.showAuthGate(reason || 'Signed out');
+          UI.showAuthGate(reason || 'Sign in to save & share');
         }
         break;
 
@@ -79,7 +78,6 @@ Object.assign(App, {
       this._setAuthState('UNAUTHENTICATED', 'Signed out');
       return false;
     } catch (error) {
-      console.error('Auth check failed', error);
       const reason = error.status === 401
         ? 'Session expired. Please sign in again.'
         : 'Auth check failed. Working offline until re-auth.';
@@ -95,7 +93,7 @@ Object.assign(App, {
 
   handleConnectionLost(detail) {
     if (this._authState !== 'AUTHENTICATED') {
-      if (!this.isSharedView) UI.showAuthGate('Signed out');
+      if (!this.isSharedView) UI.showAuthGate('Sign in to save & share');
       return;
     }
     const kind = detail?.kind;
@@ -136,7 +134,7 @@ Object.assign(App, {
       if (!landingSeen) {
         UI.showLandingGate();
       } else {
-        UI.showAuthGate('Signed out');
+        UI.showAuthGate('Sign in to save & share');
       }
       this.loginPromptShown = true;
     }
@@ -148,7 +146,7 @@ Object.assign(App, {
       if (this.currentUser) {
         this.showUserDropdown();
       } else {
-        UI.showAuthGate('Signed out');
+        UI.showAuthGate('Sign in to save & share');
       }
     });
   },

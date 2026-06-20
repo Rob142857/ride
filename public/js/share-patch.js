@@ -244,4 +244,87 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => showMobileUI(true), 150);
   });
+
+  // ── PWA Install Prompt (share pages only) ───────────────────────────
+  const INSTALL_STORAGE_KEY = 'ride_share_install_dismissed';
+  const INSTALL_COOLDOWN_MS =7 * 24 * 60 * 60 * 1000; //7 days
+
+  function isInstallDismissed() {
+    try {
+      const raw = localStorage.getItem(INSTALL_STORAGE_KEY);
+      if (!raw) return false;
+      return Date.now() - Number(raw) < INSTALL_COOLDOWN_MS;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function markInstallDismissed() {
+    try { localStorage.setItem(INSTALL_STORAGE_KEY, String(Date.now())); } catch (_) {}
+  }
+
+  function createInstallButton() {
+    if (document.getElementById('rideShareInstallBtn')) return null;
+    const btn = document.createElement('button');
+    btn.id = 'rideShareInstallBtn';
+    btn.className = 'footer-cta ride-install-btn';
+    btn.type = 'button';
+    btn.innerHTML = `
+      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 02424" style="vertical-align:middle;margin-right:4px;">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M416v1a330003 3h10a3 30003-3v-1m-4-4-44m00-4-4m44V4"/>
+      </svg>
+      Install Ride
+    `;
+    return btn;
+  }
+
+  async function triggerInstall() {
+    const promptEvent = window.__rideDeferredInstallPrompt;
+    if (!promptEvent) return;
+    promptEvent.prompt();
+    const { outcome } = await promptEvent.userChoice;
+    window.__rideDeferredInstallPrompt = null;
+    const btn = document.getElementById('rideShareInstallBtn');
+    if (btn) btn.remove();
+    if (outcome === 'dismissed') {
+      markInstallDismissed();
+    }
+  }
+
+  function attachInstallButton() {
+    const container = document.querySelector('.footer-actions');
+    if (!container) return;
+    const existing = document.getElementById('rideShareInstallBtn');
+    if (existing) return;
+    const btn = createInstallButton();
+    if (!btn) return;
+    btn.addEventListener('click', triggerInstall);
+    container.insertBefore(btn, container.firstChild);
+  }
+
+  function initInstallPrompt() {
+    if (!('beforeinstallprompt' in window)) return;
+    if (isInstallDismissed()) return;
+
+    if (window.__rideDeferredInstallPrompt) {
+      attachInstallButton();
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      if (isInstallDismissed()) return;
+      attachInstallButton();
+    });
+  }
+
+  const installRun = () => {
+    injectMobileShareUI();
+    initInstallPrompt();
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installRun);
+  } else {
+    installRun();
+  }
+
 })();

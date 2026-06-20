@@ -66,7 +66,6 @@ async function checkForUpdate() {
   if (!remoteBuild) return;
 
   if (knownBuildId && remoteBuild !== knownBuildId) {
-    console.log(`[SW] Build changed: ${knownBuildId} → ${remoteBuild}`);
     knownBuildId = remoteBuild;
 
     // Purge app-shell cache (keep tiles — they're content-addressed)
@@ -89,7 +88,6 @@ async function checkForUpdate() {
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
-      console.log('[SW] Caching app shell');
       await cache.addAll(STATIC_ASSETS.map(u => new Request(u, { cache: 'reload' })));
       await cache.addAll(EXTERNAL_ASSETS);
     })

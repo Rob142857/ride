@@ -151,9 +151,6 @@ const App = {
   /* --- /Waypoint history --- */
 
   async init() {
-
-    console.log('Ride Trip Planner initializing...');
-
     this.isOnline = navigator.onLine;
     window.addEventListener('online', () => this.handleOnlineChange(true));
     window.addEventListener('offline', () => this.handleOnlineChange(false));
@@ -205,7 +202,6 @@ const App = {
     }
 
     this.refreshTripsList();
-    console.log('Ride Trip Planner initialized');
   },
 
   /* --- Shared utilities --- */

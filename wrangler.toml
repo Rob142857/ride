@@ -1,5 +1,6 @@
 name = "ride-trip-planner"
 main = "api/worker.js"
+account_id = "6e5c976c644b6fe93de144341b688115"
 compatibility_date = "2026-04-01"
 routes = ["ride.incitat.io/*"]
 workers_dev = false
