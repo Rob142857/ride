@@ -1,0 +1,2415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Dynamic meta tags will be injected by worker for social sharing -->
+  <title>Trip | Ride</title>
+  <meta name="description" content="Explore this trip on Ride - a friendly open-source app for route planning and ride sharing.">
+  
+  <!-- Open Graph for Facebook, LinkedIn, etc -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Ride">
+  <meta property="og:title" content="Trip | Ride">
+  <meta property="og:description" content="Explore this trip on Ride, a friendly open-source ride planning and sharing app.">
+  <meta property="og:image" content="https://ride.incitat.io/icons/og-ride.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="">
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@incitatio">
+  <meta name="twitter:title" content="Trip | Ride">
+  <meta name="twitter:description" content="Explore this trip on Ride, a friendly open-source ride planning and sharing app.">
+  <meta name="twitter:image" content="https://ride.incitat.io/icons/og-ride.png">
+  
+  <!-- Favicons -->
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/ride-logo-32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="/icons/ride-logo-48.png">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/global.css">
+    <link rel="stylesheet" href="css/trip.css">
+    <script src="js/trip-share-hero.js" defer></script>
+  
+  <style>
+    :root {
+      /* Map shared-trip page styling onto global.css tokens (clean, light, minimal) */
+      --bg-primary: var(--neutral-50);
+      --bg-secondary: var(--neutral-100);
+      --bg-tertiary: var(--neutral-100);
+      --bg-card: var(--white);
+      --text-primary: var(--neutral-900);
+      --text-secondary: var(--neutral-600);
+      --text-muted: var(--neutral-500);
+      --accent: var(--accent);
+      --accent-soft: rgba(17, 24, 39, 0.06);
+      --border: var(--neutral-200);
+      --shadow-lg: none;
+      --radius-md: var(--radius);
+      --radius-lg: var(--radius);
+      --radius-btn: 3px;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html {
+      scroll-behavior: smooth;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* Hero Section */
+    .hero {
+      position: relative;
+      height: min(50vh, 420px);
+      height: min(50dvh, 420px);
+      min-height: 260px;
+      width: 100%;
+      overflow: hidden;
+    }
+    
+    .hero-placeholder {
+      position: absolute;
+      inset: 0;
+      padding: 0;
+      background: var(--neutral-900);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      overflow: hidden;
+    }
+    
+    .hero-placeholder svg {
+      width: 120px;
+      height: 120px;
+      opacity: 0.3;
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    .hero-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.22) 0%,
+        rgba(0, 0, 0, 0.36) 45%,
+        rgba(0, 0, 0, 0.75) 100%
+      );
+    }
+    
+    .hero-content {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 40px 24px;
+      max-width: 900px;
+      margin: 0 auto;
+      color: #fff;
+    }
+
+    .trip-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.85);
+      padding: 0;
+      border-radius: 0;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+    
+    .trip-title {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 700;
+      line-height: 1.15;
+      margin-bottom: 12px;
+      color: #fff;
+      text-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+    }
+    
+    .trip-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 14px;
+      margin-top: 6px;
+    }
+    
+    .trip-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+    }
+    
+    .trip-meta-item svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.7;
+      color: #f8fafc;
+    }
+    
+    /* Main Content */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    
+    /* Map Section */
+    .map-section {
+      margin: 20px 24px 40px;
+      position: relative;
+      z-index: 10;
+    }
+    
+    .map-card {
+      background: var(--bg-card);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: none;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .map-actions {
+      position: relative;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-card);
+    }
+
+    .map-actions .action-group {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .map-container {
+      height: 400px;
+      background: var(--bg-tertiary);
+    }
+    
+    #trip-map {
+      height: 100%;
+      width: 100%;
+    }
+
+    .map-btn {
+      padding: 8px 10px;
+      border-radius: var(--radius-btn);
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.2px;
+      box-shadow: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .map-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .map-btn.is-active {
+      background: var(--bg-secondary);
+    }
+
+    .map-card.fullscreen {
+      position: fixed;
+      inset: 16px;
+      width: auto;
+      height: calc(100vh - 32px);
+      height: calc(100dvh - 32px);
+      margin: 0;
+      max-width: none;
+      z-index: 1200;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .map-card.fullscreen .map-container {
+      flex: 1;
+      height: auto;
+    }
+
+    body.no-scroll {
+      overflow: hidden;
+    }
+    
+    .map-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 0;
+      background: transparent;
+      border-top: 1px solid var(--border);
+    }
+
+    .download-actions {
+      margin: 12px 0 0;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+    }
+
+    .download-actions .map-btn {
+      border-color: var(--border);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      box-shadow: none;
+    }
+    
+    .stat-item {
+      background: transparent;
+      padding: 14px 16px;
+      text-align: left;
+      border-right: 1px solid var(--border);
+    }
+
+    .stat-item:last-child {
+      border-right: none;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    /* Description */
+    .description-section {
+      margin-bottom: 48px;
+    }
+    
+    .description-text {
+      font-size: 18px;
+      line-height: 1.8;
+      color: var(--text-secondary);
+    }
+    
+    /* Waypoints */
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    
+    .waypoints-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-bottom: 48px;
+      border-top: 1px solid var(--border);
+    }
+    
+    .waypoint-card {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 16px;
+      padding: 18px 0;
+      background: transparent;
+      border-radius: 0;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    
+    .waypoint-card:hover {
+      background: var(--accent-soft);
+    }
+    
+    .waypoint-number {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    
+    .waypoint-info {
+      flex: 1;
+    }
+    
+    .waypoint-name {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .waypoint-type {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    
+    /* Journal Entries */
+    .journal-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-bottom: 48px;
+      border-top: 1px solid var(--border);
+    }
+    
+    .journal-card {
+      background: transparent;
+      border-radius: 0;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      overflow: visible;
+    }
+    
+    .journal-header {
+      padding: 18px 0 10px;
+      border-bottom: none;
+    }
+    
+    .journal-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .journal-date {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    
+    .journal-content {
+      padding: 0 0 16px;
+      color: var(--text-secondary);
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+    
+    .journal-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 0 18px;
+    }
+    
+    .tag {
+      background: transparent;
+      color: var(--text-muted);
+      padding: 0;
+      border-radius: 0;
+      font-size: 12px;
+    }
+
+    /* Journal images */
+    .journal-images {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      padding: 4px 0 16px;
+    }
+
+    .journal-images.single-image {
+      grid-template-columns: 1fr;
+      max-width: 600px;
+    }
+
+    .journal-image {
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+      aspect-ratio: 4 / 3;
+      background: var(--bg-tertiary);
+    }
+
+    .journal-images.single-image .journal-image {
+      aspect-ratio: 16 / 10;
+    }
+
+    .journal-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.3s ease;
+    }
+
+    .journal-image:hover img {
+      transform: scale(1.03);
+    }
+
+    .journal-image-caption {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 24px 10px 8px;
+      font-size: 12px;
+      color: #fff;
+      background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 100%);
+    }
+    
+    /* Gallery */
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 48px;
+    }
+    
+    .gallery-item {
+      aspect-ratio: 1;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      background: var(--bg-tertiary);
+    }
+
+    .gallery-grid.few-items {
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    }
+
+    .gallery-grid.few-items .gallery-item {
+      aspect-ratio: 4 / 3;
+    }
+    
+    .gallery-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+    
+    .gallery-item:hover img {
+      transform: scale(1.05);
+    }
+    
+    .gallery-item-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .gallery-item:hover .gallery-item-overlay {
+      opacity: 1;
+    }
+    
+    .gallery-caption {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      color: white;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    
+    /* Contact Card */
+    .contact-card {
+      background: transparent;
+      border-radius: 0;
+      border: none;
+      border-top: 1px solid var(--border);
+      padding: 18px 0;
+      margin-bottom: 48px;
+      text-align: left;
+    }
+    
+    .contact-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    
+    .contact-value {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--accent);
+    }
+    
+    /* Footer */
+    .page-footer {
+      padding: 48px 24px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      margin-top: 48px;
+    }
+    
+    .footer-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    
+    .footer-brand picture {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius);
+      background: transparent;
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .footer-brand img {
+      width: 24px;
+      height: 24px;
+      display: block;
+    }
+    
+    .footer-brand-text {
+      font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+      font-style: italic;
+      font-size: 22px;
+      font-weight: 400;
+      letter-spacing: 0.03em;
+      background: linear-gradient(
+        105deg,
+        #c7d2fe 0%, #e0e7ff 20%, #fff 35%,
+        #e0e7ff 50%, #a5b4fc 70%, #c7d2fe 100%
+      );
+      background-size: 200% auto;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: wordmark-shimmer 6s ease-in-out infinite;
+      transition: filter 0.4s ease, transform 0.4s ease;
+    }
+
+    .footer-brand-text:hover {
+      animation-duration: 2s;
+      filter: drop-shadow(0 0 14px rgba(165, 180, 252, 0.35));
+      transform: scale(1.05);
+    }
+
+    @keyframes wordmark-shimmer {
+      0%   { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    
+    .footer-tagline {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    
+    .footer-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+      background: linear-gradient(90deg, #ff5f7a 0%, #a855f7 30%, #3b82f6 55%, #22c55e 78%, #f59e0b 100%);
+      background-size: 220% 220%;
+      background-position: 0% 50%;
+      color: #fff;
+      border: 1px solid rgba(0,0,0,0.08);
+      padding: 12px 24px;
+      border-radius: var(--radius-btn);
+      font-weight: 600;
+      text-decoration: none;
+      transition: background-position 0.35s ease, transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: none;
+      overflow: hidden;
+    }
+
+    .footer-cta::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.35) 25%, transparent 50%);
+      transform: translateX(-120%);
+      transition: transform 0.5s ease;
+      pointer-events: none;
+    }
+    
+    .footer-cta:hover {
+      transform: none;
+      box-shadow: none;
+      background-position: 100% 50%;
+    }
+
+    .footer-cta:hover::after {
+      transform: translateX(120%);
+    }
+
+    .footer-open-source {
+      margin-top: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .footer-open-source a {
+      color: var(--text-muted);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(255,255,255,0.22);
+      padding-bottom: 1px;
+      transition: all 0.2s ease;
+    }
+
+    .footer-open-source a:hover {
+      color: var(--text-primary);
+      border-color: var(--text-primary);
+    }
+    
+    .footer-credits {
+      margin-top: 48px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    
+    .footer-credits a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    
+    .footer-credits a:hover {
+      color: var(--text-primary);
+      text-decoration: underline;
+    }
+    
+    /* Loading State */
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
+    }
+    
+    .loading-spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Error State */
+    .error-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+      padding: 24px;
+    }
+    
+    .error-icon {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 24px;
+      opacity: 0.5;
+    }
+    
+    .error-title {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .error-message {
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+    }
+    
+    .error-cta {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    
+    /* Lightbox */
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.95);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+    
+    .lightbox.active {
+      opacity: 1;
+      visibility: visible;
+    }
+    
+    .lightbox-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 48px;
+      height: 48px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s ease;
+      z-index: 1;
+    }
+
+    .lightbox-close:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .lightbox-image {
+      max-width: 90%;
+      max-height: 85vh;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    .lightbox-caption {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      margin-top: 12px;
+      text-align: center;
+      max-width: 80%;
+    }
+    
+
+    /* Login modal (shared styling with main app) */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+    }
+
+    .modal.hidden {
+      display: none;
+    }
+
+    .modal-content.login-modal {
+      background: #0f1117;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      width: min(420px, 90vw);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+      color: var(--text-primary);
+    }
+
+    .modal-content .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .modal-content .modal-header h3,
+    .modal-subtitle {
+      color: var(--text-primary);
+    }
+
+    .modal-subtitle {
+      margin: 0 0 6px;
+      color: var(--text-secondary);
+    }
+
+    .modal-content .modal-close {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .login-buttons {
+      display: grid;
+      gap: 10px;
+      margin: 16px 0 10px;
+    }
+
+    .login-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: var(--radius-btn);
+      background: #161b27;
+      color: #fff;
+      text-decoration: none;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+    }
+
+    .login-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+      background: #1c2231;
+    }
+
+    .login-btn svg {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .login-note {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    /* Empty States */
+    .empty-state {
+      text-align: center;
+      padding: 48px;
+      color: var(--text-muted);
+    }
+    
+    /* Responsive */
+    @media (max-width: 640px) {
+      .hero {
+        height: 52vh;
+        min-height: 320px;
+        max-height: 480px;
+      }
+
+      .hero-overlay {
+        background: linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.35) 0%,
+          rgba(0, 0, 0, 0.55) 50%,
+          rgba(0, 0, 0, 0.85) 100%
+        );
+      }
+      
+      .hero-content {
+        padding: 28px 16px 24px;
+      }
+
+      .trip-title {
+        font-size: clamp(1.75rem, 7vw, 2.5rem);
+        line-height: 1.1;
+        margin-bottom: 10px;
+      }
+
+      .trip-meta {
+        gap: 12px;
+        font-size: 13px;
+      }
+
+      .trip-meta-item svg {
+        width: 14px;
+        height: 14px;
+      }
+      
+      .map-section {
+        margin: 12px 12px 28px;
+      }
+
+      .map-actions {
+        padding: 10px 12px;
+        gap: 6px;
+      }
+
+      .map-actions .action-group {
+        gap: 6px;
+      }
+
+      .map-btn {
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+      
+      .map-container {
+        height: 260px;
+      }
+      
+      .container {
+        padding: 0 16px;
+      }
+
+      /* Horizontal scroll route selector on mobile */
+      .route-selector {
+        padding: 12px 12px 16px;
+      }
+
+      .route-selector-title {
+        font-size: 0.78rem;
+        margin-bottom: 10px;
+      }
+
+      .route-option-list {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+        padding-bottom: 4px;
+        margin: 0 -4px;
+        scrollbar-width: none;
+      }
+
+      .route-option-list::-webkit-scrollbar {
+        display: none;
+      }
+
+      .route-option {
+        flex: 0 0 auto;
+        width: 155px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 12px;
+        margin-bottom: 0;
+        scroll-snap-align: start;
+        border-radius: 14px;
+      }
+
+      .route-option.is-active {
+        box-shadow: 0 0 0 2px #2563eb, 0 4px 12px rgba(37,99,235,0.15);
+      }
+
+      .route-badges {
+        margin-bottom: 4px;
+      }
+
+      .route-badge {
+        font-size: 0.62rem;
+        padding: 2px 7px;
+      }
+
+      .route-summary {
+        font-size: 0.82rem;
+        white-space: normal;
+        line-height: 1.3;
+      }
+
+      .route-meta-small {
+        font-size: 0.72rem;
+      }
+
+      .route-check {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 20px;
+        height: 20px;
+      }
+      
+      .gallery-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+      }
+
+      .gallery-grid.few-items {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .journal-images {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+
+      .journal-images.single-image {
+        grid-template-columns: 1fr;
+      }
+
+      .map-stats {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .stat-item {
+        padding: 10px 8px;
+        text-align: center;
+      }
+
+      .stat-item:last-child:nth-child(4) {
+        grid-column: span 3;
+        text-align: center;
+      }
+
+      .stat-value {
+        font-size: 18px;
+      }
+
+      .stat-label {
+        font-size: 10px;
+      }
+
+      .description-text {
+        font-size: 16px;
+        line-height: 1.7;
+      }
+
+      .waypoint-card {
+        padding: 14px 0;
+        gap: 12px;
+      }
+
+      .journal-header {
+        padding: 14px 0 8px;
+      }
+
+      .journal-title {
+        font-size: 16px;
+      }
+
+      .page-footer {
+        padding: 36px 16px;
+        margin-top: 36px;
+      }
+
+      .footer-brand-text {
+        font-size: 20px;
+      }
+
+      .footer-cta {
+        padding: 10px 20px;
+        font-size: 14px;
+      }
+
+      .lightbox-close {
+        top: 12px;
+        right: 12px;
+        width: 40px;
+        height: 40px;
+      }
+
+      .lightbox-image {
+        max-width: 96%;
+        max-height: 80vh;
+      }
+    }
+
+    /* ─────────────── Route Selector ─────────────── */
+    .route-selector {
+      border-top: 1px solid var(--glass-border);
+      padding: 16px 24px 20px;
+    }
+
+    .route-selector-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 10px;
+    }
+
+    .route-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px;
+      background: white;
+      border: 2px solid var(--glass-border);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all .18s var(--ease-out);
+      text-align: left;
+      position: relative;
+    }
+
+    .route-option:hover {
+      border-color: #b4ccf0;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .route-option.is-active {
+      border-color: #2563eb;
+      background: #eef5ff;
+    }
+
+    .route-option.is-active .route-check {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .route-option:focus-visible {
+      outline: 0;
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.3);
+    }
+
+    .route-badges {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 3px;
+    }
+
+    .route-badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .route-badge.route-fastest {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .route-badge.route-shortest {
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .route-badge.route-saved {
+      background: #fef9c3;
+      color: #92400e;
+    }
+
+    .route-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .route-summary {
+      font-size: .9rem;
+      font-weight: 600;
+      color: var(--text-body);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .route-meta-small {
+      font-size: .78rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .route-check {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #2563eb;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      opacity: 0;
+      transform: scale(0.7);
+      transition: all .2s var(--ease-out);
+    }
+
+    .route-option.is-active .route-check {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    @media (max-width: 640px) {
+      .route-selector {
+        padding: 12px 16px 16px;
+      }
+
+      .route-option {
+        padding: 12px;
+        gap: 10px;
+      }
+
+      .route-summary {
+        font-size: .85rem;
+      }
+
+      .route-meta-small {
+        font-size: .75rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Loading State -->
+  <div id="loading" class="loading">
+    <div class="loading-spinner"></div>
+    <p>Loading trip...</p>
+  </div>
+  
+  <!-- Error State (hidden by default) -->
+  <div id="error" class="error-state" style="display: none;">
+    <svg class="error-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <h1 class="error-title">Trip Not Found</h1>
+    <p class="error-message">This trip may have been removed or the link is incorrect.</p>
+    <a href="/" class="error-cta">Plan Your Own Trip →</a>
+  </div>
+  
+  <!-- Main Content (hidden until loaded) -->
+  <main id="content" style="display: none;">
+    
+    <!-- Hero Section -->
+    <section class="hero">
+      <div id="hero-image-container" class="hero-placeholder">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+        </svg>
+      </div>
+      <div class="hero-overlay"></div>
+
+      <div class="hero-content">
+        <div class="trip-badge">
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          Trip
+        </div>
+        <h1 id="trip-title" class="trip-title">Loading...</h1>
+        <div id="trip-meta" class="trip-meta">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Conditionally rendered hero banner for share cards -->
+    <div id="hero-banner-container" style="display:none;"></div>
+    
+    <!-- Map Section -->
+    <section id="map-section" class="map-section container">
+      <div class="map-card">
+        <div class="map-actions">
+          <div class="action-group">
+            <button class="map-btn" id="downloadJsonBtn">JSON</button>
+            <button class="map-btn" id="downloadGpxBtn">GPX</button>
+              <button class="map-btn use-trip-btn" id="useTripBtn">Import trip</button>
+          </div>
+          <div class="action-group">
+            <button class="map-btn is-active" id="basemapStreetsBtn" type="button">Streets</button>
+            <button class="map-btn" id="basemapSatelliteBtn" type="button">Satellite</button>
+            <button class="map-btn" id="mapExpandBtn">Expand map</button>
+          </div>
+        </div>
+        <div class="map-container">
+          <div id="trip-map"></div>
+        </div>
+        <div id="map-stats" class="map-stats">
+          <!-- Dynamically populated -->
+        </div>
+        <div id="route-selector" class="route-selector" style="display:none;">
+          <!-- Dynamically populated when alternative routes exist -->
+        </div>
+      </div>
+      <!-- <div class="download-actions">
+        <button class="map-btn" id="downloadJsonBtnAlt">JSON</button>
+        <button class="map-btn" id="downloadGpxBtnAlt">GPX</button>
+        <button class="map-btn use-trip-btn" id="useTripBtnAlt">Import trip</button>
+      </div> -->
+    </section>
+    
+    <!-- Description -->
+    <section id="description-section" class="description-section container" style="display: none;">
+      <p id="trip-description" class="description-text"></p>
+    </section>
+    
+    <!-- Waypoints -->
+    <section id="waypoints-section" class="container" style="display: none;">
+      <h2 class="section-title">Route Stops</h2>
+      <div id="waypoints-list" class="waypoints-list">
+        <!-- Dynamically populated -->
+      </div>
+    </section>
+    
+    <!-- Gallery -->
+    <section id="gallery-section" class="container" style="display: none;">
+      <h2 class="section-title">Photos</h2>
+      <div id="gallery-grid" class="gallery-grid">
+        <!-- Dynamically populated -->
+      </div>
+    </section>
+    
+    <!-- Journal -->
+    <section id="journal-section" class="container" style="display: none;">
+      <h2 class="section-title">Journal</h2>
+      <div id="journal-list" class="journal-list">
+        <!-- Dynamically populated -->
+      </div>
+    </section>
+    
+    <!-- Contact -->
+    <section id="contact-section" class="container" style="display: none;">
+      <div class="contact-card">
+        <div class="contact-label">Contact</div>
+        <div id="contact-value" class="contact-value"></div>
+      </div>
+    </section>
+    
+    <!-- Footer -->
+    <footer class="page-footer">
+      <div class="footer-brand">
+        <img src="/icons/icon.svg" alt="Ride logo" style="width:24px;height:24px;border-radius:6px;">
+        <span class="footer-brand-text">Ride</span>
+      </div>
+      <p class="footer-tagline">Friendly open-source ride planning and sharing</p>
+      <a href="/" class="footer-cta">
+        Plan Your Trip
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+        </svg>
+      </a>
+      <div class="footer-open-source">
+        <a href="/about.html">About</a>
+      </div>
+      <p class="footer-credits">Crafted with Care<br><a href="https://objectiveartefacts.com.au" target="_blank" rel="noopener">Objective Artefacts Australia</a><br><a href="https://incitat.io" target="_blank" rel="noopener">incitat.io</a></p>
+    </footer>
+    
+  </main>
+  
+  <!-- Lightbox for images -->
+  <div id="lightbox" class="lightbox">
+    <button class="lightbox-close" onclick="closeLightbox()">
+      <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+    <img id="lightbox-image" class="lightbox-image" src="" alt="">
+    <div id="lightbox-caption" class="lightbox-caption"></div>
+  </div>
+
+  <!-- Login Modal (reused flow from main app) -->
+  <div id="loginModal" class="modal hidden">
+    <div class="modal-content login-modal">
+      <div class="modal-header">
+        <h3>Welcome to Ride</h3>
+        <button type="button" class="modal-close" data-close-login aria-label="Close">×</button>
+      </div>
+      <p class="modal-subtitle">Plan, collaborate, share, and record your rides, hikes, and adventures—sign in to keep everything in sync.</p>
+      <div class="login-buttons">
+        <a class="login-btn" data-login-provider="google" id="loginBtnGoogle">
+          <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Google
+        </a>
+
+        <a class="login-btn" data-login-provider="microsoft" id="loginBtnMicrosoft">
+          <svg viewBox="0 0 24 24"><path d="M11.4 11.4H0V0h11.4v11.4z" fill="#F25022"/><path d="M24 11.4H12.6V0H24v11.4z" fill="#7FBA00"/><path d="M11.4 24H0V12.6h11.4V24z" fill="#00A4EF"/><path d="M24 24H12.6V12.6H24V24z" fill="#FFB900"/></svg>
+          Microsoft
+        </a>
+      </div>
+      <p class="login-note">We only access your email and name for account creation. Your trip data stays private.</p>
+    </div>
+  </div>
+  
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/api.js"></script>
+  
+  <script>
+    let map = null;
+    let mapBounds = null;
+    let isMapFullscreen = false;
+    let activeBasemap = 'streets';
+    let basemapLayer = null;
+    let basemapLayers = null;
+    let currentTripData = null;
+    let activeRouteIndex = 0;
+    let routePolylines = [];
+    const pendingImportKey = 'ride:pendingImportShortCode';
+    const useTripButtons = () => Array.from(document.querySelectorAll('.use-trip-btn'));
+    const defaultOgImage = 'https://ride.incitat.io/icons/og-ride.png';
+    const heroPlaceholderSvg = `
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+      </svg>`;
+
+    function setHeroPlaceholder() {
+      const heroContainer = document.getElementById('hero-image-container');
+      if (!heroContainer) return;
+      heroContainer.className = 'hero-placeholder';
+      heroContainer.innerHTML = heroPlaceholderSvg;
+      updateMeta('og:image', defaultOgImage);
+    }
+
+    function setHeroImage(url, focusX = 50, focusY = 50, title = 'Trip cover') {
+      const heroContainer = document.getElementById('hero-image-container');
+      if (!heroContainer) return;
+      heroContainer.className = 'hero-placeholder';
+      heroContainer.textContent = '';
+      const img = document.createElement('img');
+      img.className = 'hero-image';
+      img.src = url;
+      img.alt = title;
+      img.style.objectPosition = `${focusX}% ${focusY}%`;
+      heroContainer.appendChild(img);
+    }
+
+
+    function setUseTripState(state, label) {
+      useTripButtons().forEach(btn => {
+        if (!btn) return;
+        if (state === 'loading') {
+          btn.disabled = true;
+          btn.textContent = label || 'Importing...';
+        } else if (state === 'success') {
+          btn.disabled = true;
+          btn.textContent = label || 'Added';
+        } else if (state === 'error') {
+          btn.disabled = false;
+          btn.textContent = label || 'Try again';
+        } else {
+          btn.disabled = false;
+          btn.textContent = label || 'Use this trip';
+        }
+      });
+    }
+    
+    function showError() {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'flex';
+    }
+    
+    function secondsToHMM(seconds) {
+      if (!seconds) return '0 min';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      return h > 0 ? `${h}h ${m}m` : `${m} min`;
+    }
+
+    function metersToString(meters) {
+      if (!meters) return '0 m';
+      const km = (meters / 1000).toFixed(1);
+      return meters >= 10000
+        ? (Math.round(meters / 100) / 10).toFixed(1).replace(/\.0$/, '') + ' km'
+        : (meters >= 1000 ? km.replace(/\.0$/, '') + ' km' : Math.round(meters) + ' m');
+    }
+
+    function renderTrip(trip) {
+      currentTripData = trip;
+      activeRouteIndex = trip.activeRouteIndex ?? trip.active_route_index ?? 0;
+      const allRoutes = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
+      const activeRoute = allRoutes[activeRouteIndex] || trip.route;
+
+      // Update page title and meta
+      document.title = `${trip.title} | Ride`;
+      
+      // Update meta tags for social sharing
+      updateMeta('og:title', trip.title);
+      updateMeta('og:description', trip.description || 'Explore this trip on Ride');
+      updateMeta('og:url', window.location.href);
+      updateMeta('twitter:title', trip.title);
+      updateMeta('twitter:description', trip.description || 'Explore this trip on Ride');
+
+      const heroImage = trip.cover_image || trip.cover_image_url;
+      const focusX = Number.isFinite(trip.cover_focus_x) ? trip.cover_focus_x : 50;
+      const focusY = Number.isFinite(trip.cover_focus_y) ? trip.cover_focus_y : 50;
+      if (heroImage) {
+        updateMeta('og:image', heroImage);
+        updateMeta('twitter:image', heroImage);
+        setHeroImage(heroImage, focusX, focusY, trip.title);
+      } else {
+        setHeroPlaceholder();
+      }
+      
+      // Title
+      document.getElementById('trip-title').textContent = trip.title;
+      
+      // Meta info
+      const metaHtml = [];
+      if (trip.waypoints?.length) {
+        metaHtml.push(`
+          <span class="trip-meta-item">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            </svg>
+            ${trip.waypoints.length} waypoints
+          </span>
+        `);
+      }
+      if (activeRoute?.distance) {
+        metaHtml.push(`
+          <span class="trip-meta-item">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+            </svg>
+            ${formatDistance(activeRoute.distance)}
+          </span>
+        `);
+      }
+      if (activeRoute?.duration) {
+        metaHtml.push(`
+          <span class="trip-meta-item">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            ${formatDuration(activeRoute.duration)}
+          </span>
+        `);
+      }
+      document.getElementById('trip-meta').innerHTML = metaHtml.join('');
+      
+      // Map stats
+      const statsHtml = [];
+      if (trip.waypoints?.length) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${trip.waypoints.length}</div><div class="stat-label">Stops</div></div>`);
+      }
+      if (activeRoute?.distance) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDistance(activeRoute.distance)}</div><div class="stat-label">Distance</div></div>`);
+      }
+      if (activeRoute?.duration) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDuration(activeRoute.duration)}</div><div class="stat-label">Duration</div></div>`);
+      }
+      if (trip.journal?.length) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${trip.journal.length}</div><div class="stat-label">Journal Entries</div></div>`);
+      }
+      document.getElementById('map-stats').innerHTML = statsHtml.join('');
+      
+      // Initialize map only when the shared journey exposes route/waypoint data.
+      const hasMapData = !!(trip.waypoints?.length || trip.route?.coordinates?.length);
+      const mapContainer = document.querySelector('.map-container');
+      const mapControls = document.getElementById('mapExpandBtn')?.closest('.action-group');
+      if (mapContainer) mapContainer.style.display = hasMapData ? '' : 'none';
+      if (mapControls) mapControls.style.display = hasMapData ? '' : 'none';
+      if (hasMapData) initMap(trip);
+      
+      // Description
+      if (trip.description) {
+        document.getElementById('trip-description').textContent = trip.description;
+        document.getElementById('description-section').style.display = 'block';
+      }
+      
+      // Waypoints
+      if (trip.waypoints?.length) {
+        const waypointsHtml = trip.waypoints.map((wp, i) => `
+          <div class="waypoint-card" data-lat="${wp.lat}" data-lng="${wp.lng}">
+            <div class="waypoint-number">${i + 1}</div>
+            <div class="waypoint-info">
+              <div class="waypoint-name">${escapeHtml(wp.name)}</div>
+              <div class="waypoint-type">${wp.type || 'Stop'}</div>
+            </div>
+          </div>
+        `).join('');
+        document.getElementById('waypoints-list').innerHTML = waypointsHtml;
+        document.getElementById('waypoints-section').style.display = 'block';
+        
+        // Click to zoom on waypoint
+        document.querySelectorAll('.waypoint-card').forEach(card => {
+          card.addEventListener('click', () => {
+            const lat = parseFloat(card.dataset.lat);
+            const lng = parseFloat(card.dataset.lng);
+            if (map) map.setView([lat, lng], 14);
+          });
+        });
+      }
+      
+      // Gallery
+      const images = trip.attachments?.filter(a => a.type?.startsWith('image/'));
+      if (images?.length) {
+        const galleryHtml = images.map(img => `
+          <div class="gallery-item" onclick="openLightbox('${img.url}', '${escapeHtml(img.caption || img.name || '').replace(/'/g, "\\'")}')"> 
+            <img src="${img.url}" alt="${escapeHtml(img.caption || img.name)}" loading="lazy">
+            <div class="gallery-item-overlay"></div>
+            ${img.caption ? `<div class="gallery-caption">${escapeHtml(img.caption)}</div>` : ''}
+          </div>
+        `).join('');
+        const galleryGrid = document.getElementById('gallery-grid');
+        galleryGrid.innerHTML = galleryHtml;
+        if (images.length <= 4) galleryGrid.classList.add('few-items');
+        document.getElementById('gallery-section').style.display = 'block';
+      }
+      
+      // Journal entries
+      if (trip.journal?.length) {
+        // Group image attachments by journal entry id
+        const journalImages = {};
+        if (trip.attachments?.length) {
+          for (const a of trip.attachments) {
+            if (a.journal_entry_id && a.type?.startsWith('image/')) {
+              if (!journalImages[a.journal_entry_id]) journalImages[a.journal_entry_id] = [];
+              journalImages[a.journal_entry_id].push(a);
+            }
+          }
+        }
+
+        const journalHtml = trip.journal.map(entry => {
+          const entryImages = journalImages[entry.id] || [];
+          const imagesHtml = entryImages.length ? `
+            <div class="journal-images${entryImages.length === 1 ? ' single-image' : ''}">
+              ${entryImages.map(img => `
+                <div class="journal-image" onclick="openLightbox('${img.url}', '${escapeHtml(img.caption || img.name || '').replace(/'/g, "\\'")}')"> 
+                  <img src="${img.url}" alt="${escapeHtml(img.caption || img.name || '')}" loading="lazy">
+                  ${img.caption ? `<div class="journal-image-caption">${escapeHtml(img.caption)}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          ` : '';
+
+          return `
+            <article class="journal-card">
+              <div class="journal-header">
+                <h3 class="journal-title">${escapeHtml(entry.title)}</h3>
+                <div class="journal-date">${formatDate(entry.created_at)}</div>
+              </div>
+              ${entry.content ? `<div class="journal-content">${escapeHtml(entry.content)}</div>` : ''}
+              ${imagesHtml}
+              ${entry.tags?.length ? `
+                <div class="journal-tags">
+                  ${entry.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
+                </div>
+              ` : ''}
+            </article>
+          `;
+        }).join('');
+        document.getElementById('journal-list').innerHTML = journalHtml;
+        document.getElementById('journal-section').style.display = 'block';
+      }
+      
+      // Contact
+      if (trip.contact) {
+        document.getElementById('contact-value').textContent = trip.contact;
+        document.getElementById('contact-section').style.display = 'block';
+      }
+      
+      // Show content
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+
+      // Render share-card hero banner if alternatives exist
+      if (typeof TripShareHero !== 'undefined') {
+        TripShareHero.renderHeroBanner(trip, 'banner-style');
+      }
+
+      // Ensure map paints correctly after being hidden
+      setTimeout(() => {
+        if (map) {
+          map.invalidateSize();
+          if (mapBounds) {
+            map.fitBounds(mapBounds, { padding: [30, 30] });
+          }
+        }
+      }, 50);
+    }
+    
+    function initMap(trip) {
+      // Mobile: disable scroll-wheel zoom to prevent scroll trap when browsing vertically.
+      // Pinch-to-zoom, double-tap, and zoom buttons still work.
+      map = L.map('trip-map', {
+        zoomControl: true,
+        scrollWheelZoom: false,
+        dragging: true
+      });
+
+      // Basemaps: default Streets + optional Satellite
+      basemapLayers = {
+        streets: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          attribution: '© OpenStreetMap © CARTO',
+          subdomains: 'abcd',
+          maxZoom: 19
+        }),
+        satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles © Esri',
+          maxZoom: 19
+        })
+      };
+
+      setBasemap('streets');
+      wireBasemapButtons();
+      
+      const markers = [];
+      const bounds = [];
+      
+      // Add waypoint markers
+      if (trip.waypoints?.length) {
+        trip.waypoints.forEach((wp, i) => {
+          const marker = L.circleMarker([wp.lat, wp.lng], {
+            radius: 10,
+            fillColor: '#3b82f6',
+            color: '#fff',
+            weight: 2,
+            fillOpacity: 0.9
+          }).addTo(map);
+          
+          marker.bindPopup(`<b>${i + 1}. ${escapeHtml(wp.name)}</b>`);
+          markers.push(marker);
+          bounds.push([wp.lat, wp.lng]);
+        });
+      }
+      
+      // Draw all route options
+      routePolylines = [];
+      drawRouteForIndex(trip, activeRouteIndex, bounds);
+      
+      // Alternative route selector
+      const hasAlts = (trip.alternativeRoutes || trip.alt_routes || []).length;
+      if (hasAlts) {
+        renderRouteSelector(trip);
+      }
+      
+      // Fit bounds
+      if (bounds.length) {
+        mapBounds = L.latLngBounds(bounds);
+        map.fitBounds(mapBounds, { padding: [30, 30] });
+      } else {
+        // Default to Australia
+        map.setView([-25.2744, 133.7751], 4);
+        mapBounds = null;
+      }
+    }
+
+    function drawRouteForIndex(trip, index, boundsAccumulator) {
+      // Clear existing route lines only (not markers)
+      routePolylines.forEach(p => { if (map.hasLayer(p)) map.removeLayer(p); });
+      routePolylines = [];
+
+      const allOptions = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
+      const selected = allOptions[index];
+      if (!selected?.coordinates?.length) return;
+
+      const coords = selected.coordinates.map(c => Array.isArray(c) ? [c[0], c[1]] : [c.lat, c.lng]);
+
+      const mainIndex = 0;
+      const isAlt = index !== mainIndex;
+      const color = isAlt ? '#7c3aed' : '#3b82f6';
+
+      const routeLine = L.polyline(coords, {
+        color,
+        weight: 4,
+        opacity: 0.85,
+        dashArray: isAlt ? '6, 6' : null
+      }).addTo(map);
+
+      routePolylines.push(routeLine);
+
+      if (boundsAccumulator) {
+        coords.forEach(c => boundsAccumulator.push(c));
+      }
+    }
+
+    function renderRouteSelector(trip) {
+      const container = document.getElementById('route-selector');
+      if (!container) return;
+
+      const allOptions = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
+      if (allOptions.length < 2) {
+        container.style.display = 'none';
+        return;
+      }
+
+      const fastest = allOptions.slice().sort((a, b) => (a.duration || Infinity) - (b.duration || Infinity))[0];
+      const shortest = allOptions.slice().sort((a, b) => (a.distance || Infinity) - (b.distance || Infinity))[0];
+      const mainIndex = 0;
+      const savedIndex = allOptions.findIndex(r => r.saved);
+      const resolvedSavedIndex = savedIndex !== -1 ? savedIndex : (trip.activeRouteIndex ?? trip.active_route_index ?? 0);
+
+      container.innerHTML = `<div class="route-selector-title">Route Options</div>` + allOptions.map((opt, idx) => {
+        const isFast = opt === fastest;
+        const isShort = opt === shortest && opt !== fastest;
+        const isSaved = idx === resolvedSavedIndex;
+        const label = isSaved ? 'Saved' : isFast ? 'Fastest' : isShort ? 'Shortest' : `Alternative ${idx + 1}`;
+        const badgeClass = isSaved ? 'route-saved' : isFast ? 'route-fastest' : 'route-shortest';
+        const summary = `${metersToString(opt.distance)} · ${secondsToHMM(opt.duration)}`;
+
+        return `
+          <button class="route-option${idx === activeRouteIndex ? ' is-active' : ''}" data-idx="${idx}" type="button">
+            <div class="route-info">
+              <div class="route-badges">
+                <span class="route-badge ${badgeClass}">${label}</span>
+              </div>
+              <div class="route-summary">${summary}</div>
+            </div>
+            <div class="route-check">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      container.style.display = 'block';
+
+      container.querySelectorAll('.route-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          if (idx === activeRouteIndex) return;
+
+          activeRouteIndex = idx;
+          drawRouteForIndex(trip, idx, null);
+
+          // Update active class
+          container.querySelectorAll('.route-option').forEach(b => b.classList.toggle('is-active', parseInt(b.dataset.idx, 10) === idx));
+
+          // Update displayed stats to reflect selected route
+          updateTripStatsForRoute(trip, idx);
+        });
+      });
+    }
+
+    function updateTripStatsForRoute(trip, idx) {
+      const allOptions = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
+      const selected = allOptions[idx];
+      if (!selected) return;
+
+      const statsHtml = [];
+      if (trip.waypoints?.length) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${trip.waypoints.length}</div><div class="stat-label">Stops</div></div>`);
+      }
+      statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDistance(selected.distance)}</div><div class="stat-label">Distance</div></div>`);
+      statsHtml.push(`<div class="stat-item"><div class="stat-value">${formatDuration(selected.duration)}</div><div class="stat-label">Duration</div></div>`);
+      if (trip.journal?.length) {
+        statsHtml.push(`<div class="stat-item"><div class="stat-value">${trip.journal.length}</div><div class="stat-label">Journal Entries</div></div>`);
+      }
+      document.getElementById('map-stats').innerHTML = statsHtml.join('');
+    }
+
+    function setBasemap(type) {
+      if (!map || !basemapLayers) return;
+      
+      const next = basemapLayers[type];
+      if (!next) return;
+
+      if (basemapLayer && map.hasLayer(basemapLayer)) {
+        map.removeLayer(basemapLayer);
+      }
+
+      basemapLayer = next;
+      activeBasemap = type;
+      basemapLayer.addTo(map);
+      updateBasemapButtons();
+    }
+
+    function updateBasemapButtons() {
+      const streetsBtn = document.getElementById('basemapStreetsBtn');
+      const satBtn = document.getElementById('basemapSatelliteBtn');
+      if (!streetsBtn || !satBtn) return;
+
+      streetsBtn.classList.toggle('is-active', activeBasemap === 'streets');
+      satBtn.classList.toggle('is-active', activeBasemap === 'satellite');
+    }
+
+    function wireBasemapButtons() {
+      const streetsBtn = document.getElementById('basemapStreetsBtn');
+      const satBtn = document.getElementById('basemapSatelliteBtn');
+      if (streetsBtn) streetsBtn.addEventListener('click', () => setBasemap('streets'));
+      if (satBtn) satBtn.addEventListener('click', () => setBasemap('satellite'));
+      updateBasemapButtons();
+    }
+
+    function toggleMapFullscreen() {
+      const card = document.querySelector('.map-card');
+      const btn = document.getElementById('mapExpandBtn');
+      if (!card || !btn || !map) return;
+
+      isMapFullscreen = !isMapFullscreen;
+      card.classList.toggle('fullscreen', isMapFullscreen);
+      document.body.classList.toggle('no-scroll', isMapFullscreen);
+      btn.textContent = isMapFullscreen ? 'Close map' : 'Expand map';
+
+      setTimeout(() => {
+        map.invalidateSize();
+        if (mapBounds) {
+          map.fitBounds(mapBounds, { padding: [30, 30] });
+        }
+      }, 100);
+    }
+    
+    function updateMeta(property, content) {
+      let meta = document.querySelector(`meta[property="${property}"]`) || 
+                 document.querySelector(`meta[name="${property}"]`);
+      if (meta) meta.setAttribute('content', content);
+    }
+    
+    function formatDistance(meters) {
+      if (meters >= 1000) {
+        return (meters / 1000).toFixed(1) + ' km';
+      }
+      return Math.round(meters) + ' m';
+    }
+    
+    function formatDuration(seconds) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+      }
+      return `${minutes} min`;
+    }
+    
+    function formatDate(dateStr) {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-AU', { 
+        day: 'numeric', 
+        month: 'short', 
+        year: 'numeric' 
+      });
+    }
+    
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function slugify(text) {
+      return (text || 'ride-trip')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'ride-trip';
+    }
+
+    function createDownload(filename, mime, data) {
+      const blob = new Blob([data], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadJson(trip) {
+      if (!trip) return;
+      const name = slugify(trip.title || trip.name || 'ride-trip');
+      createDownload(`${name}.json`, 'application/json', JSON.stringify(trip, null, 2));
+    }
+
+    function downloadGpx(trip) {
+      if (!trip) return;
+      const name = slugify(trip.title || trip.name || 'ride-trip');
+      const points = (trip.route?.coordinates?.length ? trip.route.coordinates : trip.waypoints || [])
+        .map((p, idx) => ({
+          lat: parseFloat(p.lat),
+          lon: parseFloat(p.lng || p.lon),
+          name: p.name || `Stop ${idx + 1}`
+        }))
+        .filter(p => !Number.isNaN(p.lat) && !Number.isNaN(p.lon));
+
+      if (!points.length) return;
+
+      const esc = (s) => String(s || '').replace(/[<&>"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+      const trkpts = points.map(p => `    <trkpt lat="${p.lat}" lon="${p.lon}">${p.name ? `<name>${esc(p.name)}</name>` : ''}</trkpt>`).join('\n');
+      const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+`<gpx version="1.1" creator="Ride" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+`  <metadata><name>${esc(trip.title || trip.name || 'Ride Trip')}</name></metadata>\n` +
+`  <trk>\n    <name>${esc(trip.title || trip.name || 'Ride Trip')}</name>\n    <trkseg>\n${trkpts}\n    </trkseg>\n  </trk>\n</gpx>`;
+
+      createDownload(`${name}.gpx`, 'application/gpx+xml', gpx);
+    }
+    
+    // Lightbox
+    function openLightbox(src, caption) {
+      document.getElementById('lightbox-image').src = src;
+      document.getElementById('lightbox-caption').textContent = caption || '';
+      document.getElementById('lightbox').classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+    
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.remove('active');
+      document.body.style.overflow = '';
+    }
+    
+    document.getElementById('lightbox').addEventListener('click', (e) => {
+      if (e.target.id === 'lightbox') closeLightbox();
+    });
+    
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeLightbox();
+    });
+
+    // Login modal events
+    document.querySelectorAll('[data-close-login]').forEach((btn) => {
+      btn.addEventListener('click', closeLoginModal);
+    });
+
+    const loginModalEl = document.getElementById('loginModal');
+    if (loginModalEl) {
+      loginModalEl.addEventListener('click', (e) => {
+        if (e.target.id === 'loginModal') {
+          closeLoginModal();
+        }
+      });
+    }
+    
+    // Load trip on page load
+    // Support both /trip.html?trip=abc123 and /abc123 (via worker redirect)
+    function getShortCodeFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('trip')) return params.get('trip');
+      // Also support /abc123 by checking pathname
+      const match = window.location.pathname.match(/^\/?([a-zA-Z0-9]{6})$/);
+      if (match) return match[1];
+      return null;
+    }
+
+    const shortCode = getShortCodeFromUrl();
+
+    // Clean up URL: if arrived via /trip.html?trip=abc123, rewrite to /abc123
+    if (shortCode && window.location.pathname.includes('trip.html')) {
+      try {
+        history.replaceState(null, '', `/${shortCode}`);
+      } catch (e) { /* ignore */ }
+    }
+
+    document.getElementById('mapExpandBtn')?.addEventListener('click', toggleMapFullscreen);
+    document.getElementById('downloadJsonBtn')?.addEventListener('click', () => {
+      if (window.trip) downloadJson(window.trip);
+    });
+    document.getElementById('downloadGpxBtn')?.addEventListener('click', () => {
+      if (window.trip) downloadGpx(window.trip);
+    });
+    document.getElementById('downloadJsonBtnAlt')?.addEventListener('click', () => {
+      if (window.trip) downloadJson(window.trip);
+    });
+    document.getElementById('downloadGpxBtnAlt')?.addEventListener('click', () => {
+      if (window.trip) downloadGpx(window.trip);
+    });
+
+    useTripButtons().forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setUseTripState('loading', 'Preparing...');
+        importTripToAccount();
+      });
+    });
+    setUseTripState('default');
+
+    function showError(title = 'Trip Not Found', message = 'This trip may have been removed or the link is incorrect.') {
+      document.getElementById('loading').style.display = 'none';
+      const errorEl = document.getElementById('error');
+      errorEl.querySelector('.error-title').textContent = title;
+      errorEl.querySelector('.error-message').textContent = message;
+      errorEl.style.display = 'flex';
+    }
+
+    function showPrivate() {
+      showError('Trip Is Private', 'The creator has not shared this trip publicly yet.');
+    }
+
+    function normalizeWaypointInput(wp) {
+      if (!wp) return null;
+      const lat = parseFloat(wp.lat ?? wp.latitude);
+      const lng = parseFloat(wp.lng ?? wp.lon ?? wp.longitude);
+      if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+      return {
+        name: wp.name || 'Waypoint',
+        address: wp.address || '',
+        lat,
+        lng,
+        type: wp.type || 'stop',
+        notes: wp.notes || ''
+      };
+    }
+
+    function normalizeJournalEntry(entry) {
+      if (!entry) return null;
+      return {
+        title: entry.title || 'Note',
+        content: entry.content || '',
+        is_private: entry.is_private ?? entry.isPrivate ?? false,
+        tags: Array.isArray(entry.tags) ? entry.tags : []
+      };
+    }
+
+    function setLoginLinks() {
+      const returnTo = window.location.href;
+      const providers = ['google', 'microsoft'];
+      providers.forEach((p) => {
+        const el = document.getElementById(`loginBtn${p.charAt(0).toUpperCase() + p.slice(1)}`);
+        if (el) el.href = API.auth.loginUrl(p, returnTo);
+      });
+    }
+
+    function openLoginModal() {
+      setLoginLinks();
+      const modal = document.getElementById('loginModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeLoginModal() {
+      const modal = document.getElementById('loginModal');
+      if (!modal) return;
+      modal.classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+
+    async function ensureUserOrPrompt() {
+      try {
+        const user = await API.auth.getUser();
+        if (user) return user;
+      } catch (err) {
+        console.error('Auth check failed:', err);
+      }
+
+      if (shortCode) {
+        localStorage.setItem(pendingImportKey, shortCode);
+      }
+
+      openLoginModal();
+      return null;
+    }
+
+    async function importTripToAccount(autoResume = false) {
+      if (!window.trip) return;
+
+      const user = await ensureUserOrPrompt();
+      if (!user) {
+        if (!autoResume) setUseTripState('default');
+        return;
+      }
+
+      setUseTripState('loading', 'Importing...');
+
+      let createdTripId = null;
+      try {
+        const baseTrip = await API.trips.create({
+          name: window.trip.title || window.trip.name || 'Imported Trip',
+          description: window.trip.description || ''
+        });
+        createdTripId = baseTrip.id;
+
+        let tripVersion = Number(baseTrip.version ?? 0);
+        let wpAdded = 0;
+        const wpTotal = Array.isArray(window.trip.waypoints) ? window.trip.waypoints.length : 0;
+
+        if (wpTotal > 0) {
+          for (const wp of window.trip.waypoints) {
+            const normalized = normalizeWaypointInput(wp);
+            if (!normalized) continue;
+            const result = await API.waypoints.add(baseTrip.id, normalized, {
+              headers: { 'If-Match': String(tripVersion) }
+            });
+            if (result?.trip_version !== undefined) {
+              tripVersion = Number(result.trip_version);
+            }
+            wpAdded++;
+          }
+          if (wpAdded === 0) throw new Error('No waypoints were added');
+        }
+
+        if (window.trip.route) {
+          await API.trips.update(baseTrip.id, { route: window.trip.route });
+        }
+
+        localStorage.removeItem(pendingImportKey);
+        localStorage.setItem('ride_imported_trip_id', baseTrip.id);
+        setUseTripState('success', 'Added to your trips');
+
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 800);
+      } catch (err) {
+        console.error('Failed to import trip:', err);
+        // Clean up the empty shell trip so it doesn't confuse the user
+        if (createdTripId) {
+          try { await API.trips.delete(createdTripId); } catch (_) { /* best-effort */ }
+        }
+        localStorage.removeItem(pendingImportKey);
+        localStorage.removeItem('ride_imported_trip_id');
+        setUseTripState('error', 'Import failed. Try again');
+      }
+    }
+
+    async function maybeResumeImport() {
+      const pending = localStorage.getItem(pendingImportKey);
+      if (!pending || pending !== shortCode) return;
+      await importTripToAccount(true);
+    }
+
+    async function loadPublicTrip(code) {
+      try {
+        const res = await fetch(`/api/s/${code}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, max-age=0, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
+        if (res.status === 403) {
+          showPrivate();
+          return;
+        }
+        if (!res.ok) {
+          showError();
+          return;
+        }
+        const data = await res.json();
+        if (!data?.trip) {
+          showError();
+          return;
+        }
+        window.trip = data.trip;
+        renderTrip(data.trip);
+        await maybeResumeImport();
+      } catch (err) {
+        console.error('Failed to load trip:', err);
+        showError();
+      }
+    }
+
+    if (shortCode) {
+      loadPublicTrip(shortCode);
+    } else if (new URLSearchParams(window.location.search).get('test') === '1') {
+      window.trip = {
+        title: 'Sydney to Blue Mountains Test Trip',
+        description: 'A scenic ride through the Blue Mountains with multiple route options.',
+        short_code: 'abc123',
+        cover_image: null,
+        cover_focus_x: 50,
+        cover_focus_y: 50,
+        created_at: '2025-01-15T08:00:00Z',
+        share: { includeWaypoints: true, includeRoute: true, includePublicNotes: true, includeGallery: true },
+        waypoints: [
+          { id: 1, name: 'Sydney CBD', lat: -33.8688, lng: 151.2093, type: 'start', sort_order: 0 },
+          { id: 2, name: 'Katoomba', lat: -33.7120, lng: 150.3111, type: 'stop', sort_order: 1 },
+          { id: 3, name: 'Blackheath', lat: -33.6350, lng: 150.2840, type: 'end', sort_order: 2 }
+        ],
+        journal: [],
+        attachments: [],
+        route: {
+          distance: 12500,
+          duration: 2700,
+          coordinates: [
+            [-33.8688, 151.2093], [-33.8600, 151.1800], [-33.8500, 151.1200],
+            [-33.8200, 151.0000], [-33.7800, 150.8500], [-33.7500, 150.7000],
+            [-33.7200, 150.5000], [-33.7120, 150.3111], [-33.6700, 150.3000], [-33.6350, 150.2840]
+          ]
+        },
+        alternativeRoutes: [
+          {
+            routeIndex: 1,
+            alt_idx: 1,
+            name: 'M4 Motorway Route',
+            summary: 'Via M4 motorway - faster but less scenic',
+            distance: 10200,
+            duration: 1620,
+            saved: false,
+            visible: true,
+            coordinates: [
+              [-33.8688, 151.2093], [-33.8650, 151.1500], [-33.8500, 151.0500],
+              [-33.8000, 150.9000], [-33.7600, 150.7500], [-33.7300, 150.5500],
+              [-33.7120, 150.3111], [-33.6700, 150.3000], [-33.6350, 150.2840]
+            ]
+          },
+          {
+            routeIndex: 2,
+            alt_idx: 2,
+            name: 'Scenic Bells Line Route',
+            summary: 'Via Bell Line of Road - very scenic, saved by user',
+            distance: 14800,
+            duration: 3300,
+            saved: true,
+            visible: true,
+            coordinates: [
+              [-33.8688, 151.2093], [-33.8700, 151.2200], [-33.8600, 151.2500],
+              [-33.8400, 151.3000], [-33.8000, 151.2500], [-33.7600, 151.1000],
+              [-33.7300, 150.9000], [-33.7150, 150.6000], [-33.7120, 150.3111],
+              [-33.6700, 150.3200], [-33.6500, 150.3100], [-33.6350, 150.2840]
+            ]
+          }
+        ],
+        activeRouteIndex: 2
+      };
+      renderTrip(window.trip);
+    } else {
+      showError();
+    }
+  </script>
+  <script src="js/share-patch.js"></script>
+</body>
+</html>
