@@ -50,12 +50,14 @@ export const ShareHandler = {
   async getSharedTrip(context) {
     const { env, params } = context;
 
+    // Publicness is part of the lookup, so "no such code" and "exists but
+    // private" are indistinguishable. The old 404-vs-403 split was a clean
+    // oracle for confirming that a guessed code belongs to a real private trip.
     const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT * FROM trips WHERE short_code = ?'
+      'SELECT * FROM trips WHERE short_code = ? AND is_public = 1'
     ).bind(params.shortCode).first();
 
-    if (!trip) return errorResponse('Trip not found or not shared', 404);
-    if (!trip.is_public) return errorResponse('Trip is not public', 403);
+    if (!trip) return errorResponse('Trip not found', 404);
 
     // Get waypoints
     const waypoints = await env.RIDE_TRIP_PLANNER_DB.prepare(
@@ -69,9 +71,19 @@ export const ShareHandler = {
       'SELECT id, title, content, tags, created_at FROM journal_entries WHERE trip_id = ? AND is_private = 0 ORDER BY created_at DESC'
     ).bind(trip.id).all();
 
-    // Public attachments only
+    // Public attachments only. Journal privacy cascades: a photo hanging off a
+    // private entry stays out of the public gallery even when the attachment
+    // row itself was never flagged private (getAttachment enforces the same
+    // rule, so the direct URL is closed too).
     const attachments = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT id, filename, original_name, mime_type, caption, is_cover, journal_entry_id, waypoint_id FROM attachments WHERE trip_id = ? AND is_private = 0 ORDER BY is_cover DESC, created_at DESC'
+      `SELECT a.id, a.filename, a.original_name, a.mime_type, a.caption, a.is_cover,
+              a.journal_entry_id, a.waypoint_id
+         FROM attachments a
+         LEFT JOIN journal_entries je ON je.id = a.journal_entry_id
+        WHERE a.trip_id = ?
+          AND a.is_private = 0
+          AND (a.journal_entry_id IS NULL OR (je.id IS NOT NULL AND je.is_private = 0))
+        ORDER BY a.is_cover DESC, a.created_at DESC`
     ).bind(trip.id).all();
 
     // Route data

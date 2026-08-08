@@ -1,6 +1,12 @@
 /**
  * Ride Controller — ride mode, GPS tracking, rerouting, metrics
  * Extends App object (loaded after app-core.js)
+ *
+ * localStorage keys:
+ *   ride_track_checkpoint — {tripId, startedAt, track} for the ride in
+ *     progress; lets a killed/reloaded app recover the track on next launch.
+ *   ride_pending_logs — [{qid, tripId, log}] ride logs that couldn't reach
+ *     the API; flushed on ride start/exit and when connectivity returns.
  */
 Object.assign(App, {
   bindRideControls() {
@@ -42,8 +48,29 @@ Object.assign(App, {
     document.getElementById('rideRecenterBtn')?.addEventListener('click', () => {
       MapManager.recenterRide();
     });
-    document.getElementById('rideExitBtn')?.addEventListener('click', () => this.exitRideMode());
     document.getElementById('rideBannerExitBtn')?.addEventListener('click', () => this.exitRideMode());
+
+    // Sync locally-queued ride logs whenever connectivity returns, and rescue
+    // any checkpointed track left behind by a ride that never exited cleanly
+    // (app killed, tab discarded, mid-ride reload).
+    window.addEventListener('online', () => this._flushPendingRideLogs());
+    setTimeout(() => this._scheduleRideRecovery(), 1500);
+  },
+
+  /**
+   * Run track recovery once the auth state has settled. Recovering while
+   * checkAuth() is still in flight would file a signed-in rider's rescued ride
+   * log into localStorage (API._isLocal() reads useCloud, which defaults false)
+   * instead of their account. Bounded poll so guests aren't left waiting.
+   */
+  _scheduleRideRecovery(attempt = 0) {
+    const settled = this._authState !== 'UNKNOWN' && this._authState !== 'CHECKING';
+    if (!settled && attempt < 10) {
+      setTimeout(() => this._scheduleRideRecovery(attempt + 1), 1000);
+      return;
+    }
+    this._recoverAbandonedRide();
+    this._flushPendingRideLogs();
   },
 
   /**
@@ -57,18 +84,16 @@ Object.assign(App, {
       await this._insertWaypointAtPosition(opts.position);
     }
 
-    // Build photo title — include GPS if tagged
+    // Build photo title — structured location travels on the entry itself
     const now = new Date();
-    let title = `Photo ${now.toLocaleString()}`;
+    const title = `Photo ${now.toLocaleString()}`;
     const gpsPos = opts.tagGps && opts.position ? opts.position : null;
-    if (gpsPos) {
-      title += ` [${gpsPos.lat.toFixed(5)}, ${gpsPos.lng.toFixed(5)}]`;
-    }
 
     let entry;
     try {
       const entryData = { title, content: '', is_private: false, tags: [] };
       if (gpsPos) {
+        entryData.location = { lat: gpsPos.lat, lng: gpsPos.lng };
         entryData.content = `📍 GPS: ${gpsPos.lat.toFixed(6)}, ${gpsPos.lng.toFixed(6)}`;
       }
       entry = await API.journal.add(this.currentTrip.id, entryData);
@@ -88,8 +113,12 @@ Object.assign(App, {
       this.addAttachmentToEntry(entry.id, attachment, true);
       UI.showToast('Photo saved to trip', 'success');
     } catch (err) {
-      console.error('Photo upload failed', err);
-      UI.showToast('Photo upload failed', 'error');
+      if (err?.code === 'LOGIN_REQUIRED' && typeof UI.suggestLogin === 'function') {
+        UI.suggestLogin('upload photos');
+      } else {
+        console.error('Photo upload failed', err);
+        UI.showToast('Photo upload failed', 'error');
+      }
     } finally {
       this._activeUploads = Math.max(0, this._activeUploads - 1);
     }
@@ -141,6 +170,9 @@ Object.assign(App, {
   },
 
   enterRideMode() {
+    // Re-entering mid-ride would reset _rideTrack and overwrite the checkpoint,
+    // throwing away everything recorded so far.
+    if (this.isRiding) return;
     if (!this.currentTrip) { UI.showToast('No trip loaded', 'error'); return; }
     const activeRoute = this.getActiveRoute();
     if (!activeRoute?.coordinates?.length) {
@@ -149,20 +181,30 @@ Object.assign(App, {
     if (!('geolocation' in navigator)) {
       UI.showToast('Your device does not support GPS', 'error'); return;
     }
+
+    // Rescue any track from a ride that never finished, and retry logs that
+    // couldn't reach the server last time — before this ride starts writing
+    // its own checkpoint.
+    this._recoverAbandonedRide();
+    this._flushPendingRideLogs();
+
+    // Snapshot the route unconditionally. Mid-ride reroutes are ephemeral
+    // navigation state — they embed the rider's live GPS position as their
+    // first coordinate — and must never survive past the ride (privacy:
+    // a later trip save would push them to the public trip page).
+    this._preRideRoute = this.currentTrip.route;
+
     // Navigate the ACTIVE route (the alternative the rider selected), not just
     // the primary. We temporarily point currentTrip.route at the active route
     // so the existing HUD / metrics / reroute code all operate on the same
-    // geometry the rider sees drawn on the map. The real primary is restored on
-    // exit so we never persist the swapped value.
+    // geometry the rider sees drawn on the map. The snapshot above is restored
+    // on exit so we never persist the swapped value.
     if (activeRoute !== this.currentTrip.route) {
-      this._primaryRouteBackup = this.currentTrip.route;
       this.currentTrip.route = {
         ...activeRoute,
         coordinates: activeRoute.coordinates,
         steps: Array.isArray(activeRoute.steps) ? activeRoute.steps : []
       };
-    } else {
-      this._primaryRouteBackup = null;
     }
     this.isRiding = true;
     this.rideVisitedWaypoints = new Set();
@@ -176,18 +218,31 @@ Object.assign(App, {
     // GPS breadcrumb track — sampled during ride, saved as private log on exit
     this._rideTrack = [];
     this._rideTrackLastPt = null;
+    // Speed / ETA rolling state
+    this._speedHist = [];
+    this._lastGoodFix = null;
+    this._lastDerivedSpeed = null;
+    this._poorFixStreak = 0;
+    this._rideGpsState = null;
+    this._maneuverIconKey = null;
+
     document.getElementById('rideOverlay')?.classList.remove('hidden');
     document.body.classList.add('ride-mode');
-    const setText = (id, value) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = value;
-    };
-    setText('rideTripName', this.currentTrip.name || 'Ride');
-    setText('rideStops', (this.currentTrip.waypoints?.length ?? 0).toString());
-    setText('rideDistanceRemaining', this.currentTrip.route?.distance ? RideUtils.formatDistance(this.currentTrip.route.distance) : '—');
-    setText('rideEta', this.currentTrip.route?.duration ? RideUtils.formatDuration(this.currentTrip.route.duration) : '—');
-    setText('rideNextInstruction', 'Follow the route');
-    setText('rideNextMeta', 'Waiting for GPS…');
+    // Ride mode makes the map full-bleed (body.ride-mode #map { inset: 0 }) —
+    // Leaflet must re-measure or the newly exposed band stays blank.
+    setTimeout(() => MapManager.map?.invalidateSize(), 60);
+
+    const stops = (this.currentTrip.waypoints || []).filter(wp => !['via', 'leg-break'].includes(wp.type || ''));
+    this._setHudText('rideTripName', this.currentTrip.name || 'Ride');
+    this._setHudText('rideStops', stops.length.toString());
+    this._setHudText('rideDistanceRemaining', this.currentTrip.route?.distance ? RideUtils.formatDistance(this.currentTrip.route.distance) : '—');
+    this._setHudText('rideEta', this.currentTrip.route?.duration ? this._formatEtaClock(this.currentTrip.route.duration) : '—');
+    this._setHudText('rideSpeedVal', '—');
+    this._setHudText('rideSpeedUnit', RideUtils.speedUnitLabel());
+    this._setHudText('rideManeuverDist', '');
+    this._setHudText('rideNextInstruction', 'Follow the route');
+    this._setHudText('rideNextMeta', 'Waiting for GPS…');
+    this._setManeuverIcon('straight');
     this.precomputeRouteMetrics();
     MapManager.startRide(pos => this.onRidePosition(pos));
   },
@@ -198,13 +253,21 @@ Object.assign(App, {
     this.rideRerouting = false;
     this.offRouteCounter = 0;
     this._rideArrived = false;
-    // Restore the real (primary) route if ride mode swapped in an alternative.
-    if (this._primaryRouteBackup) {
-      this.currentTrip.route = this._primaryRouteBackup;
-      this._primaryRouteBackup = null;
+    this._rideGpsState = null;
+
+    // Restore the pre-ride route unconditionally: any mid-ride reroute is
+    // discarded here so GPS-contaminated geometry can never be persisted by
+    // a later trip save.
+    if (this._preRideRoute && this.currentTrip) {
+      this.currentTrip.route = this._preRideRoute;
+      UI.updateTripStats(this.currentTrip);
     }
+    this._preRideRoute = null;
+
     document.getElementById('rideOverlay')?.classList.add('hidden');
     document.body.classList.remove('ride-mode');
+    // Map shrinks back between the top bar and bottom nav — re-measure.
+    setTimeout(() => MapManager.map?.invalidateSize(), 60);
     MapManager.stopRide();
 
     // Save GPS track as a private journal entry + ride log (async, non-blocking)
@@ -214,7 +277,14 @@ Object.assign(App, {
     this._rideTrackLastPt = null;
     if (track.length >= 3) {
       this._saveRideLog(track, startTime).catch(err => console.warn('Ride log save failed:', err));
+    } else {
+      this._clearTrackCheckpoint();
     }
+
+    this._flushPendingRideLogs();
+
+    // Tell the shell the ride is over (deferred build updates apply now)
+    window.dispatchEvent(new CustomEvent('ride:ended'));
   },
 
   /**
@@ -256,20 +326,86 @@ Object.assign(App, {
     }
     this.currentTrip.route._cumulative = cumulative;
     this.currentTrip.route._total = total;
+
+    // While riding, also precompute each stop's along-route position so the
+    // skip detector can tell when the rider has driven well past a missed stop.
+    if (this.isRiding) {
+      const wpAlong = {};
+      (this.currentTrip.waypoints || []).forEach(wp => {
+        if (['via', 'leg-break'].includes(wp.type || '')) return; // shaping points and leg dividers are not stops
+        let best = Infinity;
+        let bestIdx = 0;
+        for (let i = 0; i < coords.length; i++) {
+          const d = this.haversine(coords[i], wp);
+          if (d < best) { best = d; bestIdx = i; }
+        }
+        wpAlong[wp.id] = cumulative[bestIdx];
+      });
+      this.currentTrip.route._wpAlong = wpAlong;
+    }
+  },
+
+  /**
+   * Apply an in-ride reroute. Ephemeral by design: updates the in-memory
+   * route for the HUD and off-route logic only — never persisted, never
+   * gated on edit permission (fixes the auth-gate-over-HUD deadlock), and
+   * discarded when the ride exits.
+   */
+  applyRideReroute(routeData) {
+    if (!this.isRiding || !this.currentTrip) return;
+    const duration = routeData?.duration ?? routeData?.time ?? null;
+    this.currentTrip.route = {
+      ...routeData, duration, time: duration,
+      coordinates: routeData?.coordinates || [],
+      steps: Array.isArray(routeData?.steps) ? routeData.steps : []
+    };
+    this.precomputeRouteMetrics();
+    this.rideRerouting = false;
+    this.offRouteCounter = 0;
+    this._rideNearIdx = 0;
+    this._maneuverIconKey = null; // force glyph refresh against the new steps
+    UI.updateTripStats(this.currentTrip);
   },
 
   /** @deprecated Use RideUtils.haversine directly */
   haversine(a, b) { return RideUtils.haversine(a, b); },
 
+  _setHudText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  },
+
+  /**
+   * GPS health surfaced on the HUD meta line. States: 'weak' (fixes arriving
+   * but too inaccurate to navigate by), 'lost' (watch erroring, retrying),
+   * 'denied' (permission revoked — fatal), 'ok'.
+   */
+  _setRideGpsState(state) {
+    if (!this.isRiding || this._rideGpsState === state) return;
+    this._rideGpsState = state;
+    if (state === 'ok') return; // next HUD tick repaints the meta line
+    const messages = {
+      weak: 'GPS weak — waiting for a better fix…',
+      lost: 'GPS signal lost — retrying…',
+      denied: 'Location permission denied — check browser settings'
+    };
+    this._setHudText('rideNextMeta', messages[state] || '');
+  },
+
   markVisitedWaypoints(position) {
     if (!this.currentTrip?.waypoints) return;
-    const threshold = 40;
     if (!this.rideVisitedWaypoints) this.rideVisitedWaypoints = new Set();
+    // Scale the arrival radius with GPS accuracy so poor fixes still register
+    const threshold = Math.max(40, (position.accuracy || 0) * 1.5);
+    // Waypoints reached in the first 30 s are where the ride began —
+    // mark them silently instead of toasting "Arrived" at the start line.
+    const silent = (Date.now() - (this._rideStartTime || 0)) < 30000;
     this.currentTrip.waypoints.forEach(wp => {
+      if (['via', 'leg-break'].includes(wp.type || '')) return; // shaping points and leg dividers are not stops
       if (this.rideVisitedWaypoints.has(wp.id)) return;
       if (this.haversine(wp, position) <= threshold) {
         this.rideVisitedWaypoints.add(wp.id);
-        UI.showToast(`📍 Arrived at ${wp.name || 'waypoint'}`, 'success');
+        if (!silent) UI.showToast(`Arrived at ${wp.name || 'waypoint'}`, 'success');
       }
     });
   },
@@ -278,7 +414,7 @@ Object.assign(App, {
     if (!this.currentTrip?.waypoints) return [];
     if (!this.rideVisitedWaypoints) this.rideVisitedWaypoints = new Set();
     return [...this.currentTrip.waypoints]
-      .filter(wp => !this.rideVisitedWaypoints.has(wp.id))
+      .filter(wp => !['via', 'leg-break'].includes(wp.type || '') && !this.rideVisitedWaypoints.has(wp.id))
       .sort((a, b) => a.order - b.order);
   },
 
@@ -312,27 +448,65 @@ Object.assign(App, {
     return { idx: bestIdx, dist: bestDist };
   },
 
+  /**
+   * Locate the rider on the route: nearest vertex, then projected onto the
+   * flanking segments. On sparse geometry (long straight roads with vertices
+   * hundreds of meters apart) the perpendicular distance to the line is far
+   * smaller than the distance to either vertex — using it prevents false
+   * off-route reroutes, and the fractional position smooths distance/ETA.
+   * Returns { idx, dist, along } — along is meters travelled along the route.
+   */
+  _locateOnRoute(coords, cumulative, pos) {
+    const { idx, dist: vertexDist } = this._findNearestRouteIdx(coords, pos);
+    let dist = vertexDist;
+    let along = cumulative[idx] ?? 0;
+    for (const s of [idx - 1, idx]) {
+      if (s < 0 || s >= coords.length - 1) continue;
+      const proj = RideUtils.pointToSegmentDistance(pos, coords[s], coords[s + 1]);
+      if (proj.dist < dist) {
+        dist = proj.dist;
+        along = cumulative[s] + proj.t * (cumulative[s + 1] - cumulative[s]);
+      }
+    }
+    return { idx, dist, along };
+  },
+
   onRidePosition(pos) {
     if (!this.isRiding || !this.currentTrip?.route?.coordinates || !this.currentTrip.route._cumulative) return;
 
-    // On first GPS fix, check if we're far from the route.
+    const now = Date.now();
+    const poorFix = (pos.accuracy || 0) > 80;
+
+    // Speed: doppler speed from the fix when present, derived from
+    // consecutive good fixes otherwise. Good fixes also feed the rolling ETA.
+    if (!poorFix) this._recordSpeedSample(pos, now);
+    this._updateRideSpeed(pos);
+
+    if (poorFix) {
+      // Fix too fuzzy to navigate by — the marker still moves (map-ride.js),
+      // but keep it out of the track, off-route logic, and arrival detection.
+      this._poorFixStreak = (this._poorFixStreak || 0) + 1;
+      if (this._poorFixStreak >= 3) this._setRideGpsState('weak');
+      return;
+    }
+    this._poorFixStreak = 0;
+    if (this._rideGpsState && this._rideGpsState !== 'ok') this._setRideGpsState('ok');
+
+    // On first usable GPS fix, check if we're far from the route.
     if (!this.rideInitialRouted) {
       this.rideInitialRouted = true;
-      const coords = this.currentTrip.route.coordinates;
+      const startCoords = this.currentTrip.route.coordinates;
       let nearestDist = Infinity;
-      for (let i = 0; i < coords.length; i++) {
-        const d = this.haversine(coords[i], pos);
+      for (let i = 0; i < startCoords.length; i++) {
+        const d = this.haversine(startCoords[i], pos);
         if (d < nearestDist) nearestDist = d;
       }
       if (nearestDist > 200) {
-        const allWaypoints = [...(this.currentTrip.waypoints || [])].sort((a, b) => a.order - b.order);
-        if (allWaypoints.length) {
-          UI.showToast('Routing to your first waypoint…', 'info');
-          this.rideRerouting = true;
-          this.lastRerouteAt = Date.now();
-          MapManager.rerouteFromPosition(pos, allWaypoints);
-          return;
-        }
+        UI.showToast('Routing from your location…', 'info');
+        this.rideRerouting = true;
+        this.lastRerouteAt = now;
+        MapManager.rerouteFromPosition(pos, this.getRemainingWaypoints());
+        return;
       }
     }
 
@@ -340,23 +514,25 @@ Object.assign(App, {
     const cumulative = this.currentTrip.route._cumulative;
     const total = this.currentTrip.route._total || cumulative[cumulative.length - 1] || 0;
     this.markVisitedWaypoints(pos);
-    const remainingWaypoints = this.getRemainingWaypoints();
-    const stopsEl = document.getElementById('rideStops');
-    if (stopsEl) stopsEl.textContent = remainingWaypoints.length.toString();
 
-    // Find nearest route point (sliding window)
-    const { idx: nearestIdx, dist: bestDist } = this._findNearestRouteIdx(coords, pos);
+    // Locate the rider on the route (segment-projected)
+    const { idx: nearestIdx, dist: routeDist, along } = this._locateOnRoute(coords, cumulative, pos);
 
     // Off-route detection with dynamic threshold
     const dynamicThreshold = Math.max(50, (pos.accuracy || 30) * 1.6);
-    const now = Date.now();
-    if (bestDist > dynamicThreshold) {
+    if (routeDist > dynamicThreshold) {
       this.offRouteCounter = (this.offRouteCounter || 0) + 1;
     } else {
       this.offRouteCounter = 0;
+      // On-route and >2 km past the next stop without ever reaching it:
+      // treat it as skipped so rerouting stops dragging the rider back.
+      this._checkSkippedWaypoint(along);
     }
 
-    const canReroute = bestDist > dynamicThreshold && this.offRouteCounter >= 4
+    const remainingWaypoints = this.getRemainingWaypoints();
+    this._setHudText('rideStops', remainingWaypoints.length.toString());
+
+    const canReroute = routeDist > dynamicThreshold && this.offRouteCounter >= 4
       && !this.rideRerouting && (now - (this.lastRerouteAt || 0) > 45000);
     if (canReroute) {
       this.rideRerouting = true;
@@ -365,43 +541,179 @@ Object.assign(App, {
       MapManager.rerouteFromPosition(pos, remainingWaypoints);
     }
 
-    // Distance remaining
-    const remaining = Math.max(0, total - cumulative[nearestIdx]);
-    document.getElementById('rideDistanceRemaining').textContent = RideUtils.formatDistance(remaining);
+    // Distance remaining — measured from the projected along-track position
+    const remaining = Math.max(0, total - along);
+    this._setHudText('rideDistanceRemaining', RideUtils.formatDistance(remaining));
 
-    // Live ETA: estimate from remaining distance and average speed so far
-    const elapsed = (now - (this._rideStartTime || now)) / 1000;
-    const travelled = total - remaining;
-    if (elapsed > 10 && travelled > 50) {
-      const avgSpeed = travelled / elapsed; // m/s
-      const etaSeconds = remaining / avgSpeed;
-      document.getElementById('rideEta').textContent = RideUtils.formatDuration(etaSeconds);
-    }
+    // ETA: rolling average of the last 60 s of actual movement (stopped time
+    // excluded); falls back to route duration scaled by the remaining fraction.
+    const etaSeconds = this._estimateEtaSeconds(remaining, total);
+    if (etaSeconds != null) this._setHudText('rideEta', this._formatEtaClock(etaSeconds));
 
     // Arrival detection
     if (remaining < 30 && remainingWaypoints.length === 0 && !this._rideArrived) {
       this._rideArrived = true;
-      document.getElementById('rideNextInstruction').textContent = '🏁 You have arrived!';
-      document.getElementById('rideNextMeta').textContent = 'Ride complete';
+      this._setHudText('rideNextInstruction', 'You have arrived!');
+      this._setHudText('rideNextMeta', 'Ride complete');
+      this._setHudText('rideManeuverDist', '');
+      this._setManeuverIcon('arrive');
       UI.showToast('🏁 You have arrived at your destination!', 'success');
       return;
     }
 
-    // Turn-by-turn instruction
-    const steps = this.currentTrip.route.steps || [];
-    const nextStep = steps.find(s => s.index > nearestIdx);
-    if (nextStep) {
-      document.getElementById('rideNextInstruction').textContent = nextStep.text || 'Continue';
-      const distToNextStep = cumulative[nextStep.index] - cumulative[nearestIdx];
-      document.getElementById('rideNextMeta').textContent = `${RideUtils.formatDistance(Math.max(0, distToNextStep))} ahead`;
-    } else if (!this._rideArrived) {
-      document.getElementById('rideNextInstruction').textContent = 'Continue to destination';
-      document.getElementById('rideNextMeta').textContent = RideUtils.formatDistance(remaining) + ' remaining';
-    }
+    // Turn-by-turn instruction + maneuver glyph + distance countdown
+    this._updateManeuverHud(nearestIdx, along, cumulative, remaining);
 
     // Append breadcrumb to GPS track (sampled, not every tick)
     this._recordTrackPoint(pos);
   },
+
+  /** Mark the next stop skipped once the rider is >2 km past it along the route. */
+  _checkSkippedWaypoint(along) {
+    const next = this.getRemainingWaypoints()[0];
+    if (!next) return;
+    const wpAlong = this.currentTrip.route?._wpAlong?.[next.id];
+    if (Number.isFinite(wpAlong) && along > wpAlong + 2000) {
+      this.rideVisitedWaypoints.add(next.id);
+      UI.showToast(`Skipped ${next.name || 'stop'}`, 'info');
+    }
+  },
+
+  /* --- HUD: speed, ETA, maneuver --- */
+
+  _updateRideSpeed(pos) {
+    const el = document.getElementById('rideSpeedVal');
+    if (!el) return;
+    let mps = (typeof pos.speed === 'number' && isFinite(pos.speed) && pos.speed >= 0) ? pos.speed : null;
+    if (mps == null && this._lastDerivedSpeed && (Date.now() - this._lastDerivedSpeed.t) < 8000) {
+      mps = this._lastDerivedSpeed.v;
+    }
+    el.textContent = mps == null ? '—' : Math.round(RideUtils.speedFromMps(mps)).toString();
+  },
+
+  _recordSpeedSample(pos, now) {
+    const last = this._lastGoodFix;
+    this._lastGoodFix = { lat: pos.lat, lng: pos.lng, t: now };
+    if (!last) return;
+    const dt = (now - last.t) / 1000;
+    if (dt <= 0 || dt > 30) return;
+    const dm = this.haversine(last, pos);
+    const v = dm / dt;
+    if (v > 70) return; // >250 km/h between fixes — GPS glitch, not riding
+    this._lastDerivedSpeed = { v, t: now };
+    if (!this._speedHist) this._speedHist = [];
+    if (v >= 1) this._speedHist.push({ t: now, d: dm, dt }); // moving samples only
+    const cutoff = now - 60000;
+    while (this._speedHist.length && this._speedHist[0].t < cutoff) this._speedHist.shift();
+  },
+
+  _estimateEtaSeconds(remaining, total) {
+    let d = 0;
+    let t = 0;
+    for (const s of (this._speedHist || [])) { d += s.d; t += s.dt; }
+    if (t >= 10 && d >= 30) return remaining / (d / t);
+    const routeDur = this.currentTrip?.route?.duration;
+    if (routeDur && total > 0) return routeDur * (remaining / total);
+    return null;
+  },
+
+  /** ETA rendered as arrival clock time ("3:45 pm") — glanceable, unlike a countdown. */
+  _formatEtaClock(etaSeconds) {
+    const d = new Date(Date.now() + Math.max(0, etaSeconds) * 1000);
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  },
+
+  /** Distance-to-turn with nav-style rounding: 1.2 km → 850 m → 40 m → Now. */
+  _fmtManeuverDist(meters) {
+    if (!Number.isFinite(meters)) return '';
+    if (meters < 30) return 'Now';
+    if (meters < 100) return `${Math.round(meters / 10) * 10} m`;
+    if (meters < 1000) return `${Math.round(meters / 50) * 50} m`;
+    return `${(meters / 1000).toFixed(1)} km`;
+  },
+
+  // Inline stroke paths for the maneuver glyph (24x24, stroke=currentColor
+  // set on the #rideManeuverIcon svg in index.html).
+  _maneuverPaths: {
+    'straight':     '<path d="M12 20V7M12 7l-5 5M12 7l5 5"/>',
+    'left':         '<path d="M16 20v-6a4 4 0 0 0-4-4H8M11 6l-4 4 4 4"/>',
+    'right':        '<path d="M8 20v-6a4 4 0 0 1 4-4h4M13 6l4 4-4 4"/>',
+    'slight-left':  '<path d="M14 20v-7L9 6M9 11V6h5"/>',
+    'slight-right': '<path d="M10 20v-7l5-7M15 11V6h-5"/>',
+    'sharp-left':   '<path d="M16 20v-9l-7 5M10 11l-1 5 6-1"/>',
+    'sharp-right':  '<path d="M8 20v-9l7 5M14 11l1 5-6-1"/>',
+    'uturn':        '<path d="M17 20v-9a5 5 0 0 0-10 0v4M4 13l3 4 3-4"/>',
+    'roundabout':   '<path d="M12 21v-4"/><circle cx="12" cy="11" r="5"/>',
+    'arrive':       '<path d="M6 21V4h12l-3 4 3 4H6"/>'
+  },
+
+  /**
+   * Resolve a step to a maneuver glyph key. Prefers the structured LRM
+   * type/modifier (present on reroute steps); planned-route steps only carry
+   * text (map.js drops type/modifier), so fall back to parsing it.
+   */
+  _maneuverKeyFor(step) {
+    const type = (step?.type || '').toLowerCase();
+    const mod = (step?.modifier || '').toLowerCase();
+    if (type.includes('destination') || type.includes('waypoint')) return 'arrive';
+    if (type.includes('roundabout') || type.includes('rotary')) return 'roundabout';
+    if (type === 'turnaround' || mod === 'uturn') return 'uturn';
+    const src = mod || type;
+    if (src) {
+      if (src.includes('sharpleft')) return 'sharp-left';
+      if (src.includes('sharpright')) return 'sharp-right';
+      if (src.includes('slightleft')) return 'slight-left';
+      if (src.includes('slightright')) return 'slight-right';
+      if (src.includes('left')) return 'left';
+      if (src.includes('right')) return 'right';
+      if (src.includes('straight') || src === 'continue' || src === 'head') return 'straight';
+    }
+    const t = (step?.text || '').toLowerCase();
+    if (t.includes('u-turn') || t.includes('turn around')) return 'uturn';
+    if (t.includes('roundabout') || t.includes('rotary')) return 'roundabout';
+    if (t.includes('destination') || t.includes('arrive')) return 'arrive';
+    if (t.includes('sharp left')) return 'sharp-left';
+    if (t.includes('sharp right')) return 'sharp-right';
+    if (t.includes('slight left') || t.includes('slightly left') || t.includes('keep left') || t.includes('bear left')) return 'slight-left';
+    if (t.includes('slight right') || t.includes('slightly right') || t.includes('keep right') || t.includes('bear right')) return 'slight-right';
+    if (t.includes('left')) return 'left';
+    if (t.includes('right')) return 'right';
+    return 'straight';
+  },
+
+  _setManeuverIcon(key) {
+    if (key === this._maneuverIconKey) return;
+    this._maneuverIconKey = key;
+    const svg = document.getElementById('rideManeuverIcon');
+    if (svg) svg.innerHTML = this._maneuverPaths[key] || this._maneuverPaths.straight;
+  },
+
+  _updateManeuverHud(nearestIdx, along, cumulative, remaining) {
+    const steps = this.currentTrip.route.steps || [];
+    const nextStep = steps.find(s => s.index > nearestIdx);
+    if (nextStep) {
+      this._setHudText('rideNextInstruction', nextStep.text || 'Continue');
+      const distToStep = Math.max(0, (cumulative[nextStep.index] ?? along) - along);
+      this._setHudText('rideManeuverDist', this._fmtManeuverDist(distToStep));
+      this._setManeuverIcon(this._maneuverKeyFor(nextStep));
+      // Meta: what comes after this turn, or the road it leads onto
+      const after = steps.find(s => s.index > nextStep.index);
+      if (after?.text) {
+        this._setHudText('rideNextMeta', `Then ${after.text}`);
+      } else if (nextStep.road) {
+        this._setHudText('rideNextMeta', `Toward ${nextStep.road}`);
+      } else {
+        this._setHudText('rideNextMeta', `${RideUtils.formatDistance(remaining)} remaining`);
+      }
+    } else if (!this._rideArrived) {
+      this._setHudText('rideNextInstruction', 'Continue to destination');
+      this._setHudText('rideNextMeta', `${RideUtils.formatDistance(remaining)} remaining`);
+      this._setHudText('rideManeuverDist', this._fmtManeuverDist(remaining));
+      this._setManeuverIcon('straight');
+    }
+  },
+
+  /* --- Track recording, checkpointing, and pending-log recovery --- */
 
   /**
    * Sample GPS position into the ride track at most once every 5 seconds and
@@ -409,36 +721,169 @@ Object.assign(App, {
    */
   _recordTrackPoint(pos) {
     const now = Date.now();
-    const pt = { lat: pos.lat, lng: pos.lng, t: now };
+    const pt = { lat: pos.lat, lng: pos.lng, t: now, accuracy: pos.accuracy || null };
     if (this._rideTrack.length === 0) {
       this._rideTrack.push(pt);
       this._rideTrackLastPt = pt;
+      this._checkpointTrack();
       return;
     }
     const last = this._rideTrackLastPt;
     const dt = (now - last.t) / 1000;   // seconds since last sample
     const dm = this.haversine(last, pt); // meters moved
-    if (dt >= 5 && dm >= 5) {
+    // Movement threshold scales with the fix's accuracy: a parked phone
+    // wanders a few metres per fix, which would otherwise log hundreds of
+    // phantom points during a photo stop and inflate the ride's distance.
+    // Capped so a mediocre-but-usable fix still records at walking pace.
+    const minMove = Math.min(30, Math.max(5, (pos.accuracy || 0) * 0.8));
+    if (dt >= 5 && dm >= minMove) {
       this._rideTrack.push(pt);
       this._rideTrackLastPt = pt;
-      // Cap at 3000 points to keep storage reasonable
-      if (this._rideTrack.length > 3000) this._rideTrack.splice(0, 1);
+      // Cap by halving resolution — long rides keep their full extent
+      // (start point, distance) instead of silently losing the beginning.
+      if (this._rideTrack.length > 3000) {
+        const lastIdx = this._rideTrack.length - 1;
+        this._rideTrack = this._rideTrack.filter((_, i) => i % 2 === 0 || i === lastIdx);
+        this._rideTrackLastPt = this._rideTrack[this._rideTrack.length - 1];
+      }
+      // Checkpoint every ~10 points so an app kill loses ≤ ~1 min of track
+      if (this._rideTrack.length % 10 === 0) this._checkpointTrack();
+    }
+  },
+
+  _checkpointTrack() {
+    try {
+      localStorage.setItem('ride_track_checkpoint', JSON.stringify({
+        tripId: this.currentTrip?.id ?? null,
+        startedAt: this._rideStartTime,
+        // Remember where this ride belongs so recovery can't file a cloud
+        // trip's log into localStorage if the session lapsed meanwhile.
+        cloud: !!(this.useCloud && this.currentUser),
+        track: this._rideTrack
+      }));
+    } catch (_) { /* storage full or unavailable — checkpointing is best-effort */ }
+  },
+
+  _clearTrackCheckpoint() {
+    try { localStorage.removeItem('ride_track_checkpoint'); } catch (_) { /* ignore */ }
+  },
+
+  /**
+   * Rescue a checkpointed track from a ride that never exited cleanly
+   * (app killed, tab discarded, mid-ride reload). Saves it as a ride log,
+   * or queues it locally if the API is unreachable.
+   */
+  async _recoverAbandonedRide() {
+    if (this.isRiding) return; // never touch the live ride's checkpoint
+    let ckpt = null;
+    try { ckpt = JSON.parse(localStorage.getItem('ride_track_checkpoint') || 'null'); } catch (_) { /* corrupt */ }
+    this._clearTrackCheckpoint(); // claimed — synchronously, before any await
+    if (!ckpt || !ckpt.tripId || !Array.isArray(ckpt.track) || ckpt.track.length < 3) return;
+
+    const track = ckpt.track;
+    let distMeters = 0;
+    for (let i = 1; i < track.length; i++) {
+      distMeters += this.haversine(track[i - 1], track[i]);
+    }
+    if (distMeters < 100) return; // stationary / accidental — nothing worth saving
+
+    const endMs = track[track.length - 1].t || Date.now();
+    const startMs = ckpt.startedAt || track[0].t || endMs;
+    const logPayload = {
+      journal_entry_id: null,
+      started_at: new Date(startMs).toISOString(),
+      ended_at: new Date(endMs).toISOString(),
+      distance_meters: Math.round(distMeters),
+      duration_seconds: Math.max(0, Math.round((endMs - startMs) / 1000)),
+      track
+    };
+    // Recorded while signed in but the session is gone now: hold it rather
+    // than writing a cloud trip's log into local storage under an id that
+    // has no local trip behind it.
+    if (ckpt.cloud && !(this.useCloud && this.currentUser)) {
+      this._queuePendingRideLog(ckpt.tripId, logPayload, true);
+      return;
+    }
+    try {
+      await API.rideLogs.save(ckpt.tripId, logPayload);
+      UI.showToast(`Recovered an unsaved ride — ${RideUtils.formatDistance(distMeters)} logged`, 'success');
+      if (this.currentTrip?.id === ckpt.tripId) {
+        try { MapManager.drawRideLogs(await API.rideLogs.list(ckpt.tripId)); } catch (_) { /* redraws on next load */ }
+      }
+    } catch (_) {
+      this._queuePendingRideLog(ckpt.tripId, logPayload, !!ckpt.cloud);
+    }
+  },
+
+  /** Keep a ride log on this device until it can reach the server. */
+  _queuePendingRideLog(tripId, log, cloud = false) {
+    try {
+      let arr = [];
+      try { arr = JSON.parse(localStorage.getItem('ride_pending_logs') || '[]'); } catch (_) { arr = []; }
+      if (!Array.isArray(arr)) arr = [];
+      arr.push({ qid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, tripId, log, cloud });
+      while (arr.length > 20) arr.shift(); // sanity cap
+      localStorage.setItem('ride_pending_logs', JSON.stringify(arr));
+      UI.showToast('Ride saved on this device — will sync when online', 'info');
+    } catch (_) {
+      UI.showToast('Could not save the ride log on this device', 'error');
+    }
+  },
+
+  /** Push locally-queued ride logs to the API; called on start/exit/online. */
+  async _flushPendingRideLogs() {
+    if (this._flushingRideLogs) return;
+    let queue = [];
+    try { queue = JSON.parse(localStorage.getItem('ride_pending_logs') || '[]'); } catch (_) { return; }
+    if (!Array.isArray(queue) || !queue.length) return;
+    this._flushingRideLogs = true;
+    const synced = new Set();
+    const cloudReady = !!(this.useCloud && this.currentUser);
+    try {
+      for (const item of queue) {
+        if (!item?.tripId || !item?.log) { synced.add(item?.qid); continue; } // drop malformed
+        // Cloud-recorded logs wait for a session — flushing them now would
+        // just move them into local storage and mark them synced.
+        if (item.cloud && !cloudReady) continue;
+        try {
+          await API.rideLogs.save(item.tripId, item.log);
+          synced.add(item.qid);
+        } catch (_) { /* still unreachable — keep for the next flush */ }
+      }
+      if (synced.size) {
+        try {
+          const latest = JSON.parse(localStorage.getItem('ride_pending_logs') || '[]');
+          const remaining = (Array.isArray(latest) ? latest : []).filter(i => !synced.has(i.qid));
+          localStorage.setItem('ride_pending_logs', JSON.stringify(remaining));
+        } catch (_) { /* ignore */ }
+        UI.showToast('Ride log synced', 'success');
+        const currentTripSynced = queue.some(i => synced.has(i.qid) && i.tripId === this.currentTrip?.id);
+        if (currentTripSynced) {
+          try { MapManager.drawRideLogs(await API.rideLogs.list(this.currentTrip.id)); } catch (_) { /* ignore */ }
+        }
+      }
+    } finally {
+      this._flushingRideLogs = false;
     }
   },
 
   /**
-   * Build a private journal entry and persist the ride log to the API.
+   * Build a private journal entry and persist the ride log.
+   * Works for guests too — API.rideLogs/journal store locally when cloud is
+   * off. On API failure the log is queued in localStorage, never discarded.
    * Called asynchronously after exitRideMode() so it never blocks the UI.
    */
   async _saveRideLog(track, startedAtMs) {
-    if (!this.currentTrip || !this.useCloud || !this.currentUser) return;
+    const trip = this.currentTrip;
+    if (!trip) { this._clearTrackCheckpoint(); return; }
+    const tripId = trip.id;
 
     // Compute distance from track
     let distMeters = 0;
     for (let i = 1; i < track.length; i++) {
       distMeters += this.haversine(track[i - 1], track[i]);
     }
-    if (distMeters < 100) return; // too short (stationary / accidental) — skip
+    if (distMeters < 100) { this._clearTrackCheckpoint(); return; } // stationary / accidental — skip
 
     const endedAtMs = Date.now();
     const durationSec = Math.round((endedAtMs - (startedAtMs || endedAtMs)) / 1000);
@@ -448,7 +893,7 @@ Object.assign(App, {
 
     const distStr    = RideUtils.formatDistance(distMeters);
     const durStr     = RideUtils.formatDuration(durationSec);
-    const avgKmh     = durationSec > 0 ? ((distMeters / durationSec) * 3.6).toFixed(1) : '—';
+    const avgSpeed   = durationSec > 0 ? RideUtils.speedFromMps(distMeters / durationSec).toFixed(1) : '—';
     const dateStr    = new Date(startedAtMs || endedAtMs).toLocaleDateString(undefined, {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
@@ -457,11 +902,11 @@ Object.assign(App, {
     });
 
     const title   = `Ride — ${dateStr} at ${timeStr}`;
-    const content = `🏍️ **${distStr}** · ${durStr} · avg ${avgKmh} km/h\n\n_Automatically recorded during navigation._`;
+    const content = `🏍️ **${distStr}** · ${durStr} · avg ${avgSpeed} ${RideUtils.speedUnitLabel()}\n\n_Automatically recorded during navigation._`;
 
     let entry = null;
     try {
-      entry = await API.journal.add(this.currentTrip.id, {
+      entry = await API.journal.add(tripId, {
         title,
         content,
         is_private: true,
@@ -469,34 +914,43 @@ Object.assign(App, {
         location: { lat: startPt.lat, lng: startPt.lng }
       });
       entry.attachments = [];
-      if (!this.currentTrip.journal) this.currentTrip.journal = [];
-      this.currentTrip.journal.unshift(entry);
-      UI.renderJournal(this.currentTrip.journal);
+      if (!trip.journal) trip.journal = [];
+      trip.journal.unshift(entry);
+      if (this.currentTrip === trip) UI.renderJournal(trip.journal);
     } catch (err) {
-      console.error('Ride journal entry failed:', err);
+      console.warn('Ride journal entry failed:', err);
     }
 
+    const logPayload = {
+      journal_entry_id: entry?.id || null,
+      started_at: startedAtISO,
+      ended_at: endedAtISO,
+      distance_meters: Math.round(distMeters),
+      duration_seconds: durationSec,
+      track
+    };
+
+    let saved = false;
     try {
-      await API.rideLogs.save(this.currentTrip.id, {
-        journal_entry_id: entry?.id || null,
-        started_at: startedAtISO,
-        ended_at: endedAtISO,
-        distance_meters: Math.round(distMeters),
-        duration_seconds: durationSec,
-        track
-      });
+      await API.rideLogs.save(tripId, logPayload);
+      saved = true;
     } catch (err) {
-      console.error('Ride log save failed:', err);
+      console.warn('Ride log save failed, keeping a local copy:', err);
+      this._queuePendingRideLog(tripId, logPayload, !!(this.useCloud && this.currentUser));
     }
+    // Either way the track is now safe (server or pending queue) — the
+    // checkpoint has served its purpose.
+    this._clearTrackCheckpoint();
 
-    UI.showToast(`Ride logged — ${distStr} in ${durStr} 📍`, 'success');
-
-    // Refresh ride logs on the map so the new track shows immediately
-    if (this.currentTrip) {
-      try {
-        const logs = await API.rideLogs.list(this.currentTrip.id);
-        MapManager.drawRideLogs(logs);
-      } catch (_) {}
+    if (saved) {
+      UI.showToast(`Ride logged — ${distStr} in ${durStr}`, 'success');
+      // Refresh ride logs on the map so the new track shows immediately
+      if (this.currentTrip?.id === tripId) {
+        try {
+          const logs = await API.rideLogs.list(tripId);
+          MapManager.drawRideLogs(logs);
+        } catch (_) { /* non-fatal — logs draw on next trip load */ }
+      }
     }
   }
 });

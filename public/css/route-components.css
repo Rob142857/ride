@@ -1,7 +1,16 @@
 /* ==========================================================================
    Route Selector + Route Editor components
    Companion stylesheet for js/route-selector.js and js/route-editor.js.
-   Uses the theme variables defined in app.css.
+   All colours come from css/tokens.css.
+   Also carries the top-of-map overlay stacking rule that keeps
+   js/scenic-suggest.js's chip clear of the pill bar (see the end of the
+   route-mode-toggle section) — the offset is derived from this file's
+   geometry, so it lives next to it.
+
+   Selector naming note: the JS emits flat class names (.route-selector-list,
+   .route-pill, .route-selector-close). The BEM aliases (.route-selector__list,
+   .route-selector__pill, .route-selector__close) are kept so either markup
+   generation renders identically.
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -9,163 +18,527 @@
    -------------------------------------------------------------------------- */
 .route-selector {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right:12px;
-  z-index: 600; /* above Leaflet controls, below markers/tooltips */
+  left: var(--space-3);
+  right: var(--space-3);
+  top: var(--space-3);
+  z-index: var(--z-map-controls); /* above Leaflet controls, below modals */
   display: flex;
   align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  /* The bar itself is interactive; the gap around it must let map drags through. */
   pointer-events: none;
 }
 
+/* Bottom position sits above the zoom row and left of the locate/fullscreen
+   stack, so it never covers a map control. */
+.route-selector--bottom {
+  top: auto;
+  bottom: 76px;
+  right: 64px;
+}
+
+/* Top position on wide screens: leave the map's top-right corner to the
+   attribution. The bar scrolls horizontally rather than growing into it. */
+@media (min-width: 641px) {
+  .route-selector--top,
+  .route-selector:not(.route-selector--bottom) {
+    right: 244px;
+  }
+}
+
+.route-selector.hidden {
+  display: none !important;
+}
+
+.route-selector-list,
 .route-selector__list {
   display: flex;
-  flex-wrap: wrap;
-  gap:8px;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2);
   max-width: 100%;
-  padding: 6px;
-  border-radius: 999px;
-  background: rgba(22,33, 62, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 08px 24px rgba(0, 0, 0,0.35);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  list-style: none;
+  border-radius: var(--radius-lg);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-elegant);
+  box-shadow: var(--shadow-3);
+  backdrop-filter: blur(14px) saturate(1.35);
+  -webkit-backdrop-filter: blur(14px) saturate(1.35);
+  /* Thumb-scrollable on narrow screens instead of wrapping into a wall.
+     touch-action must allow horizontal pans explicitly: the bar sits inside
+     the Leaflet container, whose own touch handling would otherwise win. */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
   pointer-events: auto;
 }
 
+.route-selector-list::-webkit-scrollbar,
+.route-selector__list::-webkit-scrollbar {
+  display: none;
+}
+
+.route-pill,
 .route-selector__pill {
   appearance: none;
   -webkit-appearance: none;
-  border:1px solid rgba(255, 255, 255,0.08);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text-secondary);
-  border-radius: 999px;
-  padding:8px 14px;
-  font: inherit;
-  font-size: 0.85rem;
-  line-height: 1.25;
-  cursor: pointer;
+  flex: 0 0 auto;
+  scroll-snap-align: start;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
   min-width: 0;
-  transition: background0.15s ease, color0.15s ease, border-color0.15s ease, box-shadow0.15s ease;
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.25;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+.route-pill:hover,
+.route-pill:focus-visible,
 .route-selector__pill:hover,
 .route-selector__pill:focus-visible {
-  background: rgba(255, 255, 255,0.12);
-  border-color: rgba(233, 69, 96, 0.45);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-ring);
   color: var(--text-primary);
   outline: none;
 }
 
+.route-pill.is-active,
+.route-pill.is-active:hover,
+.route-pill.is-active:focus-visible,
 .route-selector__pill--active,
 .route-selector__pill--active:hover,
 .route-selector__pill--active:focus-visible {
-  background: rgba(233, 69, 96, 0.18);
-  border-color: rgba(233,69, 96,0.85);
-  color: #fff;
-  box-shadow: 0001px rgba(233,69, 96, 0.35),04px 14px rgba(233, 69, 96,0.2);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+              0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* Colour swatch matching the line drawn on the map:
+   gold = the selected "golden route", grey-blue = alternatives.
+   The selector JS puts `route-pill-dot` and `route-selector__bar` on the same
+   node when it renders the twistiness meter, so the plain dot stands down. */
+.route-pill-dot:not(.route-selector__bar) {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--route-alt);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.14);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.route-pill.is-active .route-pill-dot:not(.route-selector__bar) {
+  background: var(--route);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22), 0 0 10px var(--route-glow);
+}
+
+.route-pill-body,
+.route-selector__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.route-pill-label,
 .route-selector__route-name {
   font-weight: 600;
   white-space: nowrap;
+  color: inherit;
 }
 
+.route-pill-meta,
 .route-selector__stats {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.route-pill.is-active .route-pill-meta,
+.route-selector__pill--active .route-selector__stats {
+  color: var(--text-primary);
+}
+
+.route-pill-diff {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
-.route-selector__pill--active .route-selector__stats {
-  color: rgba(255, 255, 255, 0.85);
+.route-pill.is-active .route-pill-diff {
+  color: var(--text-secondary);
 }
 
-.route-selector__bar {
-  width:4px;
-  height: 14px;
-  border-radius: 2px;
-  background: rgba(255,255, 255,0.12);
-  position: relative;
-  overflow: hidden;
+/* "Windiest"/"Fastest" badge on a pill. The selector JS also sets inline
+   colours from tokens, which win over these; this is the unstyled fallback. */
+.route-pill-badge,
+.route-selector__badge {
   flex-shrink: 0;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Twistiness meter: fill height is set inline by the selector (0–100%). */
+.route-selector__bar {
+  position: relative;
+  flex-shrink: 0;
+  width: 6px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
 }
 
 .route-selector__bar-inner {
   position: absolute;
-  bottom:0;
+  bottom: 0;
   left: 0;
   right: 0;
-  border-radius: 2px2px00;
-  background: var(--accent);
-  min-height:3px;
+  min-height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--route-alt);
+  transition: background var(--transition-fast);
+}
+
+.route-pill.is-active .route-selector__bar-inner,
+.route-selector__pill--active .route-selector__bar-inner {
+  background: var(--route);
+  box-shadow: 0 0 10px var(--route-glow);
 }
 
 .route-selector__empty,
 .route-selector__error {
   color: var(--text-secondary);
-  font-size: 0.85rem;
-  padding:8px 14px;
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
 }
 
+.route-selector-close,
 .route-selector__close {
+  /* The JS emits the close button before the list; keep it visually last. */
+  order: 2;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(22, 33, 62, 0.92);
+  width: var(--touch-target);
+  height: var(--touch-target);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-elegant);
+  background: var(--bg-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   color: var(--text-secondary);
-  margin-left: 6px;
+  font-size: var(--text-lg);
+  line-height: 1;
   cursor: pointer;
   pointer-events: auto;
-  backdrop-filter: blur(10px);
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
+.route-selector-close:hover,
+.route-selector-close:focus-visible,
 .route-selector__close:hover,
 .route-selector__close:focus-visible {
-  color: #fff;
-  background: rgba(233, 69, 96, 0.25);
+  color: var(--text-primary);
+  background: var(--surface-3);
   outline: none;
 }
 
-/* Mobile: turn the pill bar into a bottom sheet to stay clear of the top bar */
-@media (max-width:640px) {
-  .route-selector {
+/* Mobile: sit low so the bar is thumb-reachable and never covers the top bar. */
+@media (max-width: 640px) {
+  .route-selector,
+  .route-selector--top {
     top: auto;
-    bottom: 12px;
-    left:12px;
-    right: 12px;
-    justify-content: center;
+    bottom: 76px;
+    left: var(--space-2);
+    right: 64px;
   }
 
+  .route-selector-list,
   .route-selector__list {
-    border-radius: 16px;
-    max-width:100%;
-    justify-content: center;
-    padding:8px;
+    flex: 1 1 auto;
+    border-radius: var(--radius-lg);
   }
 
+  .route-pill,
   .route-selector__pill {
-    padding: 10px 12px;
-    font-size:0.8rem;
-  }
-
-  .route-selector__close {
-    display: none; /* save space on small screens; the sheet hides automatically */
+    padding: var(--space-2) var(--space-3);
   }
 }
 
 /* --------------------------------------------------------------------------
-   Route Editor — visible midpoint drag handles and click-to-insert track
+   Route mode toggle — Fastest / Windy segmented control + Avoid-motorways
+   chip. Companion controls to the route-selector pill bar above; same
+   gesture-isolation rules apply (pointer-events:auto — the emitting JS wires
+   its own stopPropagation on these elements, no CSS needed beyond that).
+
+   Layout note: the class contract only fixes the class names, not the exact
+   DOM nesting (decided in parallel by another agent). This is written to
+   read correctly as a direct child of `.route-selector`, stacked on its own
+   row above `.route-selector-list` via the flex-wrap + order override below
+   — but stays a self-contained compact glass bar if rendered elsewhere, so
+   it never looks broken either way.
+   -------------------------------------------------------------------------- */
+.route-mode-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  max-width: 100%;
+  border-radius: var(--radius-lg);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-elegant);
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(14px) saturate(1.35);
+  -webkit-backdrop-filter: blur(14px) saturate(1.35);
+  overflow-x: auto;
+  scrollbar-width: none;
+  pointer-events: auto;
+}
+
+.route-mode-toggle::-webkit-scrollbar {
+  display: none;
+}
+
+/* Nested inside the pill bar: park it on its own row above the alternatives
+   list (`.route-selector` gained `flex-wrap: wrap` above for this) instead
+   of squeezing beside it. */
+.route-selector > .route-mode-toggle {
+  order: -1;
+  flex: 1 1 100%;
+  margin-bottom: var(--space-2);
+}
+
+.route-mode-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.route-mode-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+.route-mode-btn:hover,
+.route-mode-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--accent-ring);
+  color: var(--text-primary);
+  outline: none;
+}
+
+/* Active, default: accent/indigo (covers "Fastest"). The more specific
+   "Windy" selectors below re-paint the active Windy button gold, so the two
+   modes read as distinctly branded, not just on/off. */
+.route-mode-btn.is-active {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  color: var(--accent-hover);
+}
+
+.route-mode-btn.is-active:hover,
+.route-mode-btn.is-active:focus-visible {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+/* Windy, active — it IS the golden route. Matches whichever marker the
+   emitting JS put on the button: a `data-mode` attribute or a BEM modifier
+   class both resolve here, so this doesn't depend on which one landed. */
+.route-mode-btn[data-mode="windy"].is-active,
+.route-mode-btn.route-mode-btn--windy.is-active,
+.route-mode-btn.is-windy.is-active {
+  background: var(--route);
+  border-color: var(--route);
+  color: var(--text-on-gold);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--route) 45%, transparent),
+              0 4px 14px var(--route-glow);
+}
+
+.route-mode-btn[data-mode="windy"].is-active:hover,
+.route-mode-btn[data-mode="windy"].is-active:focus-visible,
+.route-mode-btn.route-mode-btn--windy.is-active:hover,
+.route-mode-btn.route-mode-btn--windy.is-active:focus-visible,
+.route-mode-btn.is-windy.is-active:hover,
+.route-mode-btn.is-windy.is-active:focus-visible {
+  background: var(--gold-400);
+  border-color: var(--gold-400);
+  color: var(--text-on-gold);
+}
+
+/* Avoid-motorways — small toggle chip, role="switch" pattern; aria-checked
+   is reflected by the emitting JS toggling `is-active`. */
+.route-avoid-motorways {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+/* Vertical-only hit-area expansion to 44px — same technique as
+   .toolbar-btn::after in app.css, reproduced locally so this stays a
+   self-contained companion to route-selector.js / route-editor.js. */
+.route-avoid-motorways::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: var(--touch-target);
+}
+
+.route-avoid-motorways svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+.route-avoid-motorways:hover,
+.route-avoid-motorways:focus-visible {
+  border-color: var(--accent-ring);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.route-avoid-motorways.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+.route-avoid-motorways.is-active:hover,
+.route-avoid-motorways.is-active:focus-visible {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  border-color: var(--accent-hover);
+  color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+  .route-mode-toggle {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .route-mode-btn {
+    padding: 0 var(--space-2);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Top-of-map overlay stack
+   The pill bar is not the only surface floating at the top of the map:
+   js/scenic-suggest.js drops a `.scenic-chip` into the same band (fixed,
+   centred, styled inline by that module — only its stacking is handled here).
+   Neither surface knew about the other, so a scenic match arriving while route
+   alternatives were on screen put the chip on top of the bar. Offset the chip
+   below the bar instead — same idea as #fullscreenBtn stacking above
+   #locateBtn in app.css.
+
+   `top` is an inline style on the chip, so overriding it would need
+   !important; margin-top displaces a fixed box just as well and leaves that
+   module free to keep owning `top`.
+
+   The offset is what the bar claims over the map — its --space-3 inset, the
+   always-rendered .route-mode-toggle row (36px buttons + --space-1 padding +
+   1px borders), the --space-2 row gap, and the .route-selector-list row
+   (--touch-target pills + --space-2 glass padding + 1px borders) — plus a
+   --space-2 gap, less the chip's own 10px inset. Sized to the bar's tallest
+   state on purpose: a single-route bar drops the pill row and simply gets a
+   roomier gap, which is the safe direction to be wrong in.
+
+   Only ≥641px. Below that the bar is bottom-positioned (selector mobile block
+   above) and the chip has the top band to itself, as it does in ride mode
+   where the bar is display:none (ride-mode.css). A browser without :has()
+   drops this rule and simply keeps today's overlap.
+   -------------------------------------------------------------------------- */
+@media (min-width: 641px) {
+  body:not(.ride-mode):has(.route-selector:not(.hidden):not(.route-selector--bottom)) .scenic-chip {
+    margin-top: calc(
+      var(--space-3) + 36px + var(--space-1) * 2 + 2px
+      + var(--space-2) + var(--touch-target) + var(--space-2) * 2 + 2px
+      + var(--space-2) - 10px
+    );
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Route Editor — midpoint drag handles and click-to-insert corridor
    -------------------------------------------------------------------------- */
 .route-midpoint-handle {
   background: transparent !important;
@@ -173,41 +546,38 @@
 }
 
 .route-midpoint-handle-inner {
-  width:18px;
+  width: 18px;
   height: 18px;
   background: #fff;
-  border:2px solid var(--accent);
-  border-radius: 4px;
-  box-shadow: 02px 8px rgba(0, 0, 0,0.35);
-  transform: translate(-50%, -50%) rotate(45deg);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  /* The 20px divIcon is already centred by its iconAnchor — no translate here,
+     otherwise the diamond drifts off its own hit target. */
+  transform: rotate(45deg);
   transform-origin: center center;
   cursor: grab;
-  transition: transform0.15s var(--ease-bounce, ease),
-              box-shadow0.15s ease,
-              border-color0.15s ease;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast),
+              border-color var(--transition-fast);
   will-change: transform;
 }
 
 .route-midpoint-handle:hover .route-midpoint-handle-inner,
 .route-midpoint-handle:focus-within .route-midpoint-handle-inner {
-  transform: translate(-50%, -50%) rotate(45deg) scale(1.25);
-  border-color: var(--accent-hover, #ff6b6b);
-  box-shadow: 0 004px rgba(233,69, 96, 0.25), 04px 12px rgba(0, 0, 0, 0.4);
+  transform: rotate(45deg) scale(1.25);
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
+/* JS toggles `is-dragging`; the `--dragging` alias is kept for older markup. */
+.route-midpoint-handle.is-dragging .route-midpoint-handle-inner,
+.route-midpoint-handle.is-dragging:hover .route-midpoint-handle-inner,
 .route-midpoint-handle--dragging .route-midpoint-handle-inner,
 .route-midpoint-handle--dragging:hover .route-midpoint-handle-inner {
   cursor: grabbing;
-  transform: translate(-50%, -50%) rotate(45deg) scale(1.4);
-  border-color: var(--accent-hover, #ff6b6b);
-  box-shadow: 0006px rgba(233,69, 96, 0.35), 06px 18px rgba(0, 0, 0,0.45);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .route-midpoint-handle-inner,
-  .route-selector__pill {
-    transition: none !important;
-  }
+  transform: rotate(45deg) scale(1.4);
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 0 6px var(--accent-soft), 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 /* Transparent tappable corridor over the route line for click-to-insert */
@@ -218,25 +588,65 @@
 }
 
 .route-click-line:hover {
-  stroke: rgba(233,69, 96, 0.25);
-  stroke-opacity: 0.25;
+  stroke: var(--accent-ring);
+  stroke-opacity: 0.28;
 }
 
 /* --------------------------------------------------------------------------
-   Undo / redo buttons — make active state more visible
+   Via markers — route-shaping points. Deliberately small and quiet: they
+   bend the route, they are not stops.
+   -------------------------------------------------------------------------- */
+.via-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.via-marker .via-marker-inner,
+.via-marker > div {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--wp-via);
+  border: 2px solid var(--text-on-accent);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+/* Fallback when the divIcon has no inner element of its own.
+   Kept in its own rule so a browser without :has() only drops this line. */
+.via-marker:not(:has(> *)) {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--wp-via) !important;
+  border: 2px solid var(--text-on-accent) !important;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+}
+
+.via-marker:hover .via-marker-inner,
+.via-marker:focus-within .via-marker-inner,
+.via-marker:hover > div {
+  background: var(--accent);
+  transform: scale(1.25);
+}
+
+/* --------------------------------------------------------------------------
+   Undo / redo buttons — make the active state legible
    -------------------------------------------------------------------------- */
 #undoWaypointBtn:not([disabled]),
 #redoWaypointBtn:not([disabled]) {
-  color: var(--accent);
+  color: var(--accent-hover);
 }
 
 #undoWaypointBtn:not([disabled]):hover,
 #undoWaypointBtn:not([disabled]):focus-visible,
 #redoWaypointBtn:not([disabled]):hover,
 #redoWaypointBtn:not([disabled]):focus-visible {
-  color: var(--accent-hover, #ff6b6b);
-  background: rgba(233,69, 96, 0.12);
-  box-shadow: 0002px rgba(233, 69, 96,0.25);
+  color: var(--text-primary);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
   outline: none;
 }
 

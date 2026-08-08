@@ -36,7 +36,7 @@ services:
       - ./gh-config.yml:/graphhopper/config.yml:ro
     environment:
       - JAVA_OPTS=-Xmx3g -Xms1g
-    command: -Ddw.graphhopper.datareader.file=/graphhopper/data/data.osm.pbf --config /graphhopper/config.yml
+    command: -i /graphhopper/data/data.osm.pbf -c /graphhopper/config.yml -o /graphhopper/data/graph-cache
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8989/health"]
       interval: 30s

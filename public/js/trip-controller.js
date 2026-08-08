@@ -85,38 +85,51 @@ Object.assign(App, {
 
   /* --- Trip loading & saving --- */
 
+  /**
+   * Open the most recent trip. Works identically for guests (localStorage via
+   * the API shim) and signed-in users (cloud) — there is no login wall here.
+   */
   async loadInitialTrip() {
-    if (this.useCloud && this.currentUser) {
-      try {
-        const trips = await API.trips.list();
-        const pendingImportedId = localStorage.getItem('ride_imported_trip_id');
-        if (trips.length > 0) {
-          const targetId = (pendingImportedId && trips.some(t => t.id === pendingImportedId))
-            ? pendingImportedId : trips[0].id;
-          const trip = await API.trips.get(targetId);
-          if (pendingImportedId) {
-            localStorage.removeItem('ride_imported_trip_id');
-            this.bumpTripToTop(targetId);
-          }
-          this.loadTripData(trip);
-        } else {
-          this.createNewTrip();
+    try {
+      const trips = await API.trips.list();
+      const pendingImportedId = localStorage.getItem('ride_imported_trip_id');
+      if (trips.length > 0) {
+        const targetId = (pendingImportedId && trips.some(t => t.id === pendingImportedId))
+          ? pendingImportedId : trips[0].id;
+        const trip = await API.trips.get(targetId);
+        if (pendingImportedId) {
+          localStorage.removeItem('ride_imported_trip_id');
+          this.bumpTripToTop(targetId);
         }
-      } catch (error) {
-        console.error('Failed to load cloud trips:', error);
-        UI.showToast('Unable to load trips from server. Please retry online.', 'error');
-        this._clearTripUI();
+        this.loadTripData(trip);
+      } else {
+        await this.createNewTrip();
       }
-    } else {
-      this._clearTripUI();
+    } catch (error) {
+      console.error('Failed to load trips:', error);
+      UI.showToast(
+        this.useCloud ? 'Unable to load trips from the server.' : 'Unable to open your trips on this device.',
+        'error'
+      );
+      // Never tear down a trip that is already on screen because of a blip.
+      if (!this.currentTrip) this._clearTripUI();
     }
   },
 
    loadTripData(trip) {
+    if (!trip) return;
+    // A live ride owns currentTrip (precomputed route metrics, HUD cursors).
+    // Swapping it out mid-navigation silently freezes the HUD — never do it.
+    if (this.isRiding) return;
+    if (this.currentTrip?.id && trip.id !== this.currentTrip.id) this._cancelPendingAltSave();
     if (trip.waypoints) trip.waypoints = Trip.normalizeWaypointOrder(trip.waypoints);
     trip = this.normalizeTrip(trip);
     if (!Number.isFinite(Number(trip.version))) trip.version = 0;
     else trip.version = Number(trip.version);
+    // Remember where the trip came from: if a cloud session lapses later,
+    // ensureEditable uses this to suggest signing in rather than writing the
+    // edit into the guest store under a cloud id.
+    if (trip._fromCloud === undefined) trip._fromCloud = !!(this.useCloud && this.currentUser);
     this.attachJournalAttachments(trip);
     // Preserve undo/redo stack when refreshing data if waypoints haven't changed.
     const preservedHistory = this._preserveWaypointHistoryIfUnchanged(trip);
@@ -131,10 +144,15 @@ Object.assign(App, {
     MapManager.clear();
     MapManager.updateWaypoints(trip.waypoints || []);
     this.restoreAlternativesToMap(trip);
+    // Photos and notes captured on the route (entries carrying a location)
+    if (typeof MapManager.drawJournalPhotos === 'function') {
+      MapManager.drawJournalPhotos(trip.journal || []);
+    }
     if (trip.waypoints?.length > 0) MapManager.fitToWaypoints(trip.waypoints);
 
-    // Load and draw historical ride tracks for this trip (async, non-blocking)
-    if (this.useCloud && this.currentUser && trip.id) {
+    // Load and draw historical ride tracks for this trip (async, non-blocking).
+    // Ride logs are private, so never asked for on a shared view.
+    if (trip.id && !this.isSharedView) {
       API.rideLogs.list(trip.id).then(logs => {
         if (this.currentTrip?.id === trip.id && logs.length) {
           MapManager.drawRideLogs(logs);
@@ -160,9 +178,14 @@ Object.assign(App, {
             if (!selected?.coordinates?.length) return;
             this.currentTrip.activeRouteIndex = routeIndex;
             this.currentTrip.active_route_index = routeIndex;
-            if (typeof MapManager.clear === 'function') MapManager.clear();
-            if (typeof MapManager.updateWaypoints === 'function') MapManager.updateWaypoints(this.currentTrip.waypoints || []);
-            if (typeof MapManager.drawRoute === 'function') MapManager.drawRoute(selected.coordinates);
+            // Only tear the map down when we can actually redraw the chosen
+            // line — otherwise we'd wipe the route and trigger a recompute
+            // that fights the user's selection.
+            if (typeof MapManager.drawRoute === 'function') {
+              MapManager.clear();
+              MapManager.updateWaypoints(this.currentTrip.waypoints || []);
+              MapManager.drawRoute(selected.coordinates);
+            }
             this.currentTrip.distance = selected.distance;
             this.currentTrip.duration = selected.duration;
             UI.updateTripStats(this.currentTrip);
@@ -205,19 +228,38 @@ Object.assign(App, {
     this.currentTrip.alternativeRoutes = routesArray.slice(1);
     this.currentTrip.alternatives = routesArray;
     this.currentTrip._allAlternatives = routesArray;
-    if (this.useCloud && this.currentUser) {
-      clearTimeout(this._altSaveTimer);
-      this._pendingAltSave = true;
-      this._altSaveTimer = setTimeout(async () => {
-        try {
-          await API.trips.saveAlternativeRoutes(this.currentTrip.id, backendRoutes);
-          await API.trips.update(this.currentTrip.id, { active_route_index: activeIdx });
-        } catch (err) {
-          console.error('Failed to save alternative routes:', err);
-        }
+
+    // Bind the pending write to the trip that was open when it was scheduled,
+    // so switching trips inside the debounce window can't write A's routes
+    // onto B. loadTripData also cancels anything still pending.
+    const tripId = this.currentTrip.id;
+    if (!tripId) return;
+    this._cancelPendingAltSave();
+    this._pendingAltSave = true;
+    this._altSaveTimer = setTimeout(async () => {
+      this._altSaveTimer = null;
+      if (this.currentTrip?.id !== tripId) { this._pendingAltSave = false; return; }
+      try {
+        await API.trips.saveAlternativeRoutes(tripId, backendRoutes);
+        if (this.currentTrip?.id !== tripId) return;
+        const updated = await API.trips.update(tripId, { active_route_index: activeIdx },
+          { headers: this.getTripIfMatchHeaders() });
+        // Keep the local version in step so the next If-Match doesn't 409.
+        const v = Number(updated?.version);
+        if (Number.isFinite(v) && this.currentTrip?.id === tripId) this.currentTrip.version = v;
+      } catch (err) {
+        console.error('Failed to save alternative routes:', err);
+      } finally {
         this._pendingAltSave = false;
-      }, 1500);
-    }
+      }
+    }, 1500);
+  },
+
+  /** Drop a debounced alternatives write that has not fired yet. */
+  _cancelPendingAltSave() {
+    if (this._altSaveTimer) clearTimeout(this._altSaveTimer);
+    this._altSaveTimer = null;
+    this._pendingAltSave = false;
   },
 
   restoreAlternativesToMap(trip) {
@@ -262,7 +304,6 @@ Object.assign(App, {
    * Load a trip by ID. Simplified stale-read guard: trust version numbers.
    */
   async loadTrip(tripId) {
-    if (!this.useCloud || !this.currentUser) return;
     if (this._activeUploads > 0) {
       UI.showToast('Upload in progress — please wait', 'warning');
       return;
@@ -282,7 +323,7 @@ Object.assign(App, {
         UI.showToast(`Loaded: ${cached.name}`, 'success');
         setTimeout(async () => {
           try {
-            if (!this.useCloud || !this.currentUser || this.currentTrip?.id !== tripId) return;
+            if (this.isRiding || this.currentTrip?.id !== tripId) return;
             const retry = this.normalizeTrip(await API.trips.get(tripId));
             if (Number(retry?.version) >= cachedV) this.loadTripData(retry);
           } catch (_) {}
@@ -295,8 +336,8 @@ Object.assign(App, {
       UI.switchView('map');
       UI.showToast(`Loaded: ${trip.name}`, 'success');
     } catch (error) {
-      console.error('Failed to load cloud trip:', error);
-      UI.showToast('Unable to load trip from server.', 'error');
+      console.error('Failed to load trip:', error);
+      UI.showToast('Unable to open that trip.', 'error');
     }
   },
 
@@ -305,28 +346,22 @@ Object.assign(App, {
       UI.showToast('Upload in progress — please wait', 'warning');
       return;
     }
-    if (this.useCloud && this.currentUser) {
-      try {
-        const trip = await API.trips.create({ name });
-        const fullTrip = await API.trips.get(trip.id);
-        this.currentTrip = fullTrip;
-        this.loadTripData(fullTrip);
-        this.bumpTripToTop(fullTrip.id);
-        this.refreshTripsList();
-        UI.showToast('New trip created', 'success');
-        return;
-      } catch (error) {
-        console.error('Failed to create cloud trip:', error);
-        UI.showToast('Login required to create trips.', 'error');
-        return;
-      }
+    try {
+      const trip = await API.trips.create({ name });
+      const fullTrip = await API.trips.get(trip.id);
+      this.loadTripData(fullTrip);
+      this.bumpTripToTop(fullTrip.id);
+      this.refreshTripsList();
+      UI.showToast(this.useCloud ? 'New trip created' : 'New trip created on this device', 'success');
+    } catch (error) {
+      if (error?.code === 'LOGIN_REQUIRED') { this._suggestLogin('create trips in the cloud'); return; }
+      console.error('Failed to create trip:', error);
+      UI.showToast('Could not create the trip. Please try again.', 'error');
     }
-    UI.showToast('Login to create and save trips.', 'error');
   },
 
   async saveCurrentTrip() {
     if (!this.currentTrip) return false;
-    if (!this.useCloud || !this.currentUser) return false;
     try {
       const route = this.currentTrip.route
         ? {
@@ -360,22 +395,23 @@ Object.assign(App, {
       this.markTripWritten(this.currentTrip.id);
       return true;
     } catch (error) {
-      console.error('Failed to save to cloud:', error);
+      if (error?.code === 'LOGIN_REQUIRED') { this._suggestLogin('save this trip to the cloud'); return false; }
+      console.error('Failed to save trip:', error);
       if (error.status === 409) { await this.handleTripConflict(error); return false; }
       if (error.status === 404) {
-        UI.showToast('Trip missing on server. Reloading your trips…', 'error');
+        UI.showToast('That trip is gone. Reloading your trips…', 'error');
         await this.loadInitialTrip();
+      } else if (error.status === 507) {
+        UI.showToast('This device is out of storage — sign in to keep saving.', 'error');
       } else {
-        UI.showToast('Save failed. Not saved to cloud.', 'error');
+        UI.showToast(this.useCloud ? 'Save failed. Not saved to cloud.' : 'Save failed on this device.', 'error');
       }
       return false;
     }
   },
 
   async deleteTrip(tripId) {
-    if (this.useCloud && this.currentUser) {
-      try { await API.trips.delete(tripId); } catch (error) { console.error('Failed to delete trip:', error); }
-    }
+    try { await API.trips.delete(tripId); } catch (error) { console.error('Failed to delete trip:', error); }
     Storage.setTripOrder(Storage.getTripOrder().filter(id => id !== tripId));
     this.tripListCache = (this.tripListCache || []).filter(t => t.id !== tripId);
     if (this.currentTrip?.id === tripId) await this.loadInitialTrip();
@@ -403,12 +439,6 @@ Object.assign(App, {
   async _doRefreshTripsList() {
     const resolvers = this._refreshTripsResolvers.splice(0);
     const finish = () => resolvers.forEach(r => r());
-    if (!this.useCloud || !this.currentUser) {
-      Storage.setTripOrder([]);
-      this.tripListCache = [];
-      UI.renderTrips([], this.currentTrip?.id);
-      finish(); return;
-    }
     try {
       const trips = await API.trips.list();
       const currentId = this.currentTrip?.id;
@@ -423,20 +453,27 @@ Object.assign(App, {
       UI.renderTrips(orderedTrips, currentId);
     } catch (error) {
       console.error('Failed to load trips list:', error);
-      UI.showToast('Unable to load trips from server.', 'error');
+      // Silent: a flaky list fetch must not nag or disturb what is on screen.
     }
     finish();
   },
 
   /**
    * Refresh current trip and list. Simplified: trust version numbers only.
+   * Never runs mid-ride — replacing currentTrip would drop the precomputed
+   * route metrics the navigation HUD depends on.
    */
   async refreshData(source = 'manual') {
     if (this.isRefreshing) return;
-    if (!this.useCloud || !this.currentUser) {
-      UI.showToast('Login to refresh from cloud.', 'error');
+    if (this.isRiding) return;
+    // A cloud trip is on screen but the session lapsed — refreshing would swap
+    // it for the (empty) guest store. Offer to sign back in instead.
+    if (this.currentTrip?._fromCloud && !(this.useCloud && this.currentUser)) {
+      this._suggestLogin('sync this trip');
       return;
     }
+    // Background refreshes stay silent; only user-initiated ones report.
+    const background = source === 'visibility' || source === 'online';
     this.isRefreshing = true;
     try {
       const trips = await API.trips.list();
@@ -451,7 +488,7 @@ Object.assign(App, {
 
       if (!targetId) {
         this._clearTripUI();
-        UI.showToast('No trips available to refresh.', 'info');
+        if (!background) UI.showToast('No trips available to refresh.', 'info');
         return;
       }
 
@@ -475,7 +512,7 @@ Object.assign(App, {
         console.warn('refreshData: stale read, retrying', { serverV, localV });
         setTimeout(async () => {
           try {
-            if (!this.useCloud || !this.currentUser || this.currentTrip?.id !== fresh.id) return;
+            if (this.isRiding || this.currentTrip?.id !== fresh.id) return;
             const retry = await loadFresh(fresh.id);
             if (!retry) return;
             if (Number(retry.version) >= Number(this.currentTrip?.version)) this.loadTripData(retry);
@@ -485,10 +522,11 @@ Object.assign(App, {
       }
 
       this.loadTripData(fresh);
-      UI.showToast('Latest data loaded', 'success');
+      if (!background) UI.showToast('Latest data loaded', 'success');
     } catch (error) {
       console.error('Refresh failed:', error);
-      UI.showToast('Refresh failed. Please try again.', 'error');
+      // Connectivity trouble is reported once by the degraded notice, not here.
+      if (!background) UI.showToast('Refresh failed. Please try again.', 'error');
     } finally {
       this.isRefreshing = false;
     }

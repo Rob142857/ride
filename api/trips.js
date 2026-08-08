@@ -3,9 +3,39 @@
  * Core CRUD operations for trips (trip-level only)
  */
 
-import { jsonResponse, errorResponse, generateId, generateShortCodeForId, parseBody, BASE_URL } from './utils.js';
-import { safeJsonParse, orderWaypointsWithTripSettings, parseIfMatchVersion, conflictResponse } from './handler-utils.js';
+import { jsonResponse, errorResponse, generateId, generateShortCodeForId, BASE_URL } from './utils.js';
+import { safeJsonParse, orderWaypointsWithTripSettings, parseIfMatchVersion, conflictResponse, invalidIfMatchResponse, readJsonBody } from './handler-utils.js';
 import { serializeOwnedJourney } from './journey.js';
+
+/** Alternatives are a picker, not an archive — keep the payload bounded. */
+const MAX_ALTERNATIVE_ROUTES = 5;
+const MAX_ROUTE_COORDINATES = 5000;
+const MAX_ROUTE_STEPS = 2000;
+
+/**
+ * Cover images are rendered into the public share page's OG tags, so only a
+ * plain absolute http(s) URL is storable. Returns '' to clear, or null when the
+ * value is unusable.
+ */
+function normalizeCoverImageUrl(value) {
+  if (value === null || value === '') return '';
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (trimmed.length > 2048) return null;
+  // A pasted "images.example.com/a.jpg" or "//cdn/a.jpg" is treated as https.
+  // Anything with an explicit non-http(s) scheme (javascript:, data:) is not.
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith('//')
+    ? trimmed.replace(/^\/\//, 'https://')
+    : `https://${trimmed}`;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
 
 export const TripsHandler = {
   /**
@@ -37,9 +67,10 @@ export const TripsHandler = {
    */
   async createTrip(context) {
     const { env, user, request } = context;
-    const body = await parseBody(request);
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
 
-    if (!body?.name) {
+    if (!body.name) {
       return errorResponse('Trip name is required');
     }
 
@@ -124,7 +155,8 @@ export const TripsHandler = {
    */
   async updateTrip(context) {
     const { env, user, params, request } = context;
-    const body = await parseBody(request);
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
 
     const existing = await env.RIDE_TRIP_PLANNER_DB.prepare(
       'SELECT id, version, updated_at, settings FROM trips WHERE id = ? AND user_id = ?'
@@ -132,7 +164,12 @@ export const TripsHandler = {
 
     if (!existing) return errorResponse('Trip not found', 404);
 
+    // If-Match stays optional here (older/other callers don't always send it —
+    // see api/waypoints.js for the endpoint family where it's mandatory), but a
+    // header that IS present must be a real version: silently ignoring garbage
+    // like a weak ETag used to turn concurrency control off without a trace.
     const ifMatch = parseIfMatchVersion(request);
+    if (Number.isNaN(ifMatch)) return invalidIfMatchResponse();
     if (ifMatch !== null && Number(existing.version ?? 0) !== ifMatch) {
       return conflictResponse(existing);
     }
@@ -158,7 +195,12 @@ export const TripsHandler = {
     if (body.public_title !== undefined) { updates.push('public_title = ?'); values.push(body.public_title); }
     if (body.public_description !== undefined) { updates.push('public_description = ?'); values.push(body.public_description); }
     if (body.public_contact !== undefined) { updates.push('public_contact = ?'); values.push(body.public_contact); }
-    if (body.cover_image_url !== undefined) { updates.push('cover_image_url = ?'); values.push(body.cover_image_url); }
+    if (body.cover_image_url !== undefined) {
+      const coverUrl = normalizeCoverImageUrl(body.cover_image_url);
+      if (coverUrl === null) return errorResponse('cover_image_url must be an absolute http(s) URL', 400);
+      updates.push('cover_image_url = ?');
+      values.push(coverUrl);
+    }
     if (body.cover_focus_x !== undefined) { updates.push('cover_focus_x = ?'); values.push(body.cover_focus_x); }
     if (body.cover_focus_y !== undefined) { updates.push('cover_focus_y = ?'); values.push(body.cover_focus_y); }
     if (body.active_route_index !== undefined) { updates.push('active_route_index = ?'); values.push(Math.floor(Number(body.active_route_index))); }
@@ -248,39 +290,64 @@ export const TripsHandler = {
    */
   async saveAlternativeRoutes(context) {
     const { env, user, params, request } = context;
-    const body = await parseBody(request);
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
 
     const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
       'SELECT id FROM trips WHERE id = ? AND user_id = ?'
     ).bind(params.id, user.id).first();
     if (!trip) return errorResponse('Trip not found', 404);
 
-    const routes = Array.isArray(body.routes) ? body.routes : [];
+    if (body.routes !== undefined && !Array.isArray(body.routes)) {
+      return errorResponse('routes must be an array', 400);
+    }
 
-    await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'DELETE FROM alternative_routes WHERE trip_id = ?'
-    ).bind(params.id).run();
+    const routes = (Array.isArray(body.routes) ? body.routes : [])
+      .filter(r => r && typeof r === 'object' && !Array.isArray(r))
+      .slice(0, MAX_ALTERNATIVE_ROUTES);
 
-    for (let i = 0; i < routes.length; i++) {
-      const r = routes[i];
-      await env.RIDE_TRIP_PLANNER_DB.prepare(
+    const num = (...candidates) => {
+      for (const c of candidates) {
+        if (typeof c === 'number' && Number.isFinite(c)) return c;
+      }
+      return null;
+    };
+    const text = (value, fallback, max) => {
+      const s = typeof value === 'string' ? value : (value === undefined || value === null ? '' : String(value));
+      return (s || fallback).slice(0, max);
+    };
+
+    // DELETE + all INSERTs go out as one batch: the previous delete-then-loop
+    // could fail partway and leave the trip with an empty or mixed route set,
+    // and it cost one D1 round trip per route.
+    const stmts = [
+      env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM alternative_routes WHERE trip_id = ?').bind(params.id)
+    ];
+
+    routes.forEach((r, i) => {
+      const coordinates = Array.isArray(r.coordinates) ? r.coordinates.slice(0, MAX_ROUTE_COORDINATES) : [];
+      const steps = Array.isArray(r.steps) ? r.steps.slice(0, MAX_ROUTE_STEPS) : [];
+
+      stmts.push(env.RIDE_TRIP_PLANNER_DB.prepare(
         `INSERT INTO alternative_routes (id, trip_id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, steps)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         generateId(),
         params.id,
         i,
-        r.name || r.label || `Route ${i + 1}`,
-        r.summary || '',
-        r.color || null,
-        typeof r.distance_meters === 'number' ? r.distance_meters : (typeof r.distance === 'number' ? r.distance : null),
-        typeof r.duration_seconds === 'number' ? r.duration_seconds : (typeof r.duration === 'number' ? r.duration : null),
+        text(r.name || r.label, `Route ${i + 1}`, 120),
+        text(r.summary, '', 500),
+        r.color ? text(r.color, '', 32) : null,
+        num(r.distance_meters, r.distance),
+        num(r.duration_seconds, r.duration),
         r.is_selected ? 1 : 0,
         r.is_visible !== false ? 1 : 0,
-        JSON.stringify(r.coordinates || []),
-        JSON.stringify(r.steps || [])
-      ).run();
-    }
+        JSON.stringify(coordinates),
+        JSON.stringify(steps)
+      ));
+    });
+
+    await env.RIDE_TRIP_PLANNER_DB.batch(stmts);
 
     return jsonResponse({ success: true, count: routes.length });
   },

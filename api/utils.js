@@ -28,7 +28,12 @@ export function jsonResponse(data, status = 200) {
       // Never cache API JSON. Prevents stale reads after writes (e.g. waypoint reorder).
       'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate',
       Pragma: 'no-cache',
-      Expires: '0'
+      Expires: '0',
+      // Baseline security headers on every API response (HTML responses get the
+      // fuller CSP/frame-options set in api/worker.js's addSecurityHeaders)
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
+      'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload'
     }
   }));
 }
@@ -94,14 +99,73 @@ export function generateShortCode(length = 6) {
 export const BASE_URL = 'https://ride.incitat.io';
 
 /**
- * Parse JSON body safely
+ * Extract the session token from the Authorization header or session cookie.
+ * Accepts the new __Host- prefixed cookie and, during the transition window,
+ * the legacy cookie name. The regex is anchored to the cookie-name boundary so
+ * an unrelated cookie whose name merely ends in "ride_session" can never match.
  */
-export async function parseBody(request) {
-  try {
-    return await request.json();
-  } catch {
-    return null;
+export function getSessionToken(request) {
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7);
   }
+  return readCookie(request, '__Host-ride_session') || readCookie(request, 'ride_session');
+}
+
+/**
+ * Read a single cookie by exact name.
+ * Anchored to the cookie-name boundary so a cookie called `x_ride_session`
+ * can never satisfy a lookup for `ride_session`.
+ */
+export function readCookie(request, name) {
+  const cookies = request.headers.get('Cookie') || '';
+  if (!cookies) return null;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = cookies.match(new RegExp(`(?:^|;\\s*)${escaped}=([^;\\s]*)`));
+  return match ? match[1] : null;
+}
+
+/**
+ * Cheap sliding 1-minute rate limiter backed by KV.
+ * Non-atomic read-modify-write — good enough to blunt abuse, not a hard cap.
+ * Fails open on KV errors so an outage never blocks legitimate traffic.
+ */
+export async function checkRateLimit(env, bucket, id, limit) {
+  try {
+    const minute = Math.floor(Date.now() / 60000);
+    const key = `rl:${bucket}:${id}:${minute}`;
+    const count = Number.parseInt(await env.RIDE_TRIP_PLANNER_SESSIONS.get(key) || '0', 10);
+    if (count >= limit) return false;
+    await env.RIDE_TRIP_PLANNER_SESSIONS.put(key, String(count + 1), { expirationTtl: 120 });
+    return true;
+  } catch (_) {
+    return true; // fail open
+  }
+}
+
+/**
+ * Router middleware factory: per-IP rate limit for a named bucket.
+ */
+export function rateLimitByIp(bucket, limit) {
+  return async (context) => {
+    const ip = context.request.headers.get('cf-connecting-ip') || 'unknown';
+    if (!(await checkRateLimit(context.env, bucket, ip, limit))) {
+      return errorResponse('Too many requests. Please slow down.', 429);
+    }
+  };
+}
+
+/**
+ * Router middleware factory: per-user rate limit, falling back to IP for
+ * anonymous callers. Register it AFTER requireAuth so context.user is set.
+ */
+export function rateLimitByUser(bucket, limit) {
+  return async (context) => {
+    const id = context.user?.id || context.request.headers.get('cf-connecting-ip') || 'unknown';
+    if (!(await checkRateLimit(context.env, bucket, id, limit))) {
+      return errorResponse('Too many requests. Please slow down.', 429);
+    }
+  };
 }
 
 /**
@@ -109,54 +173,92 @@ export async function parseBody(request) {
  */
 export async function requireAuth(context) {
   const { request, env } = context;
-  
-  // Get token from Authorization header or cookie
-  let token = null;
-  
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    token = authHeader.slice(7);
-  } else {
-    // Check cookie
-    const cookies = request.headers.get('Cookie') || '';
-    const match = cookies.match(/ride_session=([^;]+)/);
-    if (match) {
-      token = match[1];
-    }
-  }
-  
+
+  const token = getSessionToken(request);
   if (!token) {
     return errorResponse('Unauthorized', 401);
   }
-  
+
   // Verify token from KV store
   try {
     const sessionData = await env.RIDE_TRIP_PLANNER_SESSIONS.get(token, 'json');
     if (!sessionData) {
       return errorResponse('Session expired', 401);
     }
-    
+
     // Check expiry
     if (sessionData.expiresAt && Date.now() > sessionData.expiresAt) {
       await env.RIDE_TRIP_PLANNER_SESSIONS.delete(token);
       return errorResponse('Session expired', 401);
     }
-    
+
     // Attach user to context
     context.user = sessionData.user;
 
-    // Check if user is banned or suspended
-    try {
-      const row = await env.RIDE_TRIP_PLANNER_DB.prepare(
-        'SELECT status FROM users WHERE id = ?'
-      ).bind(sessionData.user.id).first();
-      if (row && (row.status === 'banned' || row.status === 'blocked')) {
-        return errorResponse('Account has been blocked. Contact support.', 403);
-      }
-      if (row && (row.status === 'suspended' || row.status === 'paused')) {
-        return errorResponse('Account temporarily paused. Contact support.', 403);
-      }
-    } catch (_) { /* status column may not exist yet */ }
+    // Check if user is banned or suspended. setUserStatus already revokes every
+    // KV session the instant an admin bans someone, so a D1 query on every
+    // single request was pure latency for no extra safety on top of that — it
+    // only matters for sessions the revocation registry missed. The result is
+    // cached on the session record itself and only re-verified periodically.
+    let status = sessionData.status ?? null;
+    const statusStale = !sessionData.statusCheckedAt
+      || (Date.now() - sessionData.statusCheckedAt) > BAN_CHECK_INTERVAL_MS;
+    let statusRefreshed = false;
+    if (statusStale) {
+      try {
+        const row = await env.RIDE_TRIP_PLANNER_DB.prepare(
+          'SELECT status FROM users WHERE id = ?'
+        ).bind(sessionData.user.id).first();
+        status = row?.status ?? null;
+        statusRefreshed = true;
+      } catch (_) { /* status column may not exist yet — fail open, keep prior cached value */ }
+    }
+
+    if (status === 'banned' || status === 'blocked') {
+      return errorResponse('Account has been blocked. Contact support.', 403);
+    }
+    if (status === 'suspended' || status === 'paused') {
+      return errorResponse('Account temporarily paused. Contact support.', 403);
+    }
+
+    // Sliding renewal: once past 50% of the session TTL, extend the KV record
+    // and reissue the cookie so active users are never silently logged out.
+    // Piggybacks the freshly-checked ban status onto the same write when there
+    // is one, instead of writing to KV twice.
+    const needsRenewal = sessionData.expiresAt && (sessionData.expiresAt - Date.now()) < (SESSION_TTL_SECONDS * 1000) / 2;
+    if (needsRenewal || statusRefreshed) {
+      try {
+        const renewedExpiresAt = needsRenewal ? Date.now() + SESSION_TTL_SECONDS * 1000 : sessionData.expiresAt;
+        const ttlSeconds = needsRenewal
+          ? SESSION_TTL_SECONDS
+          : Math.max(60, Math.floor((renewedExpiresAt - Date.now()) / 1000));
+
+        await env.RIDE_TRIP_PLANNER_SESSIONS.put(token, JSON.stringify({
+          user: sessionData.user,
+          expiresAt: renewedExpiresAt,
+          status,
+          statusCheckedAt: statusRefreshed ? Date.now() : (sessionData.statusCheckedAt || null)
+        }), { expirationTtl: ttlSeconds });
+
+        if (needsRenewal) {
+          // Keep the per-user registry in sync so revoke-all still covers this token
+          const registryKey = `sessions:${sessionData.user.id}`;
+          const raw = await env.RIDE_TRIP_PLANNER_SESSIONS.get(registryKey, 'json');
+          if (Array.isArray(raw)) {
+            const entry = raw.find(s => s.token === token);
+            if (entry) {
+              entry.expiresAt = renewedExpiresAt;
+              await env.RIDE_TRIP_PLANNER_SESSIONS.put(registryKey, JSON.stringify(raw), {
+                expirationTtl: SESSION_TTL_SECONDS
+              });
+            }
+          }
+
+          // The router applies this to the final response (fresh Set-Cookie)
+          context.decorateResponse = (resp) => setSessionCookie(resp, token, renewedExpiresAt);
+        }
+      } catch (_) { /* renewal/cache write is best-effort */ }
+    }
 
     // Continue to next handler (return nothing)
     return;
@@ -171,21 +273,8 @@ export async function requireAuth(context) {
  */
 export async function optionalAuth(context) {
   const { request, env } = context;
-  
-  // Get token from Authorization header or cookie
-  let token = null;
-  
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    token = authHeader.slice(7);
-  } else {
-    const cookies = request.headers.get('Cookie') || '';
-    const match = cookies.match(/ride_session=([^;]+)/);
-    if (match) {
-      token = match[1];
-    }
-  }
-  
+
+  const token = getSessionToken(request);
   if (!token) {
     context.user = null;
     return; // Continue without auth
@@ -211,6 +300,9 @@ export async function optionalAuth(context) {
  */
 const MAX_SESSIONS_PER_USER = 10;
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+
+/** How often requireAuth re-verifies ban/pause status against D1, per session. */
+const BAN_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
  * Create session token, store in KV, and register it in the per-user session list.
@@ -261,13 +353,18 @@ export async function createSession(env, user) {
 }
 
 /**
- * Set session cookie
+ * Set session cookie.
+ * Uses the __Host- prefix (requires Secure + Path=/ + no Domain) so sibling
+ * subdomains can never plant or override the session cookie. The legacy
+ * unprefixed cookie is cleared in the same response so old and new copies
+ * can never disagree.
  */
 export function setSessionCookie(response, token, expiresAt) {
   const headers = new Headers(response.headers);
   const expires = new Date(expiresAt).toUTCString();
-  headers.append('Set-Cookie', `ride_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=${expires}`);
-  
+  headers.append('Set-Cookie', `__Host-ride_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=${expires}`);
+  headers.append('Set-Cookie', 'ride_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
+
   return new Response(response.body, {
     status: response.status,
     headers
@@ -299,7 +396,7 @@ export async function requireAdmin(context) {
   return;
 }
 
-function getAdminEmailSet(env) {
+export function getAdminEmailSet(env) {
   const raw = env.ADMIN_EMAILS || env.ADMIN_EMAIL || '';
   return new Set(raw.split(/[\s,;]+/).map(email => email.trim().toLowerCase()).filter(Boolean));
 }
@@ -321,12 +418,13 @@ export async function requireAdminUser(context) {
 }
 
 /**
- * Clear session cookie
+ * Clear session cookie (both current and legacy names)
  */
 export function clearSessionCookie(response) {
   const headers = new Headers(response.headers);
+  headers.append('Set-Cookie', '__Host-ride_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
   headers.append('Set-Cookie', 'ride_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');
-  
+
   return new Response(response.body, {
     status: response.status,
     headers

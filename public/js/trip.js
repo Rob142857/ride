@@ -142,17 +142,93 @@ const Trip = {
     return trip.journal.filter(e => !(e.isPrivate ?? e.is_private));
   },
 
+  /** Route-shaping point, not a stop (shared contract: type === 'via'). */
+  isVia(waypoint) {
+    return (waypoint?.type || '') === 'via';
+  },
+
+  /** Leg divider, not a stop (shared contract: type === 'leg-break'). */
+  isLegBreak(waypoint) {
+    return (waypoint?.type || '') === 'leg-break';
+  },
+
+  /** Only real stops — shaping points and leg dividers are excluded everywhere they're counted. */
+  getStops(trip) {
+    return (Array.isArray(trip?.waypoints) ? trip.waypoints : [])
+      .filter(w => !this.isVia(w) && !this.isLegBreak(w));
+  },
+
   /**
    * Calculate trip statistics
    */
   getStats(trip) {
     const waypoints = Array.isArray(trip.waypoints) ? trip.waypoints : [];
+    const stops = waypoints.filter(w => !this.isVia(w) && !this.isLegBreak(w));
+    const legBreaks = waypoints.filter(w => this.isLegBreak(w));
     const journal = Array.isArray(trip.journal) ? trip.journal : [];
     return {
-      waypointCount: waypoints.length,
+      waypointCount: stops.length,
+      viaCount: waypoints.length - stops.length - legBreaks.length,
+      legCount: legBreaks.length + 1,
       journalCount: journal.length,
-      publicNotesCount: journal.filter(e => !e.isPrivate).length,
-      privateNotesCount: journal.filter(e => e.isPrivate).length
+      publicNotesCount: journal.filter(e => !(e.isPrivate ?? e.is_private)).length,
+      privateNotesCount: journal.filter(e => (e.isPrivate ?? e.is_private)).length
+    };
+  },
+
+  /**
+   * Full-fidelity backup of a trip the user owns: every waypoint (including
+   * shaping points), every note (private ones flagged as such), the route and
+   * its alternatives. Share-modal filtering never applies here — an "export"
+   * that quietly drops data is not a backup.
+   */
+  getBackupData(trip) {
+    const waypoints = Array.isArray(trip?.waypoints) ? trip.waypoints : [];
+    const journal = Array.isArray(trip?.journal) ? trip.journal : [];
+    const attachments = Array.isArray(trip?.attachments) ? trip.attachments : [];
+    return {
+      _format: 'ride.trip.backup',
+      _version: 1,
+      exportedAt: new Date().toISOString(),
+      id: trip?.id,
+      name: trip?.name,
+      description: trip?.description || '',
+      coverImageUrl: trip?.coverImageUrl || trip?.cover_image_url || '',
+      coverFocusX: trip?.coverFocusX ?? trip?.cover_focus_x ?? 50,
+      coverFocusY: trip?.coverFocusY ?? trip?.cover_focus_y ?? 50,
+      waypoints: waypoints.map((w, idx) => ({
+        name: w.name || '',
+        address: w.address || '',
+        lat: w.lat,
+        lng: w.lng,
+        type: w.type || 'stop',
+        notes: w.notes || '',
+        order: Number.isFinite(w.order) ? w.order : idx
+      })),
+      route: trip?.route || null,
+      alternativeRoutes: trip?.alternativeRoutes || trip?.alternative_routes || [],
+      activeRouteIndex: trip?.activeRouteIndex ?? trip?.active_route_index ?? 0,
+      journal: journal.map(e => ({
+        title: e.title || '',
+        content: e.content || '',
+        isPrivate: !!(e.isPrivate ?? e.is_private),
+        is_private: !!(e.isPrivate ?? e.is_private),
+        tags: Array.isArray(e.tags) ? e.tags : [],
+        location: e.location || null,
+        createdAt: e.createdAt ?? e.created_at ?? null
+      })),
+      attachments: attachments.map(a => ({
+        id: a.id,
+        url: a.url,
+        originalName: a.originalName || a.original_name || a.filename || '',
+        mimeType: a.mimeType || a.mime_type || '',
+        journalEntryId: a.journalEntryId ?? a.journal_entry_id ?? null,
+        waypointId: a.waypointId ?? a.waypoint_id ?? null,
+        isCover: !!(a.isCover ?? a.is_cover)
+      })),
+      settings: trip?.settings || {},
+      createdAt: trip?.createdAt,
+      stats: this.getStats(trip || {})
     };
   },
 
@@ -164,7 +240,8 @@ const Trip = {
     const includeRoute = options.includeRoute !== false;
     const includePublicNotes = options.includePublicNotes !== false;
     const includeGallery = options.includeGallery !== false;
-    const waypoints = includeWaypoints ? (trip.waypoints || []) : [];
+    // Shaping points bend the route but are never listed as stops.
+    const waypoints = includeWaypoints ? this.getStops(trip) : [];
     const journal = includePublicNotes ? this.getPublicJournal(trip) : [];
     const attachments = includeGallery
       ? (trip.attachments || []).filter(a => !(a.isPrivate ?? a.is_private))
@@ -198,29 +275,30 @@ const Trip = {
    * Export trip to GPX format
    */
   toGPX(trip) {
-    const waypoints = trip.waypoints.map(w => 
+    // Shaping points are route geometry, not stops — they belong to <rte>.
+    const waypoints = this.getStops(trip).map(w =>
       `  <wpt lat="${w.lat}" lon="${w.lng}">
     <name>${this.escapeXml(w.name)}</name>
     <desc>${this.escapeXml(w.notes)}</desc>
-    <type>${w.type}</type>
+    <type>${this.escapeXml(w.type || 'stop')}</type>
   </wpt>`
     ).join('\n');
 
-    // Determine route coordinates: active alternative route if set, otherwise trip.route or custom points
-    const activeAlt = (trip.alternativeRoutes || trip.alternative_routes || []).find(r => (
-      r.alt_idx !== undefined ? r.alt_idx === (trip.activeRouteIndex ?? trip.active_route_index ?? 0) : r.route_index === (trip.activeRouteIndex ?? trip.active_route_index ?? 0)
-    ));
-    const routeCoords = activeAlt?.coordinates?.length ? activeAlt.coordinates : (trip.route?.coordinates || trip.customRoutePoints || []);
+    const routeCoords = this.getActiveRouteCoordinates(trip);
 
     let route = '';
     if (routeCoords.length > 0) {
-      const rtepts = routeCoords.map(p => 
-        `    <rtept lat="${p.lat || p[1]}" lon="${p.lng || p[0]}"></rtept>`
-      ).join('\n');
-      route = `  <rte>
+      const rtepts = routeCoords
+        .map(p => this.normalizeCoord(p))
+        .filter(Boolean)
+        .map(p => `    <rtept lat="${p.lat}" lon="${p.lng}"></rtept>`)
+        .join('\n');
+      if (rtepts) {
+        route = `  <rte>
     <name>${this.escapeXml(trip.name)}</name>
 ${rtepts}
   </rte>`;
+      }
     }
 
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -234,6 +312,41 @@ ${rtepts}
 ${waypoints}
 ${route}
 </gpx>`;
+  },
+
+  /**
+   * Accepts {lat,lng}, {lat,lon} or [lng, lat] and returns {lat,lng} or null.
+   * (`p.lat || p[1]` used to silently drop the equator/prime meridian.)
+   */
+  normalizeCoord(p) {
+    if (!p) return null;
+    let lat;
+    let lng;
+    if (Array.isArray(p)) {
+      lng = Number(p[0]);
+      lat = Number(p[1]);
+    } else {
+      lat = Number(p.lat ?? p.latitude);
+      lng = Number(p.lng ?? p.lon ?? p.longitude);
+    }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  },
+
+  /**
+   * Geometry of the route the user actually chose: the selected alternative
+   * if one is stored, otherwise the primary route or imported GPX points.
+   */
+  getActiveRouteCoordinates(trip) {
+    const activeIndex = trip?.activeRouteIndex ?? trip?.active_route_index ?? 0;
+    const alternatives = trip?.alternativeRoutes || trip?.alternative_routes || [];
+    const activeAlt = alternatives.find(r => (
+      r?.alt_idx !== undefined ? r.alt_idx === activeIndex : r?.route_index === activeIndex
+    ));
+    if (activeAlt?.coordinates?.length) return activeAlt.coordinates;
+    if (trip?.route?.coordinates?.length) return trip.route.coordinates;
+    if (trip?.customRoutePoints?.length) return trip.customRoutePoints;
+    return [];
   },
 
   /**

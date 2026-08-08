@@ -48,13 +48,19 @@ Object.assign(UI, {
     const input = document.getElementById('placeSearchInput');
     const resultsEl = document.getElementById('placeSearchResults');
     const statusEl = document.getElementById('placeSearchStatus');
-    const address = document.getElementById('waypointAddress')?.value || '';
+    let address = document.getElementById('waypointAddress')?.value || '';
+    // The map-pick placeholder is not a real address — don't seed a search
+    // with it (and never save it, see UI.handleWaypointSubmit).
+    if (/^dropped pin from map$/i.test(address.trim())) address = '';
     if (!input || !resultsEl || !statusEl) return;
 
     input.value = address;
-    this.placeSearchBias = null;
     this.placeSearchResults = [];
-    statusEl.textContent = 'Type a search to begin.';
+    // Location bias survives across opens — re-tapping "Use current location"
+    // for every single search was pure friction.
+    statusEl.textContent = this.placeSearchBias
+      ? 'Searching near your last set location.'
+      : 'Type a search to begin.';
     resultsEl.innerHTML = '<div class="microcopy">Search returns up to 12 places.</div>';
     this.openModal('placeSearchModal');
     setTimeout(() => input.focus(), 80);

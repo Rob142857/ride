@@ -115,7 +115,10 @@ export function serializePublicJourney({ trip, waypoints, journal, attachments, 
     cover_focus_y: trip.cover_focus_y ?? 50,
     created_at: trip.created_at,
     share,
-    waypoints: share.includeWaypoints ? (waypoints || []).map(w => ({
+    // Shaping points (type 'via') bend the route but are not stops — they are
+    // excluded from the public waypoint list and from stop counts. The route
+    // geometry already carries their effect.
+    waypoints: share.includeWaypoints ? (waypoints || []).filter(w => w.type !== 'via').map(w => ({
       id: w.id,
       name: w.name,
       lat: w.lat,

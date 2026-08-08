@@ -25,22 +25,9 @@
   height: 28px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
   transition: background 0.3s var(--ease-elegant), border-color 0.3s var(--ease-elegant), box-shadow 0.3s var(--ease-elegant);
-}
-
-.toggle-track::before {
-  content: 'OFF';
-  position: absolute;
-  top: 50%;
-  right: 7px;
-  transform: translateY(-50%);
-  color: var(--text-muted);
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.6px;
-  line-height: 1;
 }
 
 .toggle-track::after {
@@ -51,30 +38,23 @@
   width: 22px;
   height: 22px;
   background: var(--text-muted);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   transition: transform 0.3s var(--ease-bounce), background 0.3s var(--ease-elegant);
 }
 
 .toggle-switch input:checked + .toggle-track {
-  background: rgba(233, 69, 96, 0.2);
-  border-color: rgba(233, 69, 96, 0.45);
-}
-
-.toggle-switch input:checked + .toggle-track::before {
-  content: 'ON';
-  left: 8px;
-  right: auto;
-  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .toggle-switch input:checked + .toggle-track::after {
   transform: translateX(30px);
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(233, 69, 96, 0.4);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .toggle-switch input:focus-visible + .toggle-track {
-  box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .toggle-switch:hover .toggle-track {
@@ -82,7 +62,7 @@
 }
 
 .toggle-switch:hover input:checked + .toggle-track {
-  border-color: rgba(233, 69, 96, 0.55);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .toggle-label-text {
@@ -93,49 +73,7 @@
 .toggle-switch input:checked ~ .toggle-label-text {
   color: var(--text-primary);
 }
-/* CSS Variables */
-:root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-tertiary: #0f3460;
-  --accent: #e94560;
-  --accent-hover: #ff6b6b;
-  --text-primary: #ffffff;
-  --text-secondary: #a0a0a0;
-  --text-muted: #666666;
-  --border: #2a2a4a;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --danger: #ef4444;
-  --shadow: rgba(0, 0, 0, 0.3);
-
-  /* Shape primitives (match share page feel; keep circular controls circular) */
-  --radius-btn: 3px;
-  --radius-card: var(--radius);
-  --radius-modal: var(--radius);
-  
-  /* Elegant Archive-inspired additions */
-  --bg-modal-overlay: rgba(10, 12, 20, 0.85);
-  --bg-modal: linear-gradient(165deg, #1e2235 0%, #171a2a 50%, #12141f 100%);
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-elegant: rgba(255, 255, 255, 0.1);
-  --shadow-modal: 0 32px 100px rgba(0, 0, 0, 0.5), 0 8px 32px rgba(0, 0, 0, 0.3);
-  --ease-elegant: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
-  
-  --header-height: 56px;
-  --nav-height: 64px;
-  --safe-area-top: env(safe-area-inset-top, 0px);
-  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-/* Reset */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* Design variables come from tokens.css — do not redeclare tokens here. */
 
 html, body {
   height: 100%;
@@ -155,7 +93,7 @@ body {
 .auth-gate {
   position: fixed;
   inset: 0;
-  z-index: 4000;
+  z-index: var(--z-gate);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -186,12 +124,12 @@ body {
   margin-bottom: 10px;
   background: linear-gradient(
     105deg,
-    #c7d2fe 0%,
+    var(--indigo-200) 0%,
     #e0e7ff 20%,
     #fff 35%,
     #e0e7ff 50%,
-    #a5b4fc 70%,
-    #c7d2fe 100%
+    var(--indigo-300) 70%,
+    var(--indigo-200) 100%
   );
   background-size: 200% auto;
   -webkit-background-clip: text;
@@ -204,7 +142,7 @@ body {
 
 .auth-gate-title:hover {
   animation-duration: 2s;
-  filter: drop-shadow(0 0 18px rgba(165, 180, 252, 0.35));
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--indigo-300) 35%, transparent));
   transform: scale(1.04);
 }
 
@@ -214,112 +152,6 @@ body {
 }
 
 .auth-gate-card .primary-btn {
-  width: 100%;
-}
-
-/* First-visit landing overlay */
-.landing-gate {
-  position: fixed;
-  inset: 0;
-  z-index: 3500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 28px;
-  background: var(--bg-modal-overlay);
-}
-
-.landing-gate.hidden {
-  display: none;
-}
-
-.landing-gate-shell {
-  width: min(520px, 100%);
-}
-
-.landing-gate-card {
-  background: rgba(18, 20, 31, 0.78);
-  border: 1px solid var(--border-elegant);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-modal);
-  padding: 28px 22px;
-  text-align: left;
-  backdrop-filter: blur(14px);
-}
-
-.landing-gate-kicker {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-.landing-gate-title {
-  margin-top: 8px;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: 3.4rem;
-  line-height: 1.05;
-  letter-spacing: 0.04em;
-  background: linear-gradient(
-    105deg,
-    #c7d2fe 0%,
-    #e0e7ff 20%,
-    #fff 35%,
-    #e0e7ff 50%,
-    #a5b4fc 70%,
-    #c7d2fe 100%
-  );
-  background-size: 200% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: wordmark-shimmer 6s ease-in-out infinite;
-  transition: filter 0.4s var(--ease-smooth), transform 0.4s var(--ease-smooth);
-  cursor: default;
-}
-
-.landing-gate-title:hover {
-  animation-duration: 2s;
-  filter: drop-shadow(0 0 22px rgba(165, 180, 252, 0.4));
-  transform: scale(1.05);
-}
-
-.landing-gate-rule {
-  width: 62px;
-  height: 1px;
-  margin: 14px 0;
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.landing-gate-blurb {
-  color: var(--text-secondary);
-  line-height: 1.65;
-  margin-bottom: 18px;
-}
-
-.landing-gate-quote {
-  border: 1px solid var(--border-subtle);
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: var(--radius-btn);
-  padding: 14px 14px;
-  margin-bottom: 18px;
-}
-
-.landing-gate-quote-line {
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
-  margin-bottom: 6px;
-}
-
-.landing-gate-quote-meta {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.landing-gate-card .primary-btn {
   width: 100%;
 }
 
@@ -359,7 +191,7 @@ select:focus-visible {
 
 /* Smooth selection */
 ::selection {
-  background: rgba(233, 69, 96, 0.3);
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
   color: var(--text-primary);
 }
 
@@ -373,9 +205,9 @@ html.doc-page body {
 }
 
 .doc-page {
-  background: radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.12), transparent 30%),
-              radial-gradient(circle at 80% 0%, rgba(233, 69, 96, 0.12), transparent 26%),
-              #0c0f18;
+  background: radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 30%),
+              radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--gold-500) 9%, transparent), transparent 26%),
+              var(--surface-0);
   color: var(--text-primary);
   min-height: 100vh;
   height: auto;
@@ -396,7 +228,7 @@ body.doc-page {
 }
 
 .doc-card {
-  background: linear-gradient(165deg, #141824 0%, #0f121b 100%);
+  background: var(--bg-modal);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-modal);
   padding: 32px;
@@ -444,16 +276,16 @@ body.doc-page {
 }
 
 .doc-card a {
-  color: #cdd7ff;
+  color: var(--indigo-200);
   text-decoration: none;
-  border-bottom: 1px solid rgba(205, 215, 255, 0.35);
+  border-bottom: 1px solid color-mix(in srgb, var(--indigo-200) 35%, transparent);
   padding-bottom: 2px;
   transition: color 0.2s var(--ease-elegant), border-color 0.2s var(--ease-elegant);
 }
 
 .doc-card a:hover {
-  color: #ffffff;
-  border-color: #ffffff;
+  color: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 .confirm-input {
@@ -471,15 +303,15 @@ body.doc-page {
 .confirm-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .danger-box {
   margin-top: 20px;
   padding: 18px 18px 16px;
-  border: 1px solid rgba(239, 68, 68, 0.35);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
   border-radius: var(--radius);
-  background: rgba(239, 68, 68, 0.06);
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
   color: var(--text-secondary);
 }
 
@@ -489,8 +321,8 @@ body.doc-page {
   color: var(--text-secondary);
 }
 
-.status.success { color: #34d399; }
-.status.error { color: #f87171; }
+.status.success { color: var(--success); }
+.status.error { color: var(--danger-hover); }
 
 /* ── PWA Install Banner ─────────────────────────────────────────────── */
 .install-banner {
@@ -501,7 +333,7 @@ body.doc-page {
   max-width: 400px;
   margin: 0 auto;
   z-index: 300;
-  background: rgba(14, 16, 28, 0.92);
+  background: color-mix(in srgb, var(--surface-0) 94%, transparent);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -526,7 +358,7 @@ body.doc-page {
 .install-banner-icon {
   width: 44px;
   height: 44px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   flex-shrink: 0;
 }
 
@@ -553,26 +385,29 @@ body.doc-page {
   justify-content: flex-end;
 }
 
-.install-btn-dismiss {
-  padding: 6px 14px;
+.install-btn-dismiss,
+.install-btn-accept {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target);
+  padding: 8px 18px;
   border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.82rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
+.install-btn-dismiss {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
 .install-btn-accept {
-  padding: 6px 16px;
-  border: none;
-  border-radius: 8px;
   background: var(--accent);
-  color: #fff;
-  font-size: 0.82rem;
+  color: var(--text-on-accent);
   font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .install-btn-accept:active {
@@ -621,7 +456,7 @@ body.doc-page {
 #fullscreenBtn.floating-btn {
   position: absolute;
   right: 12px;
-  bottom: calc(var(--nav-height) + var(--safe-area-bottom) +88px);
+  bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 88px);
   z-index: 2;
   pointer-events: auto;
 }
@@ -637,16 +472,16 @@ body.doc-page {
 .leaflet-bottom.leaflet-left .leaflet-control-zoom {
   margin:0 !important;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+  border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: 0 4px16px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
 
 .leaflet-bottom.leaflet-left .leaflet-control-zoom a {
-  width: 36px !important;
-  height: 36px !important;
-  line-height: 36px !important;
-  background-color: rgba(22, 33, 62, 0.95) !important;
+  width: 40px !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  background-color: color-mix(in srgb, var(--surface-2) 96%, transparent) !important;
   color: var(--text-primary) !important;
   border-color: rgba(255, 255, 255, 0.12) !important;
   font-size: 18px;
@@ -654,21 +489,27 @@ body.doc-page {
 }
 
 .leaflet-bottom.leaflet-left .leaflet-control-zoom a:hover {
-  background-color: rgba(15, 52, 96, 0.98) !important;
+  background-color: var(--surface-3) !important;
 }
 
-/* Attribution: keep visible inside map, clear of chrome */
-.leaflet-control-attribution {
-  position: absolute !important;
-  top: calc(var(--header-height) + var(--safe-area-top) +8px);
-  right: 8px;
-  z-index: 2 !important;
-  max-width: calc(100vw - 16px);
-  background: rgba(16, 20, 38, 0.72) !important;
-  color: rgba(255,255, 255, 0.55) !important;
-  font-size:9px;
-  border-radius: 6px;
-  padding: 3px6px;
+/* Attribution: move Leaflet's bottom-right control corner to the map's top-right
+   so it never fights the locate/zoom controls in the bottom gutter. Positioning
+   the attribution element itself would resolve against the zero-height
+   .leaflet-bottom box and push it off the map entirely. */
+.leaflet-control-container .leaflet-bottom.leaflet-right {
+  top: 8px;
+  bottom: auto;
+}
+
+.leaflet-container .leaflet-control-attribution {
+  margin: 8px;
+  max-width: min(calc(100vw - 32px), 340px);
+  background: color-mix(in srgb, var(--surface-0) 80%, transparent) !important;
+  color: var(--text-muted) !important;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  border-radius: var(--radius-sm);
+  padding: 3px 6px;
   border: none !important;
   white-space: nowrap;
   overflow: hidden;
@@ -676,7 +517,7 @@ body.doc-page {
 }
 
 .leaflet-control-attribution a {
-  color: rgba(255,255, 255, 0.65) !important;
+  color: var(--text-secondary) !important;
 }
 
 /* Override Leaflet styles for dark theme */
@@ -711,7 +552,7 @@ body.doc-page {
   right: 0;
   height: calc(var(--header-height) + var(--safe-area-top));
   padding-top: var(--safe-area-top);
-  background: rgba(16, 20, 38, 0.62);
+  background: var(--bg-glass);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
@@ -744,7 +585,7 @@ body.doc-page {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
@@ -765,7 +606,7 @@ body.doc-page {
 .topbar-logo-icon {
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
   transition: transform 0.2s var(--ease-elegant), filter 0.2s var(--ease-elegant);
 }
@@ -784,13 +625,12 @@ body.doc-page {
 }
 
 .trip-label {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
-  line-height: 1;
-  opacity: 0.9;
+  color: var(--accent-hover);
+  line-height: 1.1;
 }
 
 #tripTitle {
@@ -815,13 +655,64 @@ body.doc-page {
 
 .trip-stat-pill {
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
   border: none;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   letter-spacing: 0.01em;
+}
+
+/* ── Touch targets ────────────────────────────────────────────────────
+   Compact controls keep their visual size but gain a ≥44px hit area from a
+   transparent pseudo-element. Expansion is confined to axes where a control
+   has no close neighbour, so adjacent buttons never steal each other's taps.
+   -------------------------------------------------------------------- */
+.icon-btn,
+.toolbar-btn,
+.modal-close,
+.route-chip,
+.attachment-remove,
+.trip-actions .link-btn {
+  position: relative;
+}
+
+/* Vertical-only growth: for controls that sit in a horizontal row. */
+.toolbar-btn::after,
+.route-chip::after,
+.waypoint-actions button::after,
+.trip-reorder .icon-btn::after,
+.panel-title .icon-btn::after,
+#topBar .icon-btn::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% + 4px);
+  height: var(--touch-target);
+  border-radius: inherit;
+}
+
+.toolbar-btn::after,
+.route-chip::after {
+  width: 100%;
+}
+
+/* Both axes: for controls with room around them. */
+.modal-close::after,
+.attachment-remove::after,
+.locate-btn::after,
+.floating-btn::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max(100%, var(--touch-target));
+  height: max(100%, var(--touch-target));
+  border-radius: inherit;
 }
 
 /* Icon Button — Glassmorphic */
@@ -830,7 +721,7 @@ body.doc-page {
   height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
+  border-radius: var(--radius);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -861,7 +752,7 @@ body.doc-page {
 }
 
 .icon-btn:hover svg {
-  fill: #fff;
+  fill: var(--text-primary);
 }
 
 /* Bottom Navigation — Glassmorphic */
@@ -872,7 +763,7 @@ body.doc-page {
   right: 0;
   height: calc(var(--nav-height) + var(--safe-area-bottom));
   padding-bottom: var(--safe-area-bottom);
-  background: rgba(16, 20, 38, 0.72);
+  background: var(--bg-glass);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
   display: flex;
@@ -921,14 +812,14 @@ body.doc-page {
 }
 
 .nav-btn span {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
   transition: all 0.25s var(--ease-elegant);
 }
 
 .nav-btn.active {
-  color: var(--accent);
+  color: var(--accent-hover);
 }
 
 .nav-btn.active::after {
@@ -954,7 +845,7 @@ body.doc-page {
   left: 0;
   width: var(--sidebar-width);
   height: 100%;
-  background: rgba(14, 16, 28, 0.82);
+  background: var(--bg-glass);
   backdrop-filter: blur(24px) saturate(1.5);
   -webkit-backdrop-filter: blur(24px) saturate(1.5);
   z-index: 200;
@@ -1100,11 +991,11 @@ body.doc-page {
   text-align: center;
   max-width: 420px;
   padding: 24px;
-  background: rgba(12, 14, 26, 0.88);
+  background: color-mix(in srgb, var(--surface-0) 90%, transparent);
   backdrop-filter: blur(28px) saturate(1.5);
   -webkit-backdrop-filter: blur(28px) saturate(1.5);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
 }
 
 .login-header {
@@ -1138,7 +1029,7 @@ body.doc-page {
   gap: 10px;
   padding: 12px 16px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
+  border-radius: var(--radius);
   font-size: 0.88rem;
   font-weight: 600;
   text-decoration: none;
@@ -1182,7 +1073,7 @@ body.doc-page {
   background: linear-gradient(135deg, #ffffff 0%, #f8f9fc 100%);
   color: #1f2937;
   border-color: rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
+  border-radius: var(--radius);
 }
 
 .login-btn.google:hover {
@@ -1193,7 +1084,7 @@ body.doc-page {
   background: linear-gradient(135deg, #1e1e1e 0%, #111 100%);
   color: white;
   border-color: rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
+  border-radius: var(--radius);
 }
 
 .login-note {
@@ -1244,7 +1135,7 @@ body.doc-page {
   font-size: 15px;
   font-weight: 700;
   line-height: 1;
-  color: #fff;
+  color: var(--text-primary);
   text-transform: uppercase;
   display: flex;
   align-items: center;
@@ -1263,8 +1154,8 @@ body.doc-page {
   top: 100%;
   right: 0;
   margin-top: 8px;
-  background: rgba(16, 20, 38, 0.88);
-  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  border-radius: var(--radius-lg);
   border: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
@@ -1306,7 +1197,7 @@ body.doc-page {
   text-align: left;
   font-size: 0.88rem;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   transition: background 0.15s var(--ease-elegant);
   -webkit-tap-highlight-color: transparent;
 }
@@ -1344,7 +1235,7 @@ body.doc-page {
   left: 0;
   right: 0;
   bottom: calc(var(--nav-height) + var(--safe-area-bottom));
-  background: rgba(18, 20, 34, 0.82);
+  background: var(--bg-glass);
   backdrop-filter: blur(20px) saturate(1.3);
   -webkit-backdrop-filter: blur(20px) saturate(1.3);
   z-index: 50;
@@ -1372,11 +1263,11 @@ body.doc-page {
   pointer-events: auto;
   width: 100%;
   max-height: min(62vh, 640px);
-  background: rgba(18, 20, 34, 0.88);
+  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
   backdrop-filter: blur(24px) saturate(1.35);
   -webkit-backdrop-filter: blur(24px) saturate(1.35);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
   display: flex;
   flex-direction: column;
@@ -1390,7 +1281,7 @@ body.doc-page {
 }
 
 #waypointsPanel[data-mode="pick"] .waypoints-drawer {
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(233, 69, 96, 0.18);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42), 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .waypoints-panel-body {
@@ -1404,15 +1295,15 @@ body.doc-page {
 
 .waypoint-planner-card {
   padding: 10px 12px;
-  border-radius:12px;
-  background: linear-gradient(145deg, rgba(233,69, 96, 0.12), rgba(255, 255, 255, 0.04));
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 12%, transparent), rgba(255, 255, 255, 0.04));
   border: 1px solid rgba(255, 255, 255, 0.08);
   display: grid;
   gap: 8px;
 }
 
 .waypoint-planner-kicker {
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1472,13 +1363,13 @@ body.doc-page {
 }
 
 .heading-refresh {
-  width: 30px;
-  height: 30px;
-  min-width: 30px;
-  min-height: 30px;
-  font-size: 13px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  font-size: 14px;
   line-height: 1;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .panel-header h2 {
@@ -1519,25 +1410,25 @@ body.doc-page {
 
 .heading-help {
   order: -1;
-  width:28px;
-  height: 28px;
-  min-width: 28px;
-  min-height: 28px;
-  border-radius: 7px;
-  background: rgba(233, 69, 96, 0.12);
-  border-color: rgba(233, 69,96, 0.24);
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
   color: var(--accent);
 }
 
 .heading-help svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   fill: var(--accent);
 }
 
 .heading-help:hover {
-  background: rgba(233, 69, 96, 0.2);
-  border-color: rgba(233,69, 96, 0.45);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .toolbar-btn {
@@ -1545,12 +1436,13 @@ body.doc-page {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 6px 10px;
+  min-height: 38px;
+  padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255,255, 255, 0.05);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s var(--ease-elegant);
@@ -1578,15 +1470,15 @@ body.doc-page {
 }
 
 .toolbar-btn.primary {
-  background: rgba(233,69, 96, 0.14);
-  border-color: rgba(233, 69, 96, 0.32);
-  color: #ff8a9e;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--accent-hover);
 }
 
 .toolbar-btn.primary:hover:not(:disabled) {
-  background: rgba(233,69, 96, 0.24);
-  border-color: rgba(233,69, 96,0.5);
-  color: #fff;
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: var(--text-on-accent);
 }
 
 .toolbar-btn:active:not(:disabled) {
@@ -1597,6 +1489,15 @@ body.doc-page {
   opacity: 0.4;
   cursor: not-allowed;
   color: var(--text-muted);
+}
+
+/* Clear-shaping is a bulk-delete action (removes every `via` waypoint in
+   scope). A faint danger tint on hover previews that without reinventing
+   .toolbar-btn — the armed/"Clear N shape points?" state already goes
+   danger-red via ui.js's injected `.is-confirming` fallback style. */
+#clearShapingBtn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger-hover);
 }
 
 /* Waypoints help modal */
@@ -1713,29 +1614,29 @@ body.doc-page {
 
 .primary-btn {
   padding: 11px 22px;
-  background: linear-gradient(135deg, var(--accent) 0%, #d63d55 100%);
-  color: #fff;
-  border: 1px solid rgba(233, 69, 96, 0.5);
-  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-active) 100%);
+  color: var(--text-on-accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: var(--radius);
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s var(--ease-elegant);
-  box-shadow: 0 2px 10px rgba(233, 69, 96, 0.2);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 20%, transparent);
   position: relative;
   overflow: hidden;
 }
 
 .primary-btn:hover {
   background: linear-gradient(135deg, var(--accent-hover) 0%, var(--accent) 100%);
-  border-color: rgba(255, 107, 107, 0.6);
+  border-color: color-mix(in srgb, var(--accent-hover) 60%, transparent);
   transform: translateY(-1px);
-  box-shadow: 0 4px 18px rgba(233, 69, 96, 0.3);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .primary-btn:active {
   transform: translateY(0) scale(0.97);
-  box-shadow: 0 1px 6px rgba(233, 69, 96, 0.2);
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 /* Secondary / Cancel Button */
@@ -1744,7 +1645,7 @@ body.doc-page {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-size: 0.88rem;
   font-weight: 500;
   cursor: pointer;
@@ -1768,7 +1669,7 @@ body.doc-page {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: var(--radius);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -1789,17 +1690,17 @@ body.doc-page {
 /* Danger Button */
 .danger-btn {
   padding: 11px 22px;
-  background: linear-gradient(135deg, var(--danger) 0%, #dc2626 100%);
-  color: #fff;
-  border: 1px solid rgba(239, 68, 68, 0.5);
-  border-radius: 10px;
+  background: linear-gradient(135deg, var(--danger) 0%, color-mix(in srgb, var(--danger) 72%, black) 100%);
+  color: var(--text-on-accent);
+  border: 1px solid color-mix(in srgb, var(--danger) 50%, transparent);
+  border-radius: var(--radius);
   font-size: 0.88rem;
-  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.2);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--danger) 20%, transparent);
 }
 
 .danger-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 4px 18px rgba(239, 68, 68, 0.3);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--danger) 30%, transparent);
 }
 
 .danger-btn:active:not(:disabled) {
@@ -1825,7 +1726,7 @@ body.doc-page {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 300;
+  z-index: var(--z-modal);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.35s var(--ease-elegant), backdrop-filter 0.35s var(--ease-elegant);
@@ -1880,10 +1781,10 @@ body.doc-page {
 }
 
 .modal-content {
-  background: rgba(20, 22, 38, 0.88);
+  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
   backdrop-filter: blur(24px) saturate(1.4);
   -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   padding: 24px;
   width: 100%;
   max-width: 480px;
@@ -1932,7 +1833,7 @@ body.doc-page {
 .place-result {
   border: 1px solid rgba(255, 255, 255, 0.07);
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 12px 14px;
   transition: all 0.2s var(--ease-elegant);
 }
@@ -1978,16 +1879,13 @@ body.doc-page {
 
 /* About Modal - elegant archive style */
 #aboutModal .modal-content {
-  background: var(--bg-secondary);
   border-radius: var(--radius-modal);
-  border: 1px solid var(--border);
-  box-shadow: none;
   padding: 28px;
   max-width: 520px;
 }
 
 #aboutModal .modal-header {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
   padding-bottom: 14px;
   margin-bottom: 18px;
 }
@@ -2015,7 +1913,7 @@ body.doc-page {
 
 #aboutModal .modal-subtitle {
   margin: 0 0 12px;
-  color: #9ca3af;
+  color: var(--text-secondary);
   letter-spacing: 0.01em;
   line-height: 1.65;
 }
@@ -2024,21 +1922,21 @@ body.doc-page {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px 16px;
-  font-size: 14px;
+  font-size: var(--text-sm);
   line-height: 1.5;
-  color: #e5e7eb;
+  color: var(--text-primary);
 }
 
 #aboutModal .about-meta div {
-  background: transparent;
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-btn);
   padding: 12px;
 }
 
 #aboutModal .about-meta strong {
   display: block;
-  color: #a5b4fc;
+  color: var(--indigo-300);
   font-size: 13px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -2051,38 +1949,26 @@ body.doc-page {
   gap: 10px 14px;
   padding: 12px 0 4px;
   margin-top: 14px;
-  border-top: 1px solid #1f2937;
+  border-top: 1px solid var(--border-subtle);
 }
 
 #aboutModal .about-links a {
-  color: #cbd5e1;
+  color: var(--text-secondary);
   text-decoration: none;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid var(--border-elegant);
   padding-bottom: 2px;
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 #aboutModal .about-links a:hover {
-  color: #ffffff;
-  border-color: #ffffff;
+  color: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 #aboutModal .modal-actions {
-  border-top: 1px solid #1f2937;
+  border-top: 1px solid var(--border-subtle);
   margin-top: 16px;
   padding-top: 14px;
-}
-
-#aboutModal .primary-btn {
-  border-radius: 4px;
-  background: #111827;
-  border: 1px solid #1f2937;
-  color: #e5e7eb;
-  box-shadow: none;
-}
-
-#aboutModal .primary-btn:hover {
-  background: #1f2937;
 }
 
 .modal-content h3 {
@@ -2104,9 +1990,9 @@ body.doc-page {
 }
 
 .modal-close {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
   color: var(--text-secondary);
@@ -2146,7 +2032,7 @@ body.doc-page {
   margin-bottom: 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text-primary);
   font-size: 0.9rem;
   font-family: inherit;
@@ -2159,9 +2045,9 @@ body.doc-page {
 .modal-content textarea:focus,
 .modal-content select:focus {
   outline: none;
-  border-color: rgba(233, 69, 96, 0.6);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
   background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.12), 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent), 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .modal-content input:hover:not(:focus),
@@ -2174,6 +2060,29 @@ body.doc-page {
   resize: vertical;
   min-height: 100px;
   line-height: 1.6;
+}
+
+/* appearance:none strips the native chevron — put one back so a select is
+   never mistaken for a text field. (Re-applied on hover/focus because those
+   rules use the `background` shorthand, which would clear the image.) */
+.modal-content select {
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23aab1d0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  padding-right: 38px;
+  cursor: pointer;
+}
+
+.modal-content select,
+.modal-content select:hover,
+.modal-content select:focus {
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 18px 18px;
+}
+
+.modal-content select option {
+  background: var(--surface-1);
+  color: var(--text-primary);
 }
 
 .field-label {
@@ -2329,7 +2238,7 @@ body.doc-page {
 }
 
 .share-toggle input:checked::after {
-  border-color: #fff;
+  border-color: var(--text-on-accent);
 }
 
 .share-toggle-text {
@@ -2387,8 +2296,8 @@ body.doc-page {
 }
 
 .cover-picker-thumb.is-cover {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 1px var(--accent-primary), 0 6px 18px rgba(233, 69, 96, 0.25);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 6px 18px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .cover-picker-thumb img {
@@ -2402,14 +2311,15 @@ body.doc-page {
   position: absolute;
   bottom: 3px;
   right: 3px;
-  background: var(--accent-primary);
-  color: #fff;
-  font-size: 9px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: var(--text-xs);
   font-weight: 700;
-  padding: 2px 5px;
-  border-radius: 3px;
+  line-height: 1.2;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.02em;
 }
 
 .cover-focus-picker img {
@@ -2427,10 +2337,10 @@ body.doc-page {
   position: absolute;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: rgba(255, 255, 255, 0.92);
-  border: 2.5px solid #3b82f6;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.35);
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
   transform: translate(-50%, -50%);
   left: 50%;
   top: 50%;
@@ -2443,7 +2353,7 @@ body.doc-page {
 .cover-focus-crosshair::after {
   content: '';
   position: absolute;
-  background: #3b82f6;
+  background: var(--accent);
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
@@ -2460,7 +2370,7 @@ body.doc-page {
 }
 
 .cover-focus-picker.is-dragging .cover-focus-crosshair {
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5), 0 0 0 4px rgba(59, 130, 246, 0.18);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--accent) 50%, transparent), 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .cover-focus-empty {
@@ -2484,7 +2394,7 @@ body.doc-page {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-height: 40px;
+  min-height: var(--touch-target);
   padding: 9px 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-btn);
@@ -2525,11 +2435,11 @@ body.doc-page {
 }
 
 .share-checkbox input:checked::after {
-  border-color: #fff;
+  border-color: var(--text-on-accent);
 }
 
 .share-checkbox input:focus-visible {
-  outline: 3px solid rgba(233, 69, 96, 0.25);
+  outline: 3px solid color-mix(in srgb, var(--accent) 25%, transparent);
   outline-offset: 2px;
 }
 
@@ -2546,10 +2456,11 @@ body.doc-page {
 }
 
 .share-btn {
+  position: relative;
   flex: 1;
   min-width: 130px;
   padding: 14px 18px;
-  background: linear-gradient(135deg, var(--accent) 0%, #d63d55 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-active) 100%);
   color: var(--text-primary);
   border: none;
   border-radius: var(--radius-btn);
@@ -2557,12 +2468,12 @@ body.doc-page {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s var(--ease-elegant);
-  box-shadow: 0 4px 12px rgba(233, 69, 96, 0.25);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .share-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(233, 69, 96, 0.35);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .share-btn:active {
@@ -2575,25 +2486,17 @@ body.doc-page {
   box-shadow: none;
 }
 
-.share-btn:hover {
-  opacity: 0.9;
-}
-
-.share-btn {
-  position: relative;
-}
-
 .tooltip-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   margin-left: 6px;
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
-  font-size: 0.7rem;
-  font-weight: bold;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
 }
 
 .share-btn[title]:hover::after {
@@ -2605,12 +2508,12 @@ body.doc-page {
   background: var(--bg-primary);
   color: var(--text-primary);
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   line-height: 1.5;
   width: 240px;
   text-align: left;
-  box-shadow: 0 4px 12px var(--shadow);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   z-index: 10;
   margin-bottom: 8px;
   pointer-events: none;
@@ -2635,7 +2538,7 @@ body.doc-page {
 .waypoint-item {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding:10px;
   margin-bottom: 6px;
   display: flex;
@@ -2665,11 +2568,11 @@ body.doc-page {
 }
 
 .waypoint-item.drop-before {
-  box-shadow: inset 0 2px 0 rgba(233, 69,96, 0.9);
+  box-shadow: inset 0 2px 0 color-mix(in srgb, var(--accent) 90%, transparent);
 }
 
 .waypoint-item.drop-after {
-  box-shadow: inset 0 -2px 0 rgba(233,69, 96, 0.9);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--accent) 90%, transparent);
 }
 
 .waypoint-handle {
@@ -2686,9 +2589,9 @@ body.doc-page {
 .waypoint-icon {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
-  background: rgba(233, 69, 96,0.12);
-  border: 1px solid rgba(233, 69, 96, 0.2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2724,32 +2627,200 @@ body.doc-page {
 }
 
 .waypoint-notes {
-  font-size: 0.75rem;
-  line-height: 1.25;
+  font-size: var(--text-xs);
+  line-height: 1.35;
   color: var(--text-muted);
+  /* Preserve the line breaks people actually typed. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .waypoint-actions {
   display: flex;
-  gap:4px;
+  gap: 6px;
 }
 
 .waypoint-actions button {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   padding: 0;
 }
 
 .waypoint-actions svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* --------------------------------------------------------------------------
+   Leg dividers — full-width rows in #waypointsList marking a trip-leg
+   boundary (waypoint.type === 'leg-break'). Deliberately unlike both
+   .waypoint-item and .waypoint-item.is-via: a section-header band, not a
+   pin, not a stop.
+   -------------------------------------------------------------------------- */
+.leg-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-2);
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: default;
+}
+
+.leg-divider:first-child {
+  margin-top: 0;
+}
+
+.leg-divider-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+}
+
+/* Covers both a contenteditable span and an <input> — whichever the leg
+   title turns out to be, the focus ring reads the same. Default
+   :focus-visible already inherits var(--accent-ring) from global.css; this
+   adds a soft fill so the ring shows up clearly on the surface-2 band. */
+.leg-divider-title:focus-visible,
+.leg-divider-title:focus {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.leg-divider-title[contenteditable="true"] {
+  cursor: text;
+}
+
+.leg-divider-stats {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.leg-divider-toggle {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+/* Reuse the icon-btn hit-area technique (app.css touch-target system): a
+   transparent pseudo-element grows the tap target to 44px without growing
+   the visible chevron. */
+.leg-divider-toggle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max(100%, var(--touch-target));
+  height: max(100%, var(--touch-target));
+}
+
+.leg-divider-toggle:hover,
+.leg-divider-toggle:focus-visible {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.leg-divider-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  transition: transform var(--transition-fast);
+}
+
+/* Chevron rotates on collapse. Reads aria-expanded directly (set by the
+   controlling JS) so the visual state can never drift from the a11y state;
+   the .is-collapsed class below (on .leg-divider itself) is a second path
+   to the same rotation for whichever the emitting JS prefers. */
+.leg-divider-toggle[aria-expanded="false"] svg,
+.leg-divider.is-collapsed .leg-divider-toggle svg {
+  transform: rotate(-90deg);
+}
+
+/* --------------------------------------------------------------------------
+   Collapsed-leg row hiding. ui-renderers.js toggles `.is-collapsed` directly
+   on every `.waypoint-item` sharing the collapsed leg's `data-leg-id` (and,
+   separately, on the owning `.leg-divider` itself — for the chevron rotation
+   above only, the divider row always stays visible).
+   -------------------------------------------------------------------------- */
+.waypoints-list .waypoint-item.is-collapsed {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Add-leg button — full-width, dashed, sits below the last waypoint row.
+   -------------------------------------------------------------------------- */
+.add-leg-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: var(--touch-target);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--border-elegant);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+
+.add-leg-btn:hover,
+.add-leg-btn:focus-visible {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.add-leg-btn svg {
   width: 16px;
   height: 16px;
+  fill: currentColor;
+  margin-right: var(--space-2);
+  flex-shrink: 0;
 }
 
 /* Journal Entry */
 .journal-entry {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 10px;
   transition: all 0.2s var(--ease-elegant);
@@ -2786,6 +2857,9 @@ body.doc-page {
   font-size: 0.9rem;
   line-height: 1.6;
   margin-bottom: 8px;
+  /* Journal entries are written with paragraphs — keep them. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .journal-tags {
@@ -2822,7 +2896,7 @@ body.doc-page {
   column-gap: 8px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255,255, 255, 0.05);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding:10px 12px;
   margin-bottom: 8px;
   cursor: pointer;
@@ -2835,8 +2909,8 @@ body.doc-page {
 }
 
 .trip-item.active {
-  border-color: rgba(233,69, 96, 0.4);
-  background: rgba(233, 69, 96, 0.06);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .trip-name {
@@ -2859,27 +2933,28 @@ body.doc-page {
 }
 
 .trip-status-pill {
-  font-size:10px;
-  font-weight:700;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1.4;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius:999px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
   background: rgba(255,255, 255, 0.05);
   color: var(--text-secondary);
   border:1px solid rgba(255, 255,255, 0.08);
 }
 
 .trip-status-pill.public {
-  color: #8ab4ff;
-  background: rgba(138, 180, 255, 0.08);
-  border-color: rgba(138, 180, 255, 0.18);
+  color: var(--indigo-300);
+  background: color-mix(in srgb, var(--indigo-300) 8%, transparent);
+  border-color: color-mix(in srgb, var(--indigo-300) 18%, transparent);
 }
 
 .trip-status-pill.private {
-  color: #f871a0;
-  background: rgba(248, 113, 160, 0.08);
-  border-color: rgba(248,113, 160, 0.18);
+  color: var(--gold-300);
+  background: color-mix(in srgb, var(--gold-400) 8%, transparent);
+  border-color: color-mix(in srgb, var(--gold-400) 18%, transparent);
 }
 
 .trip-meta {
@@ -2901,24 +2976,24 @@ body.doc-page {
 
 .trip-reorder {
   display: inline-flex;
-  gap:2px;
+  gap: 4px;
 }
 
 .trip-reorder .icon-btn {
-  width:22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   border: 1px solid rgba(255,255,255, 0.08);
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  font-size:10px;
-  line-height:1;
+  font-size: var(--text-xs);
+  line-height: 1;
   cursor: pointer;
-  transition: all0.18s var(--ease-elegant);
+  transition: all 0.18s var(--ease-elegant);
 }
 
 .trip-reorder .icon-btn:hover:not(:disabled) {
@@ -2968,10 +3043,13 @@ body.doc-page {
 
 /* ─── Trip Item Pill Buttons ──────────────────────────────── */
 .trip-actions .link-btn {
-  padding: 4px 12px;
-  border-radius:6px;
-  font-size:0.78rem;
-  font-weight:500;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 500;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: var(--text-secondary);
@@ -2979,8 +3057,22 @@ body.doc-page {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The base .link-btn ::after is the hover underline; inside a trip card the
+   pills don't want it, so the pseudo-element becomes the 44px hit area. */
 .trip-actions .link-btn::after {
-  display: none;
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  width: 100%;
+  height: var(--touch-target);
+  background: none;
+  opacity: 1;
+  transform: translate(-50%, -50%);
+  transition: none;
+}
+
+.trip-actions .link-btn:hover::after {
+  transform: translate(-50%, -50%);
 }
 
 .trip-actions .link-btn:hover {
@@ -2991,27 +3083,27 @@ body.doc-page {
 
 /* Make public — accent CTA */
 .trip-actions .trip-make-public {
-  background: rgba(233, 69, 96, 0.08);
-  border-color: rgba(233,69, 96, 0.2);
-  color: #f87193;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
+  color: var(--accent-hover);
 }
 
 .trip-actions .trip-make-public:hover {
-  background: rgba(233,69, 96, 0.16);
-  border-color: rgba(233,69, 96, 0.35);
-  color: #ffa0b4;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--indigo-200);
 }
 
 /* Copy link — utility blue */
 .trip-actions .trip-copy-link {
-  color: #8ab4ff;
-  border-color: rgba(138, 180,255, 0.15);
-  background: rgba(138,180, 255, 0.06);
+  color: var(--indigo-300);
+  border-color: color-mix(in srgb, var(--indigo-300) 15%, transparent);
+  background: color-mix(in srgb, var(--indigo-300) 6%, transparent);
 }
 
 .trip-actions .trip-copy-link:hover {
-  background: rgba(138,180,255,0.12);
-  border-color: rgba(138,180, 255, 0.3);
+  background: color-mix(in srgb, var(--indigo-300) 12%, transparent);
+  border-color: color-mix(in srgb, var(--indigo-300) 30%, transparent);
 }
 
 /* Delete — subtle danger */
@@ -3021,15 +3113,15 @@ body.doc-page {
 
 .trip-actions .trip-delete-btn:hover {
   color: var(--danger);
-  border-color: rgba(239, 68, 68, 0.2);
-  background: rgba(239, 68, 68,0.06);
+  border-color: color-mix(in srgb, var(--danger) 20%, transparent);
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
 }
 
 /* ─── Form Section (visual grouping) ─────────────────────── */
 .form-section {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 16px;
   margin: 16px 0;
 }
@@ -3052,6 +3144,162 @@ body.doc-page {
   padding-left: 4px;
 }
 
+/* ─── Offline maps (Trip Details → Offline maps) ──────────────
+   Four states share this block: choosing a detail level, downloading,
+   downloaded, and confirming a delete. See public/js/trip-details.js. */
+.offline-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.offline-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.offline-choice:hover:not([disabled]) {
+  background: var(--surface-3);
+  border-color: var(--accent-hover);
+}
+
+.offline-choice:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+.offline-choice.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Over the tile cap — still shown, so the size is visible and the reason
+   for picking something lower is obvious. */
+.offline-choice[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.offline-choice-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.offline-choice-label {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.offline-choice-size {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.offline-choice-size.is-over {
+  color: var(--warning);
+}
+
+.offline-choice-blurb {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.offline-warn {
+  margin: 8px 0;
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius-sm);
+}
+
+.offline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Progress — a real bar off real counts, never a decorative spinner. */
+.offline-progress-track {
+  height: 6px;
+  margin-top: 4px;
+  background: var(--surface-3);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.offline-progress-fill {
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base);
+}
+
+.offline-progress-meta {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.offline-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--trail) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--trail) 25%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.offline-status-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  background: var(--trail);
+  border-radius: var(--radius-full);
+}
+
+.offline-status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+}
+
+.offline-status-text .microcopy {
+  margin-top: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.offline-delete-btn:hover {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
 /* (Floating Button styling is consolidated with .floating-btn near the map controls) */
 
 /* Toast — Glassmorphic */
@@ -3060,18 +3308,21 @@ body.doc-page {
   bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 24px);
   left: 50%;
   transform: translateX(-50%) translateY(20px);
-  background: rgba(20, 22, 38, 0.85);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
   color: var(--text-primary);
   padding: 12px 24px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  z-index: 400;
+  z-index: var(--z-toast);
   opacity: 0;
   transition: all 0.35s var(--ease-smooth);
-  white-space: nowrap;
+  /* Long messages must wrap rather than run off a phone screen. */
+  max-width: min(calc(100vw - 32px), 420px);
+  text-align: center;
+  overflow-wrap: break-word;
   font-weight: 500;
   font-size: 0.88rem;
 }
@@ -3083,12 +3334,12 @@ body.doc-page {
 
 #toast.success {
   border-left: 3px solid var(--success);
-  background: rgba(20, 32, 28, 0.88);
+  background: color-mix(in srgb, var(--success) 12%, rgba(11, 14, 31, 0.88));
 }
 
 #toast.error {
   border-left: 3px solid var(--danger);
-  background: rgba(38, 20, 24, 0.88);
+  background: color-mix(in srgb, var(--danger) 14%, rgba(11, 14, 31, 0.88));
 }
 
 .journal-attachments,
@@ -3133,13 +3384,20 @@ body.doc-page {
 }
 
 .attachment-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
-  padding: 0 4px;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .attachment-remove:hover {
@@ -3299,7 +3557,7 @@ body.doc-page {
   .topbar-logo {
     width: 30px;
     height: 30px;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
   }
 
   .topbar-logo img {
@@ -3309,11 +3567,10 @@ body.doc-page {
   .topbar-logo-icon {
     width: 30px;
     height: 30px;
-    border-radius: 7px;
+    border-radius: var(--radius-sm);
   }
 
   .trip-label {
-    font-size: 0.58rem;
     letter-spacing: 0.1em;
   }
 
@@ -3327,8 +3584,7 @@ body.doc-page {
   }
 
   .trip-stat-pill {
-    font-size: 0.65rem;
-    padding: 1px 5px;
+    padding: 1px 6px;
   }
 
   .topbar-right {
@@ -3338,7 +3594,7 @@ body.doc-page {
   #topBar .icon-btn {
     width: 36px;
     height: 36px;
-    border-radius: 9px;
+    border-radius: var(--radius);
   }
 
   #topBar .icon-btn svg {
@@ -3364,7 +3620,7 @@ body.doc-page {
 
   #waypointsPanel .waypoints-drawer {
     max-height: min(58vh, 560px);
-    border-radius: 16px;
+    border-radius: var(--radius-lg);
   }
 
   .waypoints-panel-body {
@@ -3388,7 +3644,7 @@ body.doc-page {
   .panel-header .icon-btn {
     width: 32px;
     height: 32px;
-    border-radius: 8px;
+    border-radius: var(--radius);
     font-size: 0.85rem;
   }
 
@@ -3407,7 +3663,6 @@ body.doc-page {
   }
 
   .waypoint-planner-kicker {
-    font-size: 0.6rem;
     margin-bottom: 2px;
   }
 
@@ -3458,11 +3713,6 @@ body.doc-page {
     gap: 6px;
   }
 
-  .waypoint-actions button {
-    width: 30px;
-    height: 30px;
-  }
-
   .journal-header {
     flex-direction: column;
     align-items: flex-start;
@@ -3485,43 +3735,38 @@ body.doc-page {
   .modal-content {
     padding: 18px;
     max-height: 86vh;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
   }
 }
 
 @media (max-width: 1180px) {
   .trip-stat-pill {
-    font-size: 0.7rem;
     padding: 1px 6px;
   }
 }
 
 @media (max-width: 360px) {
-  .nav-btn span {
-    font-size: 0.58rem;
-  }
-
   #tripTitle {
     font-size: 0.86rem;
   }
 
   .trip-label {
-    font-size: 0.54rem;
+    letter-spacing: 0.08em;
   }
 
   .topbar-right {
-    gap: 4px;
+    gap: 6px;
   }
 
   #topBar .icon-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
   }
 
   #topBar .icon-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 17px;
+    height: 17px;
   }
 }
 
@@ -3529,35 +3774,55 @@ body.doc-page {
 .route-choice-panel {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-top: 2px;
   margin-left: 32px;
   padding: 2px 0;
+  min-width: 0;
 }
 
 .route-choice-label {
-  font-size: 0.68rem;
+  flex-shrink: 0;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
   font-weight: 600;
 }
 
+/* Scrollable on narrow screens so extra alternatives never push the bar
+   over the map or wrap into the top chrome. */
 .route-choice-options {
   display: flex;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+
+.route-choice-options::-webkit-scrollbar {
+  display: none;
 }
 
 .route-chip {
-  font-size: 0.72rem;
-  padding: 2px 8px;
-  border-radius: 12px;
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  font-size: var(--text-xs);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.05);
   color: var(--text-secondary);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .route-chip:hover {
@@ -3566,16 +3831,16 @@ body.doc-page {
 }
 
 .route-chip.active {
-  background: rgba(93, 156, 236, 0.15);
-  border-color: rgba(93, 156, 236, 0.45);
-  color: #5d9cec;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent-hover);
   font-weight: 600;
 }
 
 .route-chip .route-chip-dist {
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
   opacity: 0.8;
-  margin-left: 3px;
+  margin-left: 4px;
 }
 
 @media (max-width: 480px) {
@@ -3590,8 +3855,7 @@ body.doc-page {
   }
 
   .route-chip {
-    font-size: 0.68rem;
-    padding: 1px 6px;
+    padding: 4px 10px;
   }
 }
 
@@ -3604,7 +3868,7 @@ body.doc-page {
   padding: 10px 14px;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
+  border-radius: var(--radius);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -3624,7 +3888,7 @@ body.doc-page {
 .route-alt-icon {
   width: 16px;
   height: 16px;
-  color: var(--accent-blue);
+  color: var(--accent);
   flex-shrink: 0;
 }
 
@@ -3638,7 +3902,7 @@ body.doc-page {
 
 .route-alt-count {
   margin-left: auto;
-  font-size: 0.68rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-weight: 500;
 }
@@ -3653,8 +3917,9 @@ body.doc-page {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
-  border-radius: 10px;
+  min-height: var(--touch-target);
+  padding: 10px 12px;
+  border-radius: var(--radius);
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(255,255,255,0.03);
   cursor: pointer;
@@ -3667,36 +3932,37 @@ body.doc-page {
 }
 
 .route-alt-card.active {
-  background: rgba(93, 156, 236, 0.12);
-  border-color: rgba(93, 156, 236, 0.4);
-  box-shadow: 0 0 0 1px rgba(93, 156, 236, 0.15);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .route-alt-card .route-alt-type {
   flex-shrink: 0;
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
+  line-height: 1.4;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.05em;
   font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   background: rgba(255,255,255,0.08);
   color: var(--text-muted);
 }
 
 .route-alt-card.active .route-alt-type {
-  background: rgba(93,156,236,0.25);
-  color: #5d9cec;
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  color: var(--accent-hover);
 }
 
 .route-alt-card .route-alt-type.fastest {
-  color: #66bb6a;
-  background: rgba(102,187,106,0.15);
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
 }
 
 .route-alt-card .route-alt-type.fewer-turns {
-  color: #ffa726;
-  background: rgba(255,167,38,0.15);
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
 }
 
 .route-alt-card .route-alt-info {
@@ -3722,7 +3988,7 @@ body.doc-page {
   flex-shrink: 0;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   border: 2px solid rgba(255,255,255,0.15);
   display: flex;
   align-items: center;
@@ -3731,14 +3997,14 @@ body.doc-page {
 }
 
 .route-alt-card.active .route-alt-check {
-  border-color: #5d9cec;
-  background: #5d9cec;
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
 }
 
 .route-alt-card .route-alt-check svg {
   width: 10px;
   height: 10px;
-  color: #fff;
+  color: var(--text-on-accent);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -3752,7 +4018,7 @@ body.doc-page {
   .route-alternatives {
     margin: 0 10px 10px;
     padding: 8px 10px;
-    border-radius: 10px;
+    border-radius: var(--radius);
     gap: 8px;
   }
 
@@ -3810,7 +4076,7 @@ body.doc-page {
 
   .waypoints-toolbar .toolbar-btn {
     padding:7px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
   }
 
   .waypoints-toolbar .toolbar-btn.primary {
@@ -3835,8 +4101,7 @@ body.doc-page {
 
   .waypoints-toolbar .toolbar-btn {
     flex: 1 1 calc(33.333% - 4px);
-    padding: 7px 0;
-    font-size: 0.7rem;
+    padding: 8px 0;
   }
 
   .waypoints-toolbar .toolbar-btn svg {
@@ -3848,5 +4113,63 @@ body.doc-page {
 @media (max-width: 360px) {
   .waypoints-toolbar .toolbar-btn span {
     display: none;
+  }
+}
+
+/* ==========================================================================
+   Desktop planning polish (≥1024px)
+   The sidebar is persistent here and planning is the main job, so the panels
+   read as cards with comfortable padding and short, readable line lengths.
+   ========================================================================== */
+@media (min-width: 1024px) {
+  .panel {
+    width: clamp(400px, 30vw, 520px);
+    border-left: 1px solid var(--border-elegant);
+    box-shadow: -24px 0 60px rgba(0, 0, 0, 0.35);
+  }
+
+  .panel-header {
+    padding: 16px 20px;
+  }
+
+  .panel-content {
+    padding: 20px;
+  }
+
+  #waypointsPanel {
+    width: clamp(400px, 30vw, 520px);
+    padding: 16px;
+  }
+
+  #waypointsPanel .waypoints-drawer {
+    box-shadow: var(--shadow-3);
+  }
+
+  .waypoints-panel-body {
+    gap: 12px;
+    padding: 14px 16px 16px;
+  }
+
+  .waypoint-item,
+  .trip-item,
+  .journal-entry {
+    padding: 12px 14px;
+  }
+
+  /* Notes and journal prose stay under ~70 characters per line. */
+  .journal-content,
+  .waypoint-notes,
+  .waypoints-help-body p {
+    max-width: 62ch;
+  }
+
+  .modal-content {
+    max-width: 560px;
+    padding: 28px;
+  }
+
+  .modal-actions .primary-btn,
+  .modal-actions .cancel-btn {
+    min-width: 128px;
   }
 }

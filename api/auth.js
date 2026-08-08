@@ -4,11 +4,15 @@
  * Domain: ride.incitat.io
  */
 
-import { jsonResponse, errorResponse, generateId, createSession, setSessionCookie, clearSessionCookie, BASE_URL } from './utils.js';
+import { jsonResponse, errorResponse, generateId, createSession, setSessionCookie, clearSessionCookie, getSessionToken, readCookie, BASE_URL } from './utils.js';
+import { readJsonBody } from './handler-utils.js';
 
 const ADMIN_PAGE_SIZES = [25, 50, 100, 250];
 const ADMIN_DEFAULT_PAGE_SIZE = 50;
 const ADMIN_MAX_SEARCH_LENGTH = 120;
+
+/** Only a bare column reference (optionally table-qualified) may reach ORDER BY. */
+const SORT_EXPR_PATTERN = /^[a-z_]+(\.[a-z_]+)?$/;
 
 function getAdminListOptions(url, sortColumns, defaultSort = 'created_at') {
   const requestedLimit = Number.parseInt(url.searchParams.get('limit') || String(ADMIN_DEFAULT_PAGE_SIZE), 10);
@@ -16,9 +20,50 @@ function getAdminListOptions(url, sortColumns, defaultSort = 'created_at') {
   const page = Math.max(1, Number.parseInt(url.searchParams.get('page') || '1', 10) || 1);
   const q = (url.searchParams.get('q') || '').trim().slice(0, ADMIN_MAX_SEARCH_LENGTH);
   const requestedSort = url.searchParams.get('sort') || defaultSort;
-  const sort = sortColumns[requestedSort] ? requestedSort : defaultSort;
-  const dir = (url.searchParams.get('dir') || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-  return { limit, page, offset: (page - 1) * limit, q, sort, sortExpr: sortColumns[sort], dir };
+  // hasOwnProperty, not a bare lookup: `?sort=constructor` / `?sort=__proto__`
+  // otherwise resolved through the prototype chain into the ORDER BY clause.
+  const sort = Object.prototype.hasOwnProperty.call(sortColumns, requestedSort) ? requestedSort : defaultSort;
+  const sortExpr = sortColumns[sort];
+  return {
+    limit,
+    page,
+    offset: (page - 1) * limit,
+    q,
+    sort,
+    // Belt and braces: sortExpr is the one value interpolated into SQL as text.
+    sortExpr: SORT_EXPR_PATTERN.test(sortExpr || '') ? sortExpr : sortColumns[defaultSort],
+    dir: (url.searchParams.get('dir') || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC'
+  };
+}
+
+/**
+ * Short-lived cookie that binds an OAuth flow to the browser that started it.
+ * Without it, an attacker could hand a victim a valid state+code pair and have
+ * the victim's browser sign in to the *attacker's* account (login CSRF).
+ * __Host- prefix: requires Secure + Path=/ + no Domain, so no sibling
+ * subdomain can plant or overwrite it.
+ */
+const OAUTH_STATE_COOKIE = '__Host-ride_oauth_state';
+const OAUTH_STATE_TTL_SECONDS = 300;
+
+function setStateCookie(state) {
+  return `${OAUTH_STATE_COOKIE}=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${OAUTH_STATE_TTL_SECONDS}`;
+}
+
+function expireStateCookie() {
+  return `${OAUTH_STATE_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+/**
+ * Redirect back into the app. Response.redirect() requires an absolute URL and
+ * throws a TypeError on a relative one — every OAuth failure path used to hand
+ * the user a raw 500 JSON blob because of that (including "user clicked Cancel").
+ */
+function redirectToApp(path) {
+  const target = /^https?:\/\//i.test(path) ? path : `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const headers = new Headers({ Location: target, 'Cache-Control': 'no-store' });
+  headers.append('Set-Cookie', expireStateCookie());
+  return new Response(null, { status: 302, headers });
 }
 
 function paginationResponse(total, options) {
@@ -58,10 +103,14 @@ const PROVIDERS = {
       email: data.email,
       name: data.name,
       avatar_url: data.picture,
-      provider_id: data.id
+      provider_id: data.id,
+      // Google explicitly vouches for the address. Both the v2 userinfo field
+      // and the OIDC claim are accepted; anything other than a literal true is
+      // treated as unverified.
+      emailVerified: data.verified_email === true || data.email_verified === true
     })
   },
-  
+
   microsoft: {
     authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
@@ -73,7 +122,13 @@ const PROVIDERS = {
       email: data.mail || data.userPrincipalName,
       name: data.displayName,
       avatar_url: null, // MS Graph requires separate call for photo
-      provider_id: data.id
+      provider_id: data.id,
+      // NEVER true. We authenticate against the multi-tenant /common endpoint,
+      // where `mail` is an arbitrary tenant-controlled directory attribute and
+      // is not proof of address ownership (the nOAuth account-takeover class).
+      // The address is display-only; identity is keyed strictly on the
+      // immutable provider subject (`id`).
+      emailVerified: false
     })
   }
 };
@@ -119,7 +174,7 @@ export const AuthHandler = {
     await env.RIDE_TRIP_PLANNER_SESSIONS.put(`oauth_state_${state}`, JSON.stringify({
       provider: providerName,
       returnUrl
-    }), { expirationTtl: 300 });
+    }), { expirationTtl: OAUTH_STATE_TTL_SECONDS });
     
     // Build redirect URL - use BASE_URL in production for consistency
     const origin = env.ENVIRONMENT === 'production' ? BASE_URL : url.origin;
@@ -139,8 +194,17 @@ export const AuthHandler = {
     }
     
     const authUrl = `${provider.authUrl}?${authParams.toString()}`;
-    
-    return Response.redirect(authUrl, 302);
+
+    // Bind the flow to this browser: the same nonce goes out as an HttpOnly
+    // cookie and must come back on the callback.
+    return new Response(null, {
+      status: 302,
+      headers: new Headers({
+        Location: authUrl,
+        'Cache-Control': 'no-store',
+        'Set-Cookie': setStateCookie(state)
+      })
+    });
   },
   
   /**
@@ -162,20 +226,30 @@ export const AuthHandler = {
     
     if (error) {
       console.error('OAuth error:', error, url.searchParams.get('error_description'));
-      return Response.redirect(`/?error=auth_failed`, 302);
+      // Most common non-happy path there is: the user clicked Cancel.
+      return redirectToApp('/?error=auth_failed');
     }
-    
+
     if (!state || !code) {
-      return errorResponse('Missing state or code', 400);
+      return redirectToApp('/?error=missing_state');
     }
-    
+
+    // The state must match the nonce this browser was issued at login start.
+    // KV existence alone proves only that *some* browser started a flow.
+    const stateCookie = readCookie(request, OAUTH_STATE_COOKIE);
+    if (!stateCookie || stateCookie !== state) {
+      console.error('OAuth state cookie mismatch');
+      return redirectToApp('/?error=invalid_state');
+    }
+
     // Verify state from KV
     const stateData = await env.RIDE_TRIP_PLANNER_SESSIONS.get(`oauth_state_${state}`, 'json');
     if (!stateData || stateData.provider !== providerName) {
-      return errorResponse('Invalid state', 400);
+      return redirectToApp('/?error=invalid_state');
     }
     await env.RIDE_TRIP_PLANNER_SESSIONS.delete(`oauth_state_${state}`);
-    
+
+
     // Exchange code for token — use BASE_URL for consistent redirect_uri
     const origin = env.ENVIRONMENT === 'production' ? BASE_URL : url.origin;
     const redirectUri = `${origin}/api/auth/callback/${providerName}`;
@@ -199,7 +273,7 @@ export const AuthHandler = {
     
     if (!tokenResponse.ok) {
       console.error('Token exchange failed:', await tokenResponse.text());
-      return Response.redirect(`/?error=token_failed`, 302);
+      return redirectToApp('/?error=token_failed');
     }
     
     const tokenData = await tokenResponse.json();
@@ -215,24 +289,40 @@ export const AuthHandler = {
     
     if (!userResponse.ok) {
       console.error('User info fetch failed:', await userResponse.text());
-      return Response.redirect(`/?error=user_fetch_failed`, 302);
+      return redirectToApp('/?error=user_fetch_failed');
     }
-    
+
     const userData = await userResponse.json();
     const parsedUser = provider.parseUser(userData);
     if (!parsedUser?.email) {
-      console.error('OAuth user missing email', providerName, userData);
-      return Response.redirect(`/?error=no_email`, 302);
+      console.error('OAuth user missing email', providerName);
+      return redirectToApp('/?error=no_email');
+    }
+    if (!parsedUser.provider_id) {
+      console.error('OAuth user missing provider subject', providerName);
+      return redirectToApp('/?error=user_fetch_failed');
     }
     const normalizedEmail = parsedUser.email.toLowerCase();
-    
+
     // Create or update user in D1
-    const user = await createOrUpdateUser(env.RIDE_TRIP_PLANNER_DB, {
-      ...parsedUser,
-      email: normalizedEmail,
-      provider: providerName
-    });
-    
+    let user;
+    try {
+      user = await createOrUpdateUser(env.RIDE_TRIP_PLANNER_DB, {
+        ...parsedUser,
+        email: normalizedEmail,
+        provider: providerName
+      });
+    } catch (err) {
+      if (err?.code === 'UNVERIFIED_EMAIL_LINK') {
+        // An account already exists for this address and the provider did not
+        // prove the signer owns it. Refuse rather than silently merge.
+        console.error('Refused unverified OAuth account link', providerName);
+        return redirectToApp('/?error=email_not_verified');
+      }
+      throw err;
+    }
+
+
     // Create session
     const session = await createSession(env, {
       id: user.id,
@@ -248,11 +338,10 @@ export const AuthHandler = {
       })
     );
     
-    // Redirect to app with session cookie (Response.redirect requires absolute URL)
-    const returnPath = stateData.returnUrl || '/';
-    const absoluteReturnUrl = returnPath.startsWith('http') ? returnPath : `${BASE_URL}${returnPath}`;
-    const response = Response.redirect(absoluteReturnUrl, 302);
-    
+    // Redirect to app with session cookie. redirectToApp also expires the
+    // one-shot OAuth state cookie so it can never be replayed.
+    const response = redirectToApp(stateData.returnUrl || '/');
+
     return setSessionCookie(response, session.token, session.expiresAt);
   },
   
@@ -268,14 +357,12 @@ export const AuthHandler = {
    */
   async logout(context) {
     const { request, env } = context;
-    
-    // Get token from cookie
-    const cookies = request.headers.get('Cookie') || '';
-    const match = cookies.match(/ride_session=([^;]+)/);
-    
-    if (match) {
-      const token = match[1];
 
+    // Shared reader: handles the __Host- cookie, the legacy name, and Bearer
+    // tokens, and is anchored so `x_ride_session` can never be picked up.
+    const token = getSessionToken(request);
+
+    if (token) {
       // Read session to get user ID for registry cleanup
       try {
         const sessionData = await env.RIDE_TRIP_PLANNER_SESSIONS.get(token, 'json');
@@ -544,7 +631,8 @@ export const AuthHandler = {
   async setUserStatus(context) {
     const { env, params, request } = context;
     const userId = params.id;
-    const body = await request.json();
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
     const { status, reason } = body;
     const adminEmail = context.user?.email || 'admin';
     const normalizedStatus = normalizeAdminStatus(status);
@@ -588,7 +676,8 @@ export const AuthHandler = {
   async addAdminNote(context) {
     const { env, params, request } = context;
     const userId = params.id;
-    const body = await request.json();
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
     const { content } = body;
     const adminEmail = context.user?.email || 'admin';
     if (!content) return errorResponse('Note content is required', 400);
@@ -611,7 +700,8 @@ export const AuthHandler = {
    */
   async updateAdminNote(context) {
     const { env, params, request } = context;
-    const body = await request.json();
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
     const content = (body.content || '').trim();
     const adminEmail = context.user?.email || 'admin';
     if (!content) return errorResponse('Note content is required', 400);
@@ -719,11 +809,30 @@ async function recordLogin(env, user, provider, request) {
 }
 
 /**
- * Create or update user in database
+ * Raised when an OAuth login would attach a provider identity to a pre-existing
+ * account purely because the email strings match, without the provider having
+ * proved the signer actually owns that address.
+ */
+function unverifiedLinkError() {
+  const err = new Error('Refusing to link accounts on an unverified email');
+  err.code = 'UNVERIFIED_EMAIL_LINK';
+  return err;
+}
+
+/**
+ * Create or update user in database.
+ *
+ * Identity resolution order — email is the LAST resort and only when the
+ * provider vouched for it:
+ *   1. auth_identities row for (provider, provider_id)  — the immutable subject
+ *   2. legacy users row for (provider, provider_id)     — backfills an identity
+ *   3. users row for the email, ONLY if emailVerified   — cross-provider link
+ *   4. otherwise create a brand new user
  */
 async function createOrUpdateUser(db, userData) {
-  const { email, name, avatar_url, provider, provider_id } = userData;
+  const { email, name, avatar_url, provider, provider_id, emailVerified } = userData;
   const normalizedEmail = email?.toLowerCase();
+  const emailIsProven = emailVerified === true;
 
   // Prefer the linked identities table if present.
   try {
@@ -745,8 +854,39 @@ async function createOrUpdateUser(db, userData) {
       return { ...existingIdentity, email: normalizedEmail, name, avatar_url: effectiveAvatar, provider, provider_id, last_login: new Date().toISOString() };
     }
 
+    // Legacy accounts created before auth_identities existed still carry the
+    // provider subject on the users row. Matching on it is safe (the subject is
+    // immutable and provider-issued) and backfills the missing identity row, so
+    // long-standing Microsoft users are not locked out by the email rule below.
+    const legacyByProvider = await db.prepare(
+      'SELECT * FROM users WHERE provider = ? AND provider_id = ?'
+    ).bind(provider, provider_id).first();
+
+    if (legacyByProvider) {
+      try {
+        await db.prepare(
+          'INSERT INTO auth_identities (id, user_id, provider, provider_id, email, created_at, last_login) VALUES (?, ?, ?, ?, ?, datetime("now"), datetime("now"))'
+        ).bind(generateId(), legacyByProvider.id, provider, provider_id, normalizedEmail).run();
+      } catch (_) {
+        // Already present (concurrent login) — nothing to do.
+      }
+
+      const effectiveAvatar = avatar_url || legacyByProvider.avatar_url;
+      await db.prepare(
+        'UPDATE users SET name = ?, avatar_url = COALESCE(?, avatar_url), last_login = datetime("now"), updated_at = datetime("now") WHERE id = ?'
+      ).bind(name, avatar_url, legacyByProvider.id).run();
+
+      return { ...legacyByProvider, name, avatar_url: effectiveAvatar, provider, provider_id, last_login: new Date().toISOString() };
+    }
+
     const existingUser = await db.prepare('SELECT * FROM users WHERE email = ?').bind(normalizedEmail).first();
     if (existingUser) {
+      // An account already owns this address and the provider subject is new.
+      // Linking here is only safe when the provider proved address ownership —
+      // otherwise anyone who can set an email attribute in their own directory
+      // could sign in straight into someone else's Ride account (nOAuth).
+      if (!emailIsProven) throw unverifiedLinkError();
+
       // Link this provider identity to the existing user (one user per email).
       try {
         await db.prepare(
@@ -776,6 +916,10 @@ async function createOrUpdateUser(db, userData) {
 
     return { id, email: normalizedEmail, name, avatar_url, provider, provider_id, last_login: new Date().toISOString() };
   } catch (err) {
+    // A refused link is a decision, not a schema problem — never let the legacy
+    // fallback below re-link the account by email behind our back.
+    if (err?.code === 'UNVERIFIED_EMAIL_LINK') throw err;
+
     // Legacy fallback (no auth_identities table yet): keep one account per email by reusing existing user.
 
     // First try provider+id match
@@ -795,6 +939,10 @@ async function createOrUpdateUser(db, userData) {
     const existingByEmail = await db.prepare('SELECT * FROM users WHERE email = ?').bind(normalizedEmail).first();
 
     if (existingByEmail) {
+      // Same rule as the primary path: an unproven email must never adopt an
+      // existing account, even in legacy single-identity mode.
+      if (!emailIsProven) throw unverifiedLinkError();
+
       // IMPORTANT: do not create a second user for the same email.
       // In legacy mode we cannot persist multiple identities, so we keep the existing user record.
       const effectiveAvatar = avatar_url || existingByEmail.avatar_url;

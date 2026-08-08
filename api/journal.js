@@ -3,8 +3,8 @@
  * CRUD operations for trip journal entries
  */
 
-import { jsonResponse, errorResponse, generateId, parseBody } from './utils.js';
-import { verifyTripOwnership } from './handler-utils.js';
+import { jsonResponse, errorResponse, generateId } from './utils.js';
+import { verifyTripOwnership, readJsonBody, safeJsonParse } from './handler-utils.js';
 
 export const JournalHandler = {
   /**
@@ -12,12 +12,13 @@ export const JournalHandler = {
    */
   async addJournalEntry(context) {
     const { env, user, params, request } = context;
-    const body = await parseBody(request);
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
 
     const trip = await verifyTripOwnership(env, params.tripId, user.id);
     if (!trip) return errorResponse('Trip not found', 404);
 
-    if (!body?.title) {
+    if (!body.title) {
       return errorResponse('Title is required');
     }
 
@@ -42,8 +43,10 @@ export const JournalHandler = {
     return jsonResponse({
       entry: {
         ...entry,
-        tags: JSON.parse(entry.tags || '[]'),
-        location: JSON.parse(entry.location || 'null')
+        // safeJsonParse, not raw JSON.parse: a malformed stored column must not
+        // turn a successful write into a 500.
+        tags: safeJsonParse(entry.tags, []),
+        location: safeJsonParse(entry.location, null)
       }
     }, 201);
   },
@@ -53,7 +56,8 @@ export const JournalHandler = {
    */
   async updateJournalEntry(context) {
     const { env, user, params, request } = context;
-    const body = await parseBody(request);
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
 
     const trip = await verifyTripOwnership(env, params.tripId, user.id);
     if (!trip) return errorResponse('Trip not found', 404);
@@ -75,13 +79,19 @@ export const JournalHandler = {
       ).bind(...values).run();
     }
 
-    const entry = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM journal_entries WHERE id = ?').bind(params.id).first();
+    // Scope the re-read to the trip: an id belonging to another trip previously
+    // returned null here and threw a TypeError on entry.tags (a 500, not a 404).
+    const entry = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      'SELECT * FROM journal_entries WHERE id = ? AND trip_id = ?'
+    ).bind(params.id, params.tripId).first();
+
+    if (!entry) return errorResponse('Journal entry not found', 404);
 
     return jsonResponse({
       entry: {
         ...entry,
-        tags: JSON.parse(entry.tags || '[]'),
-        location: JSON.parse(entry.location || 'null')
+        tags: safeJsonParse(entry.tags, []),
+        location: safeJsonParse(entry.location, null)
       }
     });
   },

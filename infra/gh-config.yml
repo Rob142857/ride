@@ -4,9 +4,11 @@
 graphhopper:
   datareader.file: /graphhopper/data/data.osm.pbf
   graph.location: /graphhopper/data/graph-cache
-  graph.encoded_values: car_access, car_average_speed, road_class, curvature
+  graph.encoded_values: car_access, car_average_speed, road_class, curvature, road_environment, ferry_speed, max_speed
+  import.osm.ignored_highways: footway,cycleway,path,pedestrian,steps,platform,corridor
   profiles:
     - name: car
+      custom_model_files: [car.json]
   # Landmarks (not full CH) so an arbitrary per-request custom_model stays fast.
   profiles_lm:
     - profile: car

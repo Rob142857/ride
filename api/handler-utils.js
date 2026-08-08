@@ -6,6 +6,19 @@
 import { jsonResponse } from './utils.js';
 
 /**
+ * Parse a JSON request body, returning a ready-made 400 response for
+ * malformed or non-object input.
+ * Usage: const { body, error } = await readJsonBody(request); if (error) return error;
+ */
+export async function readJsonBody(request) {
+  try {
+    const body = await request.json();
+    if (body && typeof body === 'object') return { body, error: null };
+  } catch (_) { /* malformed JSON */ }
+  return { body: null, error: jsonResponse({ error: 'Invalid JSON body' }, 400) };
+}
+
+/**
  * Safe JSON parse with fallback
  */
 export function safeJsonParse(value, fallback) {
@@ -45,14 +58,29 @@ export function orderWaypointsWithTripSettings(waypointsRows, tripSettings) {
 }
 
 /**
- * Parse If-Match header for optimistic concurrency control
+ * Parse If-Match header for optimistic concurrency control.
+ *
+ * Returns:
+ *   - null   → header absent (caller decides whether that's allowed)
+ *   - NaN    → header present but not a plain integer version (e.g. a weak
+ *              ETag `W/"5"`, or `*`) — callers must reject this rather than
+ *              silently treating it the same as "absent", which used to turn
+ *              concurrency control off for any malformed value.
+ *   - number → the parsed version
  */
 export function parseIfMatchVersion(request) {
   const raw = request?.headers?.get('If-Match');
   if (!raw) return null;
   const trimmed = raw.trim().replace(/^"|"$/g, '');
   const n = Number.parseInt(trimmed, 10);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) && String(n) === trimmed ? n : NaN;
+}
+
+/**
+ * Return a 400 response for a malformed (present but unparseable) If-Match header.
+ */
+export function invalidIfMatchResponse() {
+  return jsonResponse({ error: 'If-Match header must be a specific numeric version.' }, 400);
 }
 
 /**

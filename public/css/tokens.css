@@ -1,0 +1,149 @@
+/**
+ * Ride — Design Tokens (single source of truth)
+ *
+ * Loaded FIRST on every page (index.html, trip.html, about.html, admin.html).
+ * The brand follows the app icon: an indigo waypoint pin with a golden dot
+ * on a deep navy night sky. Indigo = interactive. Gold = the route ("the
+ * golden route"). Emerald = ridden track. Red is reserved for danger only.
+ *
+ * No component styles in this file — variables only.
+ */
+:root {
+  /* ── Brand palette ─────────────────────────────────────────────── */
+  --indigo-200: #c7d2fe;
+  --indigo-300: #a5b4fc;
+  --indigo-400: #818cf8;
+  --indigo-500: #6366f1;
+  --indigo-600: #4f46e5;
+  --indigo-700: #4338ca;
+
+  --gold-200: #fde68a;
+  --gold-300: #fcd34d;
+  --gold-400: #fbbf24;
+  --gold-500: #f59e0b;
+  --gold-600: #d97706;
+
+  /* ── Surfaces — deep navy family (matches icon background) ─────── */
+  --surface-0: #0b0e1f;   /* page background, deepest */
+  --surface-1: #12162e;   /* panels, drawers */
+  --surface-2: #1a1f3d;   /* cards, raised elements */
+  --surface-3: #242b52;   /* hover / pressed */
+
+  /* Semantic background aliases (legacy names kept for compatibility) */
+  --bg-primary: var(--surface-0);
+  --bg-secondary: var(--surface-1);
+  --bg-tertiary: var(--surface-2);
+  --bg-modal-overlay: rgba(7, 9, 20, 0.85);
+  --bg-modal: linear-gradient(165deg, #1a1f3d 0%, #141936 50%, #0f1329 100%);
+  --bg-glass: rgba(18, 22, 46, 0.82);
+
+  /* ── Accent (interactive) ──────────────────────────────────────── */
+  --accent: var(--indigo-500);
+  --accent-hover: var(--indigo-400);
+  --accent-active: var(--indigo-600);
+  --accent-soft: rgba(99, 102, 241, 0.16);
+  --accent-ring: rgba(129, 140, 248, 0.45);
+
+  /* ── Map / route colors ────────────────────────────────────────── */
+  --route: var(--gold-500);            /* selected route — the golden route */
+  --route-glow: rgba(245, 158, 11, 0.32);
+  --route-casing: rgba(11, 14, 31, 0.45);
+  --route-alt: #8b97b8;                /* unselected alternatives */
+  --trail: #34d399;                    /* live ride trail */
+  --trail-log: #10b981;                /* saved ride logs */
+  --gps-accuracy: #60a5fa;             /* GPS accuracy circle */
+
+  /* Waypoint pin colors by type */
+  --wp-stop: var(--indigo-500);
+  --wp-scenic: #10b981;
+  --wp-fuel: var(--gold-400);
+  --wp-food: #f97316;
+  --wp-lodging: #8b5cf6;
+  --wp-custom: #06b6d4;
+  --wp-via: #8b97b8;                   /* shaping points — quiet, small */
+  --wp-photo: var(--gold-400);         /* photo markers on the map */
+
+  /* ── Text — contrast-checked on surface-0/1/2 ──────────────────── */
+  --text-primary: #f4f5fb;
+  --text-secondary: #aab1d0;   /* ≥ 7:1 on surface-1 */
+  --text-muted: #7e86ad;       /* ≥ 4.5:1 on surface-1 */
+  --text-on-accent: #ffffff;
+  --text-on-gold: #211a04;
+
+  /* ── Status ────────────────────────────────────────────────────── */
+  --success: #4ade80;
+  --warning: var(--gold-400);
+  --danger: #ef4444;
+  --danger-hover: #f87171;
+
+  /* ── Borders ───────────────────────────────────────────────────── */
+  --border: #2a3054;
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-elegant: rgba(255, 255, 255, 0.11);
+
+  /* ── Typography ────────────────────────────────────────────────── */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Fira Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;     /* 12px — smallest allowed for UI text */
+  --text-sm: 0.875rem;    /* 14px */
+  --text-base: 1rem;      /* 16px */
+  --text-lg: 1.125rem;    /* 18px */
+  --text-xl: 1.375rem;    /* 22px */
+  --text-2xl: 1.75rem;    /* 28px */
+  --text-3xl: 2.25rem;    /* 36px */
+
+  /* ── Spacing scale ─────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ── Shape ─────────────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+  --radius-btn: var(--radius-sm);
+  --radius-card: var(--radius);
+  --radius-modal: var(--radius-lg);
+
+  /* ── Elevation ─────────────────────────────────────────────────── */
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --shadow-2: 0 4px 20px rgba(0, 0, 0, 0.30), 0 1px 3px rgba(0, 0, 0, 0.18);
+  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.38), 0 4px 12px rgba(0, 0, 0, 0.22);
+  --shadow-modal: 0 32px 100px rgba(0, 0, 0, 0.5), 0 8px 32px rgba(0, 0, 0, 0.3);
+  /* Legacy aliases */
+  --shadow: var(--shadow-1);
+  --shadow-elegant: var(--shadow-2);
+  --shadow-elevated: var(--shadow-3);
+
+  /* ── Motion ────────────────────────────────────────────────────── */
+  --ease-elegant: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-fast: 0.15s var(--ease-elegant);
+  --transition-base: 0.25s var(--ease-elegant);
+  --transition-slow: 0.4s var(--ease-smooth);
+
+  /* ── Layout ────────────────────────────────────────────────────── */
+  --header-height: 56px;
+  --nav-height: 64px;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --touch-target: 44px;   /* minimum hit area for interactive elements */
+
+  /* ── Z-index scale ─────────────────────────────────────────────── */
+  --z-map-controls: 500;
+  --z-chrome: 900;        /* top bar, bottom nav, side menu */
+  --z-ride: 1200;         /* drive-mode HUD */
+  --z-modal: 2000;
+  --z-toast: 3000;
+  --z-gate: 4000;         /* auth / landing gates */
+
+  color-scheme: dark;
+}

@@ -32,8 +32,14 @@ export class Router {
     const method = request.method.toUpperCase();
 
     for (const route of this.routes) {
-      if (route.method !== 'ALL' && route.method !== method) continue;
-      
+      // HEAD is served by the matching GET route (the runtime drops the body).
+      // Without this, HEAD on any API path fell through to the catch-all 404.
+      const methodMatches = route.method === 'ALL'
+        || route.method === method
+        || (method === 'HEAD' && route.method === 'GET');
+      if (!methodMatches) continue;
+
+
       const match = url.pathname.match(route.pattern);
       if (!match) continue;
 
@@ -54,7 +60,11 @@ export class Router {
       for (const handler of route.handlers) {
         const result = await handler(context);
         if (result instanceof Response) {
-          return result;
+          // Middleware may register a response decorator (e.g. sliding
+          // session renewal appending a fresh Set-Cookie header).
+          return typeof context.decorateResponse === 'function'
+            ? context.decorateResponse(result)
+            : result;
         }
         // If handler returns nothing, continue to next
       }

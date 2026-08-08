@@ -1,0 +1,282 @@
+[
+  {
+    "id": "oxley-highway",
+    "name": "Oxley Highway",
+    "blurb": "Legendary Sydney-to-Port-Macquarie link through Mount Seaview — hundreds of corners over the range.",
+    "region": "NSW",
+    "entry": { "lat": -30.9928, "lng": 151.6067 },
+    "exit": { "lat": -31.4638, "lng": 152.7256 },
+    "shape": [
+      { "lat": -31.0500, "lng": 151.8500 },
+      { "lat": -31.1300, "lng": 152.0000 },
+      { "lat": -31.2000, "lng": 152.1300 },
+      { "lat": -31.3000, "lng": 152.3500 },
+      { "lat": -31.4000, "lng": 152.5500 }
+    ]
+  },
+  {
+    "id": "putty-road",
+    "name": "Putty Road",
+    "blurb": "Sydney's favourite mountain road to the Hunter Valley — fast sweepers through Yengo and Wollemi.",
+    "region": "NSW",
+    "entry": { "lat": -33.5928, "lng": 150.8064 },
+    "exit": { "lat": -32.5667, "lng": 151.1667 },
+    "shape": [
+      { "lat": -33.3500, "lng": 150.8000 },
+      { "lat": -33.1500, "lng": 150.8500 },
+      { "lat": -32.9000, "lng": 150.9500 },
+      { "lat": -32.7000, "lng": 151.0500 }
+    ]
+  },
+  {
+    "id": "great-ocean-road",
+    "name": "Great Ocean Road",
+    "blurb": "Australia's most famous coastal drive — cliffs, rainforest and the Twelve Apostles.",
+    "region": "VIC",
+    "entry": { "lat": -38.3311, "lng": 144.3247 },
+    "exit": { "lat": -38.3801, "lng": 142.4826 },
+    "shape": [
+      { "lat": -38.5423, "lng": 143.9736 },
+      { "lat": -38.7566, "lng": 143.6708 },
+      { "lat": -38.6656, "lng": 143.1042 },
+      { "lat": -38.6209, "lng": 142.9862 }
+    ]
+  },
+  {
+    "id": "great-alpine-road",
+    "name": "Great Alpine Road",
+    "blurb": "Victoria's high country crossing over Mount Hotham, linking Bright to the Gippsland Lakes.",
+    "region": "VIC",
+    "entry": { "lat": -36.3585, "lng": 146.3153 },
+    "exit": { "lat": -37.8136, "lng": 147.6033 },
+    "shape": [
+      { "lat": -36.7333, "lng": 146.9667 },
+      { "lat": -36.9800, "lng": 147.1330 },
+      { "lat": -37.1002, "lng": 147.5989 },
+      { "lat": -37.2500, "lng": 147.7167 }
+    ]
+  },
+  {
+    "id": "snowy-mountains-highway",
+    "name": "Snowy Mountains Highway",
+    "blurb": "High-country crossing of the Snowies via Kiandra and Yarrangobilly Caves.",
+    "region": "NSW",
+    "entry": { "lat": -36.2350, "lng": 149.1244 },
+    "exit": { "lat": -35.3055, "lng": 148.2201 },
+    "shape": [
+      { "lat": -35.9900, "lng": 148.7580 },
+      { "lat": -35.8667, "lng": 148.4970 },
+      { "lat": -35.7444, "lng": 148.4636 },
+      { "lat": -35.5833, "lng": 148.2833 }
+    ]
+  },
+  {
+    "id": "bells-line-of-road",
+    "name": "Bells Line of Road",
+    "blurb": "The quieter Blue Mountains crossing, past orchards and Mount Tomah's cool-climate gardens.",
+    "region": "NSW",
+    "entry": { "lat": -33.5998, "lng": 150.7514 },
+    "exit": { "lat": -33.4795, "lng": 150.1520 },
+    "shape": [
+      { "lat": -33.5333, "lng": 150.6552 },
+      { "lat": -33.4886, "lng": 150.5391 },
+      { "lat": -33.4934, "lng": 150.4141 },
+      { "lat": -33.5000, "lng": 150.3200 }
+    ]
+  },
+  {
+    "id": "macquarie-pass",
+    "name": "Macquarie Pass",
+    "blurb": "A steep, tight-hairpin plunge off the Illawarra escarpment between Robertson and Albion Park.",
+    "region": "NSW",
+    "entry": { "lat": -34.6122, "lng": 150.5877 },
+    "exit": { "lat": -34.5626, "lng": 150.7728 },
+    "shape": [
+      { "lat": -34.6000, "lng": 150.6300 },
+      { "lat": -34.5900, "lng": 150.6800 },
+      { "lat": -34.5800, "lng": 150.7300 }
+    ]
+  },
+  {
+    "id": "jamberoo-mountain-road",
+    "name": "Jamberoo Mountain Road",
+    "blurb": "Tight switchbacks climbing the escarpment above Kiama, popular with local riders.",
+    "region": "NSW",
+    "entry": { "lat": -34.6156, "lng": 150.7735 },
+    "exit": { "lat": -34.6300, "lng": 150.6900 },
+    "shape": [
+      { "lat": -34.6200, "lng": 150.7400 },
+      { "lat": -34.6260, "lng": 150.7150 },
+      { "lat": -34.6290, "lng": 150.6950 }
+    ]
+  },
+  {
+    "id": "gillies-range-road",
+    "name": "Gillies Range Road",
+    "blurb": "263 corners climbing from the coastal plain to the Atherton Tablelands near Cairns.",
+    "region": "QLD",
+    "entry": { "lat": -17.0966, "lng": 145.7864 },
+    "exit": { "lat": -17.2704, "lng": 145.5833 },
+    "shape": [
+      { "lat": -17.1400, "lng": 145.7300 },
+      { "lat": -17.1900, "lng": 145.6800 },
+      { "lat": -17.2300, "lng": 145.6300 }
+    ]
+  },
+  {
+    "id": "tarra-bulga",
+    "name": "Tarra-Bulga / Grand Ridge Road",
+    "blurb": "A winding ridge-top drive through cool-temperate rainforest in South Gippsland.",
+    "region": "VIC",
+    "entry": { "lat": -38.3986, "lng": 146.1573 },
+    "exit": { "lat": -38.5314, "lng": 146.6801 },
+    "shape": [
+      { "lat": -38.4000, "lng": 146.3000 },
+      { "lat": -38.4331, "lng": 146.5442 },
+      { "lat": -38.4800, "lng": 146.6100 }
+    ]
+  },
+  {
+    "id": "the-sideling",
+    "name": "The Sideling",
+    "blurb": "A narrow, twisting pass on the Tasman Highway between Launceston and Scottsdale.",
+    "region": "TAS",
+    "entry": { "lat": -41.3000, "lng": 147.2800 },
+    "exit": { "lat": -41.1667, "lng": 147.5167 },
+    "shape": [
+      { "lat": -41.2600, "lng": 147.3600 },
+      { "lat": -41.2200, "lng": 147.4300 },
+      { "lat": -41.1900, "lng": 147.4800 }
+    ]
+  },
+  {
+    "id": "elephant-pass",
+    "name": "Elephant Pass",
+    "blurb": "A steep switchback climb on the east coast between St Marys and Chain of Lagoons.",
+    "region": "TAS",
+    "entry": { "lat": -41.5667, "lng": 147.9678 },
+    "exit": { "lat": -41.9500, "lng": 148.1800 },
+    "shape": [
+      { "lat": -41.6333, "lng": 148.0333 },
+      { "lat": -41.7333, "lng": 148.2667 },
+      { "lat": -41.8400, "lng": 148.2300 }
+    ]
+  },
+  {
+    "id": "gorge-road-adelaide-hills",
+    "name": "Gorge Road",
+    "blurb": "A tight, tree-lined river-gorge road through the Adelaide Hills to Birdwood.",
+    "region": "SA",
+    "entry": { "lat": -34.8756, "lng": 138.6919 },
+    "exit": { "lat": -34.8167, "lng": 138.9494 },
+    "shape": [
+      { "lat": -34.8600, "lng": 138.7500 },
+      { "lat": -34.8400, "lng": 138.8300 },
+      { "lat": -34.8200, "lng": 138.9000 }
+    ]
+  },
+  {
+    "id": "zig-zag-mundaring-weir-road",
+    "name": "Zig Zag Scenic Drive / Mundaring Weir Road",
+    "blurb": "A winding jarrah-forest drive through the Perth Hills to Mundaring Weir.",
+    "region": "WA",
+    "entry": { "lat": -31.9508, "lng": 116.0347 },
+    "exit": { "lat": -31.9256, "lng": 116.1614 },
+    "shape": [
+      { "lat": -31.9450, "lng": 116.0700 },
+      { "lat": -31.9350, "lng": 116.1150 },
+      { "lat": -31.9280, "lng": 116.1450 }
+    ]
+  },
+  {
+    "id": "old-pacific-highway",
+    "name": "Old Pacific Highway",
+    "blurb": "The original Sydney–Newcastle road, now a favourite ribbon of tight bends through the bush at Mount White.",
+    "region": "NSW",
+    "entry": { "lat": -33.4058, "lng": 151.2280 },
+    "exit": { "lat": -33.3667, "lng": 151.2667 },
+    "shape": [
+      { "lat": -33.3950, "lng": 151.2350 },
+      { "lat": -33.3820, "lng": 151.2480 },
+      { "lat": -33.3720, "lng": 151.2580 }
+    ]
+  },
+  {
+    "id": "kangaroo-valley-road",
+    "name": "Kangaroo Valley Road",
+    "blurb": "A winding descent into a lush valley past Hampden Bridge and Fitzroy Falls.",
+    "region": "NSW",
+    "entry": { "lat": -34.7469, "lng": 150.5322 },
+    "exit": { "lat": -34.6425, "lng": 150.4917 },
+    "shape": [
+      { "lat": -34.7200, "lng": 150.5200 },
+      { "lat": -34.6900, "lng": 150.5050 },
+      { "lat": -34.6650, "lng": 150.4950 }
+    ]
+  },
+  {
+    "id": "alpine-way",
+    "name": "Alpine Way",
+    "blurb": "High mountain touring road from Jindabyne over Dead Horse Gap to Khancoban.",
+    "region": "NSW",
+    "entry": { "lat": -36.4159, "lng": 148.6216 },
+    "exit": { "lat": -36.2170, "lng": 148.1319 },
+    "shape": [
+      { "lat": -36.5044, "lng": 148.3050 },
+      { "lat": -36.5167, "lng": 148.2667 },
+      { "lat": -36.3667, "lng": 148.1900 }
+    ]
+  },
+  {
+    "id": "black-spur",
+    "name": "Black Spur",
+    "blurb": "Melbourne's classic mountain-ash forest run on the Maroondah Highway near Healesville.",
+    "region": "VIC",
+    "entry": { "lat": -37.6500, "lng": 145.5167 },
+    "exit": { "lat": -37.5192, "lng": 145.6428 },
+    "shape": [
+      { "lat": -37.6150, "lng": 145.5450 },
+      { "lat": -37.5850, "lng": 145.5900 },
+      { "lat": -37.5500, "lng": 145.6200 }
+    ]
+  },
+  {
+    "id": "wollombi-road",
+    "name": "Wollombi Road / Reefton Spur",
+    "blurb": "Hairpins through the Watagans linking the Hunter Valley to the Putty Road network.",
+    "region": "NSW",
+    "entry": { "lat": -32.8333, "lng": 151.3548 },
+    "exit": { "lat": -32.9167, "lng": 151.1385 },
+    "shape": [
+      { "lat": -32.8700, "lng": 151.2800 },
+      { "lat": -32.9000, "lng": 151.2200 },
+      { "lat": -32.9200, "lng": 151.1700 }
+    ]
+  },
+  {
+    "id": "lyell-highway",
+    "name": "Lyell Highway",
+    "blurb": "A wild, winding crossing of Tasmania's west-coast mountains between Derwent Bridge and Queenstown.",
+    "region": "TAS",
+    "entry": { "lat": -42.1167, "lng": 146.2534 },
+    "exit": { "lat": -42.0833, "lng": 145.5500 },
+    "shape": [
+      { "lat": -42.0500, "lng": 146.0500 },
+      { "lat": -42.0200, "lng": 145.8500 },
+      { "lat": -42.0500, "lng": 145.6500 }
+    ]
+  },
+  {
+    "id": "waterfall-way",
+    "name": "Waterfall Way",
+    "blurb": "Tablelands-to-coast run past Ebor Falls and Dorrigo rainforest on the way to Coffs Harbour.",
+    "region": "NSW",
+    "entry": { "lat": -30.5083, "lng": 151.6650 },
+    "exit": { "lat": -30.2963, "lng": 153.1135 },
+    "shape": [
+      { "lat": -30.3833, "lng": 152.3500 },
+      { "lat": -30.3436, "lng": 152.7183 },
+      { "lat": -30.4515, "lng": 152.9012 }
+    ]
+  }
+]

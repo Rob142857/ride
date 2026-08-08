@@ -1,13 +1,30 @@
 /**
  * Map module — Leaflet map, markers, routing, controls
  * Ride GPS tracking is in map-ride.js
+ *
+ * Routing owns its own OSRM calls (L.Routing.osrmv1 router, no L.Routing.control)
+ * and draws its own polylines, so nothing depends on Leaflet Routing Machine
+ * private state. Every request carries a generation stamp; responses from a
+ * superseded request are dropped.
  */
 const MapManager = {
   map: null,
-  routingControl: null,
 
   // Self-hosted OSRM routing endpoint (Cloudflare Tunnel → Docker)
   OSRM_SERVICE_URL: 'https://maps.incitat.io/route/v1',
+
+  /**
+   * Route line colors. Leaflet needs literal color values, so these mirror the
+   * design tokens in public/css/tokens.css and are only used when the live
+   * custom property cannot be read. Keep in sync with tokens.css.
+   */
+  ROUTE_COLORS: {
+    route: '#f59e0b',                 /* --route        gold — the golden route */
+    casing: 'rgba(11, 14, 31, 0.55)', /* --route-casing dark outline */
+    alt: '#8b97b8',                   /* --route-alt    unselected alternatives */
+    via: '#8b97b8'                    /* --wp-via       shaping points */
+  },
+
   waypointMarkers: {},
   isAddingWaypoint: false,
   pendingLocation: null,
@@ -19,24 +36,45 @@ const MapManager = {
   ridePositionCb: null,
   _wakeLock: null,
   _gpsRetryTimer: null,
-  _headingUp: false,
 
-  // Alternative route UI state
+  /* ── Routing state ─────────────────────────────────────────────── */
+  _planRouter: null,
+  _planRouterAvoidMotorways: null, // separate cached LRM instance — requestParameters is baked in at construction, not per-request
+  _routeGen: 0,               // generation stamp — stale responses are ignored
+  _routeXhr: null,            // in-flight OSRM request (abortable)
+  _ghAbortController: null,   // in-flight windy (GraphHopper proxy) fetch (abortable)
+  _routeDebounceTimer: null,
+  _routeLayers: [],           // app-owned polylines, one entry per route
+  _cachedAlternatives: [],    // normalized route objects
   _selectedRouteIndex: 0,
-  _cachedAlternatives: null,
+  _lastRoutedWaypoints: [],
+  _restoredTripKey: null,     // trip whose saved route we already restored
+  _routeErrorAt: 0,
 
   // Extracted UI components
   routeSelector: null,
   routeEditor: null,
 
-  // Waypoint type icons
+  // Waypoint type icons. Colors come from tokens.css; the hex is the fallback.
   waypointIcons: {
-    stop: { color: '#e94560', icon: '📍' },
-    scenic: { color: '#4ade80', icon: '🏞️' },
-    fuel: { color: '#fbbf24', icon: '⛽' },
-    food: { color: '#f97316', icon: '🍽️' },
-    lodging: { color: '#8b5cf6', icon: '🏨' },
-    custom: { color: '#06b6d4', icon: '⭐' }
+    stop:    { token: '--wp-stop',    color: '#6366f1', icon: '📍' },
+    scenic:  { token: '--wp-scenic',  color: '#10b981', icon: '🏞️' },
+    fuel:    { token: '--wp-fuel',    color: '#fbbf24', icon: '⛽' },
+    food:    { token: '--wp-food',    color: '#f97316', icon: '🍽️' },
+    lodging: { token: '--wp-lodging', color: '#8b5cf6', icon: '🏨' },
+    custom:  { token: '--wp-custom',  color: '#06b6d4', icon: '⭐' },
+    // Shaping point — quiet by design; the list uses the glyph, the map a dot.
+    via:     { token: '--wp-via',     color: '#8b97b8', icon: '•' }
+  },
+
+  /** Read a design token off :root with a hard fallback (Leaflet needs literal colors). */
+  _cssVar(name, fallback) {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (_) {
+      return fallback;
+    }
   },
 
   /**
@@ -49,21 +87,14 @@ const MapManager = {
       attributionControl: true
     }).setView([-34.5386, 146.5933], 12);
 
-    // Add tile layer (OpenStreetMap default renderer — strong road / topology detail)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      subdomains: 'abc',
-      maxZoom: 19,
-      crossOrigin: true
-    }).addTo(this.map);
-
-    // Disable heading-up when user manually drags/pans the map
-    this.map.on('dragstart', () => { this._headingUp = false; });
+    // Basemap comes from the shared MapTiles module (public/js/map-tiles.js), so
+    // the planner and the public share page draw the same tiles through the same
+    // cached proxy. 'street' keeps the planner's existing look: the OpenStreetMap
+    // default renderer, strong road / topology detail.
+    window.MapTiles?.createLayer('street')?.addTo(this.map);
 
     // Add zoom control to bottom left (away from nav)
     L.control.zoom({ position: 'bottomleft' }).addTo(this.map);
-
-    // User can manually locate via the locate button
 
     // Map click handler for adding waypoints
     this.map.on('click', (e) => this.handleMapClick(e));
@@ -73,6 +104,7 @@ const MapManager = {
       position: 'top',
       onSelect: (idx) => this._selectRoute(idx)
     });
+    this.routeSelector?.onModeChange((state) => this._onRouteModeChange(state));
     this.routeEditor = window.RouteEditor?.create(this.map);
     this.routeEditor?.onInsertWaypoint((detail) => {
       if (typeof App.addWaypointOnRoute === 'function') {
@@ -92,10 +124,7 @@ const MapManager = {
         const marker = this.waypointMarkers[id];
         if (marker?._wpType) marker.setIcon(this.createIcon(marker._wpType));
       });
-      // Update route line weight if routing control exists
-      if (this.routingControl) {
-        this._updateRouteLineStyles();
-      }
+      if (this._routeLayers.length) this._restyleRoutes();
     });
 
     return this;
@@ -127,10 +156,6 @@ const MapManager = {
           resolve({ lat: latitude, lng: longitude });
         },
         (error) => {
-          if (error?.code !== 1) {
-            // Log unexpected geolocation errors, but ignore permission denials
-            console.warn('Geolocation error:', error);
-          }
           if (toast) {
             const msg = error?.code === 1
               ? 'Location permission denied'
@@ -161,10 +186,6 @@ const MapManager = {
       if (latInput && lngInput) {
         latInput.value = e.latlng.lat.toFixed(6);
         lngInput.value = e.latlng.lng.toFixed(6);
-      }
-      const addressInput = document.getElementById('waypointAddress');
-      if (addressInput && !addressInput.value.trim()) {
-        addressInput.value = 'Dropped pin from map';
       }
       const nameInput = document.getElementById('waypointName');
       if (nameInput && !nameInput.value.trim()) {
@@ -226,24 +247,336 @@ const MapManager = {
     }
   },
 
+  /* ══════════════════════════════════════════════════════════════════
+     Route data — normalization, scoring, persistence
+     ══════════════════════════════════════════════════════════════════ */
+
   /**
-   * Format seconds into "1h 23m" or "45m"
+   * Accept coordinates as [{lat,lng}], [[lng,lat]] or [[lat,lng]] and return
+   * a clean [{lat,lng}] array. Stored routes come from several producers.
    */
-  _fmtTime(seconds) {
-    if (!seconds && seconds !== 0) return '';
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
+  _normalizeCoords(coords) {
+    if (!Array.isArray(coords)) return [];
+    const out = [];
+    for (const c of coords) {
+      if (!c) continue;
+      if (Array.isArray(c)) {
+        const a = Number(c[0]);
+        const b = Number(c[1]);
+        if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+        // A value beyond ±90 can only be a longitude — use it to disambiguate.
+        if (Math.abs(a) <= 90 && Math.abs(b) > 90) out.push({ lat: a, lng: b });
+        else out.push({ lat: b, lng: a });
+      } else {
+        const lat = Number(c.lat);
+        const lng = Number(c.lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) out.push({ lat, lng });
+      }
+    }
+    return out;
   },
 
   /**
-   * Format metres into "12.5 km" or "800 m"
+   * Convert an OSRM route (or a stored route row) into the single internal
+   * shape the map, the selector and persistence all speak.
    */
-  _fmtDist(metres) {
-    if (!metres && metres !== 0) return '';
-    if (metres >= 1000) return `${(metres / 1000).toFixed(1)} km`;
-    return `${Math.round(metres)} m`;
+  _normalizeRoute(raw, index) {
+    const coordinates = this._normalizeCoords(raw?.coordinates);
+    const distance = Number(
+      raw?.summary?.totalDistance ?? raw?.distance ?? raw?.distance_meters ?? 0
+    ) || 0;
+    const duration = Number(
+      raw?.summary?.totalTime ?? raw?.duration ?? raw?.duration_seconds ?? raw?.time ?? 0
+    ) || 0;
+
+    const instructions = Array.isArray(raw?.instructions) ? raw.instructions : null;
+    const steps = instructions
+      ? instructions.map((i) => ({
+          text: i.text,
+          distance: i.distance,
+          time: i.time,
+          index: i.index,
+          type: i.type,
+          modifier: i.modifier,
+          road: i.road
+        }))
+      : (Array.isArray(raw?.steps) ? raw.steps : []);
+
+    return {
+      index,
+      name: typeof raw?.name === 'string' ? raw.name : '',
+      coordinates,
+      distance,
+      duration,
+      steps,
+      waypointIndices: Array.isArray(raw?.waypointIndices) ? raw.waypointIndices : null,
+      curviness: 0,
+      badges: []
+    };
+  },
+
+  /**
+   * Curviness: mean absolute bearing change per kilometre over the geometry.
+   * This is what makes the scenic choice visible — a twisty mountain road
+   * scores an order of magnitude above a motorway. O(n), run once per response.
+   */
+  _curviness(coords) {
+    if (!Array.isArray(coords) || coords.length < 3) return 0;
+    const SAMPLE_M = 25; // ignore sub-25 m jitter between polyline vertices
+    let anchor = coords[0];
+    let prevBearing = null;
+    let turned = 0;
+    let distance = 0;
+
+    for (let i = 1; i < coords.length; i++) {
+      const seg = RideUtils.haversine(anchor, coords[i]);
+      if (seg < SAMPLE_M && i < coords.length - 1) continue;
+      const bearing = RideUtils.bearing(anchor, coords[i]);
+      distance += seg;
+      if (prevBearing !== null) {
+        let delta = Math.abs(bearing - prevBearing) % 360;
+        if (delta > 180) delta = 360 - delta;
+        turned += delta;
+      }
+      prevBearing = bearing;
+      anchor = coords[i];
+    }
+
+    if (distance < 100) return 0;
+    return turned / (distance / 1000);
+  },
+
+  /**
+   * Score every alternative and tag the two that matter to a rider:
+   * the windiest (gold) and the fastest.
+   */
+  _scoreRoutes(routes) {
+    routes.forEach((r) => {
+      r.curviness = this._curviness(r.coordinates);
+      r.badges = [];
+    });
+    if (routes.length < 2) return;
+
+    let windy = 0;
+    let fast = 0;
+    routes.forEach((r, i) => {
+      if (r.curviness > routes[windy].curviness) windy = i;
+      if ((r.duration || Infinity) < (routes[fast].duration || Infinity)) fast = i;
+    });
+
+    // Only call something "windiest" when it is meaningfully twistier.
+    const runnerUp = routes.reduce(
+      (max, r, i) => (i === windy ? max : Math.max(max, r.curviness)), 0
+    );
+    if (routes[windy].curviness > runnerUp * 1.12 && routes[windy].curviness > 0) {
+      routes[windy].badges.push('windiest');
+    }
+    if (routes[fast].duration > 0) routes[fast].badges.push('fastest');
+  },
+
+  /** True when two routes describe the same line (same length + endpoints). */
+  _sameGeometry(a, b) {
+    const ac = a?.coordinates;
+    const bc = b?.coordinates;
+    if (!ac?.length || !bc?.length || ac.length !== bc.length) return false;
+    const near = (p, q) => Math.abs(p.lat - q.lat) < 1e-6 && Math.abs(p.lng - q.lng) < 1e-6;
+    return near(ac[0], bc[0]) && near(ac[ac.length - 1], bc[bc.length - 1]);
+  },
+
+  /** Route payload shape consumed by App.saveRouteData. */
+  _toRouteData(route) {
+    const data = {
+      distance: route.distance,
+      duration: route.duration,
+      coordinates: route.coordinates,
+      steps: route.steps,
+      name: route.name,
+      curviness: Math.round(route.curviness)
+    };
+    // Multi-leg stitched routes carry the coordinate index where each leg's
+    // segment starts — harmless extra field, not consumed anywhere yet (§D3).
+    if (Array.isArray(route.legBoundaries) && route.legBoundaries.length) {
+      data.legBoundaries = route.legBoundaries;
+    }
+    return data;
+  },
+
+  /**
+   * Persist the current selection. Only ever called from an explicit user
+   * action (picking an alternative) or from a recompute caused by a waypoint
+   * edit — never from opening a trip.
+   *
+   * App.saveRouteData persists [currentTrip.route, ..._allAlternatives], so
+   * _allAlternatives deliberately EXCLUDES the selected route: that keeps the
+   * saved array free of duplicates and pins the selection at index 0.
+   */
+  _persistSelected() {
+    const app = window.App;
+    if (typeof app?.saveRouteData !== 'function') return;
+    // A shared trip is read-only, and in-ride reroutes stay in memory.
+    if (app.isSharedView || app.isRiding || !app.currentTrip) return;
+    const routes = this._cachedAlternatives || [];
+    const selected = routes[this._selectedRouteIndex];
+    if (!selected) return;
+    const others = routes
+      .filter((_, i) => i !== this._selectedRouteIndex)
+      .map((r) => this._toRouteData(r));
+
+    app.saveRouteData({
+      ...this._toRouteData(selected),
+      _selectedIndex: 0,
+      _allAlternatives: others
+    });
+
+    // saveRouteData is async but sets currentTrip.route synchronously before
+    // its first await, so this event's detail.trip already reflects the new
+    // geometry. This is the ONLY hook the scenic-chips feature uses to know
+    // when to run its corridor check (contract #4) — fire on every recompute.
+    window.dispatchEvent(new CustomEvent('ride:routeComputed', { detail: { trip: app.currentTrip } }));
+  },
+
+  /* ══════════════════════════════════════════════════════════════════
+     Route rendering
+     ══════════════════════════════════════════════════════════════════ */
+
+  _routePalette() {
+    return {
+      route: this._cssVar('--route', this.ROUTE_COLORS.route),
+      casing: this._cssVar('--route-casing', this.ROUTE_COLORS.casing),
+      alt: this._cssVar('--route-alt', this.ROUTE_COLORS.alt)
+    };
+  },
+
+  /**
+   * Route line weight based on zoom
+   */
+  _routeWeight() {
+    const z = this.map?.getZoom() || 13;
+    if (z >= 16) return 8;
+    if (z >= 13) return 6;
+    if (z >= 10) return 5;
+    return 3;
+  },
+
+  _clearRouteLayers() {
+    (this._routeLayers || []).forEach((entry) => {
+      entry.layers.forEach((layer) => {
+        try { this.map.removeLayer(layer); } catch (_) { /* already detached */ }
+      });
+    });
+    this._routeLayers = [];
+  },
+
+  /**
+   * Draw every route: alternatives underneath in quiet grey, the selected one
+   * on top in gold with a dark casing. Alternatives carry a wide invisible hit
+   * line so tapping one selects it (and stays in sync with the pill bar).
+   */
+  _drawRoutes(routes) {
+    this._clearRouteLayers();
+    if (!this.map || !Array.isArray(routes) || !routes.length) return;
+
+    const palette = this._routePalette();
+    const weight = this._routeWeight();
+    const selectedIdx = this._selectedRouteIndex;
+
+    // Alternatives first so the selected route paints over them.
+    const order = routes
+      .map((_, i) => i)
+      .filter((i) => i !== selectedIdx)
+      .concat(routes[selectedIdx] ? [selectedIdx] : []);
+
+    order.forEach((idx) => {
+      const route = routes[idx];
+      if (!route?.coordinates?.length) return;
+      const latlngs = route.coordinates.map((c) => [c.lat, c.lng]);
+      const isSelected = idx === selectedIdx;
+      const entry = { index: idx, layers: [], isSelected };
+
+      if (isSelected) {
+        entry.layers.push(L.polyline(latlngs, {
+          color: palette.casing,
+          weight: weight + 5,
+          opacity: 1,
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: false,
+          className: 'route-line-casing'
+        }).addTo(this.map));
+
+        entry.layers.push(L.polyline(latlngs, {
+          color: palette.route,
+          weight,
+          opacity: 0.95,
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: false,
+          className: 'route-line route-line--selected'
+        }).addTo(this.map));
+      } else {
+        const select = (e) => {
+          if (e?.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+          this._selectRoute(idx);
+        };
+        const label = this._routeTooltip(route);
+
+        const line = L.polyline(latlngs, {
+          color: palette.alt,
+          weight: Math.max(3, weight - 2),
+          opacity: 0.5,
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: true,
+          bubblingMouseEvents: false,
+          className: 'route-line route-line--alt'
+        }).addTo(this.map);
+        line.on('click', select);
+        entry.layers.push(line);
+
+        // Wide invisible hit line — a 4 px grey line is not a tap target.
+        const hit = L.polyline(latlngs, {
+          color: palette.alt,
+          weight: Math.max(18, weight + 12),
+          opacity: 0,
+          interactive: true,
+          bubblingMouseEvents: false,
+          className: 'route-line-hit'
+        }).addTo(this.map);
+        // SVG hit-testing ignores a stroke that isn't painted, so ask for
+        // geometry-based hits explicitly rather than relying on a stylesheet.
+        const hitEl = hit.getElement?.();
+        if (hitEl) hitEl.style.pointerEvents = 'stroke';
+        hit.on('click', select);
+        if (label) hit.bindTooltip(label, { sticky: true, className: 'route-alt-tooltip' });
+        entry.layers.push(hit);
+      }
+
+      this._routeLayers.push(entry);
+    });
+  },
+
+  _routeTooltip(route) {
+    const parts = [
+      RideUtils.formatDuration(route.duration),
+      RideUtils.formatDistance(route.distance)
+    ].filter((p) => p && p !== '—');
+    if (route.badges?.includes('windiest')) parts.push('Windiest');
+    return parts.join(' · ');
+  },
+
+  /** Re-apply widths/colors in place (zoom change) without rebuilding layers. */
+  _restyleRoutes() {
+    const palette = this._routePalette();
+    const weight = this._routeWeight();
+    (this._routeLayers || []).forEach((entry) => {
+      entry.layers.forEach((layer) => {
+        const cls = layer.options.className || '';
+        if (cls.includes('route-line-casing')) layer.setStyle({ weight: weight + 5, color: palette.casing });
+        else if (cls.includes('route-line-hit')) layer.setStyle({ weight: Math.max(18, weight + 12) });
+        else if (entry.isSelected) layer.setStyle({ weight, color: palette.route });
+        else layer.setStyle({ weight: Math.max(3, weight - 2), color: palette.alt });
+      });
+    });
   },
 
   /**
@@ -265,98 +598,36 @@ const MapManager = {
   },
 
   /**
-   * User tapped an alternative route card
+   * User picked an alternative — from a pill or by tapping the grey line on
+   * the map. Both funnel through here so UI, map and storage never diverge.
    */
   _selectRoute(index, routes) {
-    routes = routes || this._cachedAlternatives;
-    if (index === this._selectedRouteIndex || !routes || !routes[index]) return;
+    const list = routes || this._cachedAlternatives || [];
+    if (!list[index] || index === this._selectedRouteIndex) return;
     this._selectedRouteIndex = index;
 
-    // Keep the selector component in sync.
-    if (this.routeSelector) {
-      this.routeSelector.selectRoute(index);
+    if (this.routeSelector) this.routeSelector.selectRoute(index, { silent: true });
+    this._drawRoutes(list);
+
+    const selected = list[index];
+    if (this.routeEditor) {
+      this.routeEditor.update(this._lastRoutedWaypoints || [], selected.coordinates, selected.waypointIndices);
     }
-
-    // Update polyline styles on map
-    this._updateRouteLineStyles();
-
-    // Save selected route to App state
-    const route = routes[index];
-    const steps = (route.instructions || []).map((instr) => ({
-      text: instr.text,
-      distance: instr.distance,
-      time: instr.time,
-      index: instr.index
-    }));
-
-    App.saveRouteData({
-      distance: route.summary.totalDistance,
-      duration: route.summary.totalTime,
-      coordinates: route.coordinates,
-      steps,
-      _selectedIndex: index,
-      _allAlternatives: routes.map(r => ({
-        distance: r.summary.totalDistance,
-        duration: r.summary.totalTime,
-        coordinates: r.coordinates,
-        steps: (r.instructions || []).map(i => ({
-          text: i.text,
-          distance: i.distance,
-          time: i.time,
-          index: i.index
-        }))
-      }))
-    });
+    this._persistSelected();
   },
 
-  /**
-   * Re-apply line styles so selected route pops, alternatives subdued
-   */
-  _updateRouteLineStyles() {
-    if (!this.routingControl) return;
-    const rc = this.routingControl;
-    const lines = [];
-    if (rc._line) lines.push(rc._line);
-    if (rc._alternatives) lines.push(...rc._alternatives);
-
-    lines.forEach((line, idx) => {
-      if (!line || !line.setStyle) return;
-      const isSel = idx === this._selectedRouteIndex;
-      line.setStyle({
-        opacity: isSel ? 0.9 : 0.45,
-        weight: isSel ? this._routeWeight() : Math.max(2, this._routeWeight() - 2)
-      });
-      if (isSel && line.bringToFront) line.bringToFront();
-    });
-  },
-
-  /**
-   * Route line weight based on zoom
-   */
-  _routeWeight() {
-    const z = this.map?.getZoom() || 13;
-    if (z >= 16) return 8;
-    if (z >= 13) return 6;
-    if (z >= 10) return 5;
-    return 3;
-  },
-
-  /**
-   * Get route line styles based on current zoom level
-   */
-  _routeStyles() {
-    const w = this._routeWeight();
-    return [
-      { color: '#e94560', opacity: 0.9, weight: w },
-      { color: '#ff6b6b', opacity: 0.3, weight: w + 3 }
-    ];
-  },
+  /* ══════════════════════════════════════════════════════════════════
+     Markers
+     ══════════════════════════════════════════════════════════════════ */
 
   /**
    * Create custom icon for waypoint type
    */
   createIcon(type) {
+    if (type === 'via') return this._createViaIcon();
+
     const config = this.waypointIcons[type] || this.waypointIcons.stop;
+    const color = this._cssVar(config.token, config.color);
     const z = this.map?.getZoom() || 13;
     const size = z <= 9 ? 22 : z <= 12 ? 28 : 34;
     const fontSize = z <= 9 ? 11 : z <= 12 ? 13 : 15;
@@ -364,7 +635,7 @@ const MapManager = {
     return L.divIcon({
       className: 'custom-marker',
       html: `<div style="
-        background: ${config.color};
+        background: ${color};
         width: ${size}px;
         height: ${size}px;
         border-radius: 50% 50% 50% 0;
@@ -372,8 +643,8 @@ const MapManager = {
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-        border: 2px solid white;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+        border: 2px solid rgba(255,255,255,0.92);
       "><span style="transform: rotate(45deg); font-size: ${fontSize}px;">${config.icon}</span></div>`,
       iconSize: [size, size],
       iconAnchor: [size / 2, size],
@@ -382,24 +653,77 @@ const MapManager = {
   },
 
   /**
+   * Shaping point ("via"): a small quiet dot that bends the route. It is not a
+   * stop, so it gets no pin, no emoji and no number.
+   */
+  _createViaIcon() {
+    const z = this.map?.getZoom() || 13;
+    const size = z <= 10 ? 10 : z <= 13 ? 12 : 14;
+    const color = this._cssVar('--wp-via', this.ROUTE_COLORS.via);
+    const ring = this._cssVar('--surface-0', '#0b0e1f');
+
+    return L.divIcon({
+      className: 'via-marker',
+      html: `<div class="via-marker-inner" style="
+        width: ${size}px;
+        height: ${size}px;
+        background: ${color};
+        border: 2px solid ${ring};
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.45);
+      "></div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+      popupAnchor: [0, -size / 2]
+    });
+  },
+
+  /**
+   * Popup content built with DOM APIs — waypoint name and notes are
+   * user-supplied and travel through public share links.
+   */
+  _buildWaypointPopup(waypoint) {
+    const wrap = document.createElement('div');
+    wrap.className = 'waypoint-popup';
+    wrap.style.minWidth = '150px';
+
+    const title = document.createElement('strong');
+    title.textContent = waypoint.name || 'Waypoint';
+    wrap.appendChild(title);
+
+    if (waypoint.notes) {
+      const notes = document.createElement('p');
+      notes.style.cssText = 'margin: 8px 0 0; font-size: 12px;';
+      notes.textContent = waypoint.notes;
+      wrap.appendChild(notes);
+    }
+    return wrap;
+  },
+
+  /**
    * Add waypoint marker to map
    */
   addWaypointMarker(waypoint) {
+    const type = waypoint.type || 'stop';
+    // Leg dividers are not a place — they never get a pin on the map.
+    if (type === 'leg-break') return null;
+    const isVia = type === 'via';
+
     const marker = L.marker([waypoint.lat, waypoint.lng], {
-      icon: this.createIcon(waypoint.type),
-      draggable: true
+      icon: this.createIcon(type),
+      draggable: true,
+      keyboard: !isVia,
+      zIndexOffset: isVia ? -300 : 0,
+      title: isVia ? 'Shaping point — drag to reshape the route' : (waypoint.name || 'Waypoint')
     }).addTo(this.map);
 
     // Store type for zoom-responsive icon refresh
-    marker._wpType = waypoint.type || 'stop';
+    marker._wpType = type;
 
-    // Popup with waypoint info
-    marker.bindPopup(`
-      <div style="min-width: 150px;">
-        <strong>${waypoint.name}</strong>
-        ${waypoint.notes ? `<p style="margin: 8px 0 0; font-size: 12px;">${waypoint.notes}</p>` : ''}
-      </div>
-    `);
+    // Shaping points are route geometry, not stops — no popup, no clutter.
+    if (!isVia) {
+      marker.bindPopup(this._buildWaypointPopup(waypoint), { minWidth: 160 });
+    }
 
     // Handle drag end
     marker.on('dragend', (e) => {
@@ -432,114 +756,538 @@ const MapManager = {
     this.waypointMarkers = {};
 
     // Add new markers
-    waypoints.forEach(wp => this.addWaypointMarker(wp));
+    (waypoints || []).forEach(wp => this.addWaypointMarker(wp));
 
-    // Update routing if we have 2+ waypoints
-    if (waypoints.length >= 2) {
-      this.updateRoute(waypoints);
-    } else {
+    // Routing (and with it the editor handles) follows the waypoint list.
+    this.updateRoute(waypoints || []);
+  },
+
+  /* ══════════════════════════════════════════════════════════════════
+     Routing
+     ══════════════════════════════════════════════════════════════════ */
+
+  /**
+   * Recompute the route between waypoints.
+   *
+   * Trailing-debounced so a burst of drags issues one request, and skipped
+   * entirely the first time a trip is drawn — opening a trip renders the
+   * geometry and the alternative already stored on it instead of re-querying
+   * OSRM (which used to overwrite the rider's saved choice).
+   */
+  updateRoute(waypoints, options = {}) {
+    // Reflect this trip's saved engine preference on the toggle (silent —
+    // does not itself trigger a reroute or persistence).
+    this.routeSelector?.setRouteMode(this._routingSettings());
+
+    const ordered = (Array.isArray(waypoints) ? waypoints : [])
+      .filter(wp => Number.isFinite(Number(wp?.lat)) && Number.isFinite(Number(wp?.lng)))
+      .slice()
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+    if (ordered.length < 2) {
       this.clearRoute();
+      return;
     }
 
-    // Keep midpoint handles in sync while editing.
-    if (this.routeEditor && waypoints.length >= 2) {
-      this.routeEditor.update(waypoints, null);
+    this._lastRoutedWaypoints = ordered;
+
+    if (!options.force && this._restoreStoredRoute(ordered)) return;
+
+    clearTimeout(this._routeDebounceTimer);
+    this._routeDebounceTimer = setTimeout(() => this._requestRoute(ordered), 250);
+  },
+
+  /**
+   * Collect the routes a trip already carries. The selected route lives on
+   * trip.route; the alternatives list has been written in two shapes over
+   * time (with and without the selected route), so match on geometry rather
+   * than trusting the stored index.
+   */
+  _storedRoutes(trip) {
+    const primary = trip?.route?.coordinates?.length ? this._normalizeRoute(trip.route, 0) : null;
+
+    let list = Array.isArray(trip?.alternatives) && trip.alternatives.length
+      ? trip.alternatives
+      : (trip?.alternativeRoutes || trip?.alternative_routes);
+    if (!Array.isArray(list)) list = [];
+
+    let routes = list
+      .map((r, i) => this._normalizeRoute(r, i))
+      .filter(r => r.coordinates.length >= 2);
+
+    if (primary && primary.coordinates.length >= 2) {
+      if (!routes.some(r => this._sameGeometry(r, primary))) routes = [primary, ...routes];
+    }
+    routes.forEach((r, i) => { r.index = i; });
+
+    let selected = primary ? routes.findIndex(r => this._sameGeometry(r, primary)) : -1;
+    if (selected < 0) {
+      selected = Number(trip?.activeRouteIndex ?? trip?.active_route_index ?? 0);
+      if (!Number.isFinite(selected) || selected < 0 || selected >= routes.length) selected = 0;
+    }
+    return { routes, selected };
+  },
+
+  /**
+   * Sanity check before trusting a stored route: every waypoint must lie close
+   * to it. Catches a route saved before a waypoint was added or moved
+   * elsewhere, in which case we fall through to a fresh OSRM query.
+   */
+  _routeCoversWaypoints(route, waypoints) {
+    const coords = route?.coordinates;
+    if (!coords?.length || !waypoints?.length) return false;
+    const TOLERANCE_M = 400; // generous — OSRM snaps waypoints to the road
+    return waypoints.every((wp) => {
+      for (let i = 0; i < coords.length; i++) {
+        if (RideUtils.haversine(wp, coords[i]) <= TOLERANCE_M) return true;
+      }
+      return false;
+    });
+  },
+
+  /**
+   * Draw the trip's saved route instead of recomputing it. Runs at most once
+   * per trip load (MapManager.clear() re-arms it), and never persists — this
+   * is what stops opening a trip from overwriting the rider's chosen line.
+   */
+  _restoreStoredRoute(orderedWaypoints) {
+    const trip = window.App?.currentTrip;
+    const key = trip ? (trip.id || 'local') : null;
+    if (!key || this._restoredTripKey === key) return false;
+    this._restoredTripKey = key;
+
+    const { routes, selected } = this._storedRoutes(trip);
+    if (!routes.length) return false;
+    if (!this._routeCoversWaypoints(routes[selected] || routes[0], orderedWaypoints)) return false;
+
+    this._selectedRouteIndex = selected;
+    this._applyRoutes(routes, orderedWaypoints, { persist: false });
+    return true;
+  },
+
+  /**
+   * Read trip.settings.routing (contract: trip.settings.routing = { mode,
+   * avoidMotorways }). Defaults to fastest/OSRM with motorways allowed when
+   * absent, matching pre-windy-routing behavior exactly.
+   */
+  _routingSettings() {
+    const routing = window.App?.currentTrip?.settings?.routing;
+    return {
+      mode: routing?.mode === 'windy' ? 'windy' : 'fastest',
+      avoidMotorways: !!routing?.avoidMotorways
+    };
+  },
+
+  /**
+   * Split the sorted waypoint list on `type === 'leg-break'` entries (§D3).
+   * Each segment is the run of real waypoints between two dividers (or the
+   * start/end of the list); leg-break waypoints themselves are dividers, not
+   * routing points, so they never appear in a segment. Zero leg-breaks yields
+   * exactly one segment — the whole list — which is what keeps the
+   * single-segment path byte-for-byte identical to pre-legs behavior.
+   */
+  _splitIntoLegs(orderedWaypoints) {
+    const segments = [];
+    let current = [];
+    (orderedWaypoints || []).forEach((wp) => {
+      if (wp?.type === 'leg-break') {
+        if (current.length) segments.push(current);
+        current = [];
+        return;
+      }
+      current.push(wp);
+    });
+    if (current.length) segments.push(current);
+    return segments;
+  },
+
+  /**
+   * Fastest engine: one OSRM request via the vendored LRM osrmv1 router.
+   * `avoidMotorways` uses a second cached router instance — LRM bakes
+   * requestParameters into the router at construction, not per-request — so
+   * the default (avoid-motorways off) path reuses the exact same cached
+   * instance this codebase used before windy routing existed.
+   * Resolves to an array of normalized route alternatives (OSRM/LRM can
+   * return several); rejects on error or an empty result.
+   */
+  _routeSegmentOSRM(segmentWaypoints, avoidMotorways) {
+    return new Promise((resolve, reject) => {
+      if (!this.map || !window.L?.Routing?.osrmv1) {
+        reject(new Error('OSRM router unavailable'));
+        return;
+      }
+
+      if (avoidMotorways) {
+        if (!this._planRouterAvoidMotorways) {
+          this._planRouterAvoidMotorways = L.Routing.osrmv1({
+            serviceUrl: this.OSRM_SERVICE_URL,
+            requestParameters: { exclude: 'motorway' }
+          });
+        }
+      } else if (!this._planRouter) {
+        this._planRouter = L.Routing.osrmv1({ serviceUrl: this.OSRM_SERVICE_URL });
+      }
+      const router = avoidMotorways ? this._planRouterAvoidMotorways : this._planRouter;
+
+      const wps = segmentWaypoints.map((wp) => {
+        const ll = L.latLng(Number(wp.lat), Number(wp.lng));
+        return typeof L.Routing.waypoint === 'function' ? L.Routing.waypoint(ll) : { latLng: ll };
+      });
+
+      this._routeXhr = router.route(wps, (err, routes) => {
+        this._routeXhr = null; // matches the pre-existing OSRM callback: clear as soon as it settles
+        if (err || !Array.isArray(routes) || !routes.length) {
+          reject(err instanceof Error ? err : new Error('No route found'));
+          return;
+        }
+        resolve(routes.map((r, i) => this._normalizeRoute(r, i)));
+      }, this);
+    });
+  },
+
+  /**
+   * Windy engine: POST to the Worker's GraphHopper proxy (/api/gh/route,
+   * contract #3), which already returns the OSRM-normalized shape. The
+   * request timeout lives server-side (FETCH_TIMEOUT_MS in api/gh.js); the
+   * AbortController here exists purely for the stale-response guard when a
+   * newer edit supersedes this request.
+   */
+  _routeSegmentGH(segmentWaypoints, avoidMotorways) {
+    const controller = new AbortController();
+    this._ghAbortController = controller;
+    const points = segmentWaypoints.map((wp) => [Number(wp.lng), Number(wp.lat)]);
+
+    return fetch('/api/gh/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ points, avoidMotorways: !!avoidMotorways }),
+      signal: controller.signal
+    }).then(async (res) => {
+      if (!res.ok) {
+        let code = 'ROUTING_UNAVAILABLE';
+        try {
+          const errBody = await res.json();
+          code = errBody?.error?.code || code;
+        } catch (_) { /* body not JSON — keep default code */ }
+        const err = new Error(`GH routing failed (${res.status})`);
+        err.code = code;
+        throw err;
+      }
+      const data = await res.json();
+      if (data?.code !== 'Ok' || !Array.isArray(data.routes) || !data.routes.length) {
+        const err = new Error('GH routing returned no routes');
+        err.code = 'ROUTING_UNAVAILABLE';
+        throw err;
+      }
+      return data.routes.map((r, i) => this._normalizeRoute(r, i));
+    }).finally(() => {
+      // Only clear if nothing newer has already replaced it (a superseding
+      // _requestRoute call aborts and reassigns this before we get here).
+      if (this._ghAbortController === controller) this._ghAbortController = null;
+    });
+  },
+
+  /** Route one contiguous segment through whichever engine is active. */
+  _routeSegment(segmentWaypoints, mode, avoidMotorways) {
+    return mode === 'windy'
+      ? this._routeSegmentGH(segmentWaypoints, avoidMotorways)
+      : this._routeSegmentOSRM(segmentWaypoints, avoidMotorways);
+  },
+
+  /**
+   * Route every leg segment and stitch the results into the shape
+   * App.saveRouteData expects (§D3). A single segment (no leg-breaks)
+   * returns the engine's alternatives untouched — the compatibility path
+   * that must match pre-legs behavior exactly. Multiple segments are routed
+   * SEQUENTIALLY (never concurrently, to avoid hammering the routing
+   * service — one call in flight at a time) and concatenated into one route
+   * with no alternatives: "windiest of leg 2" has no meaning next to
+   * "fastest of leg 1", so v1 applies one engine/avoid-motorways state to
+   * the whole trip rather than per leg (simplification — see findings).
+   */
+  async _computeSegments(segments, mode, avoidMotorways) {
+    if (segments.length === 1) {
+      const routes = await this._routeSegment(segments[0], mode, avoidMotorways);
+      return { routes };
+    }
+
+    let coordinates = [];
+    let steps = [];
+    let distance = 0;
+    let duration = 0;
+    const legBoundaries = [];
+
+    for (const segment of segments) {
+      // Deliberately sequential — one engine call in flight at a time (see doc comment above).
+      const routes = await this._routeSegment(segment, mode, avoidMotorways);
+      const primary = routes[0];
+      if (!primary) continue;
+      const baseIndex = coordinates.length;
+      legBoundaries.push(baseIndex);
+      const rebasedSteps = (primary.steps || []).map((s) => ({
+        ...s,
+        index: Number.isFinite(s.index) ? s.index + baseIndex : s.index
+      }));
+      coordinates = coordinates.concat(primary.coordinates);
+      steps = steps.concat(rebasedSteps);
+      distance += primary.distance || 0;
+      duration += primary.duration || 0;
+    }
+
+    if (!coordinates.length) throw new Error('No route found for any leg');
+
+    return {
+      routes: [{
+        index: 0,
+        name: '',
+        coordinates,
+        distance,
+        duration,
+        steps,
+        waypointIndices: null,
+        curviness: 0,
+        badges: [],
+        legBoundaries
+      }]
+    };
+  },
+
+  /**
+   * Issue one routing pass — possibly several sequential engine calls, one
+   * per leg segment. Every response (and every fallback) is checked against
+   * the generation stamp, so a slow answer from a superseded edit can never
+   * repaint the map or write stale geometry to the server.
+   */
+  _requestRoute(orderedWaypoints) {
+    if (!this.map) return;
+    const { mode, avoidMotorways } = this._routingSettings();
+    // Matches the pre-existing guard exactly for the default (fastest)
+    // engine — a trip with zero leg-breaks on 'fastest' takes precisely this
+    // early-return path when LRM hasn't loaded, same as before this feature.
+    if (mode !== 'windy' && !window.L?.Routing?.osrmv1) return;
+
+    const gen = ++this._routeGen;
+    if (this._routeXhr) {
+      try { this._routeXhr.abort(); } catch (_) { /* already settled */ }
+      this._routeXhr = null;
+    }
+    if (this._ghAbortController) {
+      try { this._ghAbortController.abort(); } catch (_) { /* already settled */ }
+      this._ghAbortController = null;
+    }
+
+    const segments = this._splitIntoLegs(orderedWaypoints).filter((seg) => seg.length >= 2);
+    if (!segments.length) return;
+
+    this._setRoutingBusy(true);
+    this._runRouteRequest(segments, mode, avoidMotorways, gen, orderedWaypoints);
+  },
+
+  /** Async body of _requestRoute — split out so the sync guards above run before any await. */
+  async _runRouteRequest(segments, mode, avoidMotorways, gen, orderedWaypoints) {
+    try {
+      const { routes } = await this._computeSegments(segments, mode, avoidMotorways);
+      if (gen !== this._routeGen) return; // superseded by a newer edit
+      this._selectedRouteIndex = 0;
+      this._applyRoutes(routes, orderedWaypoints, { persist: true });
+    } catch (_err) {
+      if (gen !== this._routeGen) return; // superseded — drop silently
+      if (mode === 'windy') {
+        // Fall back to fastest for THIS render only — never mutate the
+        // rider's saved mode preference (contract #3d).
+        UI.showToast('Windy routing unavailable — showing fastest', 'info');
+        try {
+          const fallback = await this._computeSegments(segments, 'fastest', avoidMotorways);
+          if (gen !== this._routeGen) return;
+          this._selectedRouteIndex = 0;
+          this._applyRoutes(fallback.routes, orderedWaypoints, { persist: true });
+          return;
+        } catch (_err2) {
+          if (gen !== this._routeGen) return;
+          this._handleRoutingError();
+          return;
+        }
+      }
+      this._handleRoutingError();
+    } finally {
+      if (gen === this._routeGen) this._setRoutingBusy(false);
     }
   },
 
   /**
-   * Update route between waypoints — now with alternatives
+   * The route-selector's Fastest/Windy + avoid-motorways controls are a pure
+   * UI component with no API/App coupling — this is where their clicks turn
+   * into a persisted trip setting and an immediate reroute. Persists via the
+   * same settings PATCH path other trip settings already use (API.trips.update
+   * shallow-merges `settings` server-side on both cloud and the guest
+   * localStorage shim, so this can't clobber unrelated keys like `share`).
    */
-  updateRoute(waypoints) {
-    this.clearRoute();
-    this._hideRouteSelector();
-    this._selectedRouteIndex = 0;
-    this._cachedAlternatives = null;
+  async _onRouteModeChange({ mode, avoidMotorways }) {
+    const app = window.App;
+    const trip = app?.currentTrip;
+    if (!trip) return;
 
-    if (waypoints.length < 2) return;
+    if (!trip.settings || typeof trip.settings !== 'object') trip.settings = {};
+    trip.settings.routing = { mode: mode === 'windy' ? 'windy' : 'fastest', avoidMotorways: !!avoidMotorways };
 
-    const routeWaypoints = [...waypoints]
-      .sort((a, b) => a.order - b.order)
-      .map(wp => L.latLng(wp.lat, wp.lng));
-
-    this.routingControl = L.Routing.control({
-      waypoints: routeWaypoints,
-      serviceUrl: this.OSRM_SERVICE_URL,
-      routeWhileDragging: false,
-      showAlternatives: true,
-      addWaypoints: false,
-      fitSelectedRoutes: false,
-      lineOptions: {
-        styles: this._routeStyles()
-      },
-      altLineOptions: {
-        styles: [{ color: '#6B8E8E', opacity:0.45, weight: 4 }]
-      },
-      createMarker: () => null,
-      show: false
-    }).addTo(this.map);
-
-    this.routingControl.on('routesfound', (e) => {
-      const routes = e.routes;
-      if (!routes || !routes.length) return;
-
-      this._cachedAlternatives = routes;
-      this._renderRouteSelector(routes);
-      this._updateRouteLineStyles();
-
-      const route = routes[this._selectedRouteIndex] || routes[0];
-      const steps = (route.instructions || []).map((instr) => ({
-        text: instr.text,
-        distance: instr.distance,
-        time: instr.time,
-        index: instr.index
-      }));
-
-      // Render visible midpoint drag handles on the selected route.
-      if (this.routeEditor) {
-        this.routeEditor.update(waypoints, route.coordinates);
+    if (trip.id && !app.isSharedView && typeof window.API?.trips?.update === 'function') {
+      try {
+        await API.trips.update(trip.id, { settings: { routing: trip.settings.routing } });
+      } catch (err) {
+        console.error('Failed to persist routing mode', err);
+        // Keep going — the in-memory preference still drives the reroute
+        // below even if the persist call failed; it'll retry on the next edit.
       }
+    }
 
-      App.saveRouteData({
-        distance: route.summary.totalDistance,
-        duration: route.summary.totalTime,
-        coordinates: route.coordinates,
-        steps,
-        _selectedIndex: this._selectedRouteIndex,
-        _allAlternatives: routes.map(r => ({
-          distance: r.summary.totalDistance,
-          duration: r.summary.totalTime,
-          coordinates: r.coordinates,
-          steps: (r.instructions || []).map(i => ({
-            text: i.text,
-            distance: i.distance,
-            time: i.time,
-            index: i.index
-          }))
-        }))
-      });
-    });
+    if (this._lastRoutedWaypoints?.length >= 2) {
+      this.updateRoute(this._lastRoutedWaypoints, { force: true });
+    }
+  },
+
+  /**
+   * Routing failed. Keep whatever route is currently drawn — a slightly stale
+   * line beats a blank map — and tell the rider once, not once per retry.
+   */
+  _handleRoutingError() {
+    this._setRoutingBusy(false);
+    const now = Date.now();
+    if (now - (this._routeErrorAt || 0) > 8000) {
+      this._routeErrorAt = now;
+      UI.showToast('Route service unavailable — check connection', 'error');
+    }
+  },
+
+  _setRoutingBusy(busy) {
+    document.body.classList.toggle('routing-busy', !!busy);
+  },
+
+  /** Score, cache, draw, and hand the routes to the selector and the editor. */
+  _applyRoutes(routes, waypoints, { persist = false } = {}) {
+    if (!Array.isArray(routes) || !routes.length) return;
+
+    this._scoreRoutes(routes);
+    this._cachedAlternatives = routes;
+    this._selectedRouteIndex = Math.min(Math.max(this._selectedRouteIndex, 0), routes.length - 1);
+
+    this._drawRoutes(routes);
+    this._renderRouteSelector(routes);
+
+    const selected = routes[this._selectedRouteIndex] || routes[0];
+    if (this.routeEditor) {
+      this.routeEditor.update(waypoints || [], selected.coordinates, selected.waypointIndices);
+    }
+    if (persist) this._persistSelected();
   },
 
   /**
    * Clear route from map
    */
   clearRoute() {
-    if (this.routingControl) {
-      this.map.removeControl(this.routingControl);
-      this.routingControl = null;
+    clearTimeout(this._routeDebounceTimer);
+    this._routeGen++; // invalidate any in-flight response
+    if (this._routeXhr) {
+      try { this._routeXhr.abort(); } catch (_) { /* already settled */ }
+      this._routeXhr = null;
     }
+    if (this._ghAbortController) {
+      try { this._ghAbortController.abort(); } catch (_) { /* already settled */ }
+      this._ghAbortController = null;
+    }
+    this._setRoutingBusy(false);
+    this._clearRouteLayers();
     this._hideRouteSelector();
     if (this.routeEditor) this.routeEditor.clear();
     this._selectedRouteIndex = 0;
-    this._cachedAlternatives = null;
+    this._cachedAlternatives = [];
   },
+
+  /* ══════════════════════════════════════════════════════════════════
+     Restore hooks used by App.restoreAlternativesToMap / trip-controller
+     ══════════════════════════════════════════════════════════════════ */
+
+  /**
+   * Draw a specific route geometry (App.restoreAlternativesToMap and the
+   * ride:routeSelected handler). If it is one of the cached alternatives this
+   * just moves the selection; otherwise it becomes the drawn route. Never
+   * persists — the caller owns that decision.
+   */
+  drawRoute(coordinates) {
+    const coords = this._normalizeCoords(coordinates);
+    if (coords.length < 2) return;
+
+    const routes = this._cachedAlternatives || [];
+    const idx = routes.findIndex(r => this._sameGeometry(r, { coordinates: coords }));
+    if (idx >= 0) {
+      if (idx !== this._selectedRouteIndex) {
+        this._selectedRouteIndex = idx;
+        this.routeSelector?.selectRoute(idx, { silent: true });
+        this._drawRoutes(routes);
+        this.routeEditor?.update(
+          this._lastRoutedWaypoints || [], routes[idx].coordinates, routes[idx].waypointIndices
+        );
+      }
+      return;
+    }
+
+    const route = this._normalizeRoute({ coordinates: coords }, 0);
+    this._selectedRouteIndex = 0;
+    this._cachedAlternatives = [route];
+    this._scoreRoutes([route]);
+    this._drawRoutes([route]);
+    this._hideRouteSelector();
+    this.routeEditor?.update(this._lastRoutedWaypoints || [], route.coordinates, null);
+  },
+
+  /**
+   * Merge stored alternatives into the drawn set without touching the
+   * selection or the server. updateRoute's restore path normally has these
+   * already; this reconciles the leftovers (e.g. a trip whose primary route
+   * was never saved).
+   */
+  _adoptStoredRoutes(list) {
+    if (!Array.isArray(list) || !list.length) return;
+    const incoming = list
+      .map((r, i) => this._normalizeRoute(r, i))
+      .filter(r => r.coordinates.length >= 2);
+    if (!incoming.length) return;
+
+    const current = this._cachedAlternatives || [];
+    const merged = current.slice();
+    incoming.forEach((r) => {
+      if (!merged.some(m => this._sameGeometry(m, r))) merged.push(r);
+    });
+    if (merged.length === current.length) return;
+
+    const selected = current[this._selectedRouteIndex] || null;
+    merged.forEach((r, i) => { r.index = i; });
+    this._cachedAlternatives = merged;
+    const foundIdx = selected ? merged.findIndex(m => this._sameGeometry(m, selected)) : -1;
+    this._selectedRouteIndex = foundIdx >= 0 ? foundIdx : 0;
+
+    this._scoreRoutes(merged);
+    this._drawRoutes(merged);
+    this._renderRouteSelector(merged);
+  },
+
+  setAlternativeRoots(routes) { this._adoptStoredRoutes(routes); },
+
+  onAlternativesChange(routes) { this._adoptStoredRoutes(routes); },
+
+  showAlternativeRoute(route, isActive) {
+    if (!isActive || !route) return;
+    this.drawRoute(route.coordinates);
+  },
+
+  /* ══════════════════════════════════════════════════════════════════
+     Viewport helpers
+     ══════════════════════════════════════════════════════════════════ */
 
   /**
    * Fit map to show all waypoints
    */
   fitToWaypoints(waypoints) {
-    if (waypoints.length === 0) return;
+    if (!waypoints || waypoints.length === 0) return;
 
     const bounds = L.latLngBounds(
       waypoints.map(wp => [wp.lat, wp.lng])
@@ -566,11 +1314,14 @@ const MapManager = {
    */
   clear() {
     this.clearRoute();
+    // Re-arm restore-on-open: the next route pass draws the saved geometry
+    // of whichever trip is loaded rather than re-querying OSRM.
+    this._restoredTripKey = null;
+    this._lastRoutedWaypoints = [];
     Object.keys(this.waypointMarkers).forEach(id => {
       this.map.removeLayer(this.waypointMarkers[id]);
     });
     this.waypointMarkers = {};
-    if (this.routeEditor) this.routeEditor.clear();
     if (this.routeSelector) this.routeSelector.clear();
     this.clearRideLogs();
   },
@@ -593,7 +1344,7 @@ const MapManager = {
         ? new Date(log.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
         : '';
       const layer = L.polyline(latlngs, {
-        color: '#10b981',
+        color: this._cssVar('--trail-log', '#10b981'),
         weight: 3,
         opacity: 0.55,
         dashArray: '6 4',

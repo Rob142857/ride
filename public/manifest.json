@@ -1,36 +1,32 @@
 {
-  "name": "Ride Trip Planner",
+  "name": "Ride — Trip Planner",
   "short_name": "Ride",
-  "description": "Friendly open-source ride planning and sharing with waypoints, routes, and trip journals",
+  "description": "Plan scenic routes, journal the journey, and share the ride. Free and open source.",
   "start_url": "/",
   "id": "ride.incitat.io",
-  "display": "fullscreen",
-  "orientation": "portrait",
-  "background_color": "#0a0a0f",
-  "theme_color": "#3b82f6",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0e1f",
+  "theme_color": "#0b0e1f",
   "icons": [
     {
       "src": "icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
-  "categories": ["navigation", "travel"],
-  "share_target": {
-    "action": "/share",
-    "method": "POST",
-    "enctype": "application/x-www-form-urlencoded",
-    "params": {
-      "title": "title",
-      "text": "text",
-      "url": "url"
-    }
-  }
+  "categories": ["navigation", "travel"]
 }

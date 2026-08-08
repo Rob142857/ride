@@ -94,8 +94,15 @@ export const PlacesHandler = {
     }
 
     if (data?.status && !['OK', 'ZERO_RESULTS'].includes(data.status)) {
+      // Log the upstream detail, return a fixed string. Google's error_message
+      // routinely discloses billing state and API-key restrictions — operational
+      // detail that helps profile our Google Cloud project and means nothing to
+      // someone staring at a search box.
       console.error('Places API error:', data.status, data?.error_message);
-      return errorResponse(`Places search unavailable: ${data.status}${data.error_message ? ' – ' + data.error_message : ''}`, 502);
+      if (data.status === 'OVER_QUERY_LIMIT') {
+        return errorResponse('Place search is busy right now. Try again in a moment.', 502);
+      }
+      return errorResponse('Place search is temporarily unavailable', 502);
     }
 
     const results = (data?.results || []).slice(0, 12).map((place) => ({

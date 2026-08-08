@@ -1,12 +1,83 @@
 /**
  * Storage module - handles local storage for trips and data
+ *
+ * Schema versioning: ride_schema_version stamps the shape of everything
+ * this module writes. Bump SCHEMA_VERSION and add a migration step in
+ * MIGRATIONS when a stored shape changes. v2 introduced ride_local_trips
+ * (guest-mode trip store — full trip objects incl. waypoints/journal/
+ * route/alternative_routes, consumed by the API local shim in api.js).
  */
 const Storage = {
+  SCHEMA_VERSION: 2,
+
+  /**
+   * The complete ride_* keyspace. Everything this app persists is declared
+   * here so migrations and "clear my data" have one list to work from —
+   * read/write through Storage rather than touching localStorage directly.
+   */
   KEYS: {
+    SCHEMA_VERSION: 'ride_schema_version',
     TRIPS: 'ride_trips',
+    LOCAL_TRIPS: 'ride_local_trips',
     CURRENT_TRIP: 'ride_current_trip',
     SETTINGS: 'ride_settings',
-    TRIP_ORDER: 'ride_trip_order'
+    TRIP_ORDER: 'ride_trip_order',
+    // UI/session/ride flags owned by other modules (ui.js, auth-controller.js,
+    // trip-controller.js, ride-controller.js, index.html) — declared here so
+    // the keyspace stays discoverable even though those modules read/write
+    // the raw key directly rather than going through Storage.
+    LAST_USER_ID: 'ride_last_user_id',
+    INSTALL_DISMISSED: 'ride_install_dismissed',
+    LANDING_SEEN: 'ride_landing_seen',
+    WAYPOINTS_HELP_SEEN: 'ride_waypoints_help_seen',
+    IMPORTED_TRIP_ID: 'ride_imported_trip_id',
+    RIDE_TRACK_CHECKPOINT: 'ride_track_checkpoint',
+    RIDE_PENDING_LOGS: 'ride_pending_logs',
+    // Per-leg collapse state in the waypoints list (ui-renderers.js). Not a
+    // single key: the real key is this prefix + `${tripId}_${legBreakWaypointId}`,
+    // value '1' (collapsed) | '0' (expanded). Always go through
+    // getLegCollapsed/setLegCollapsed below rather than composing the key ad
+    // hoc, so this entry stays an accurate map of the keyspace.
+    LEG_COLLAPSE_PREFIX: 'ride_leg_collapse_',
+    // Per-trip scenic-road suppression list (scenic-suggest.js): the road ids
+    // the rider dismissed or already accepted. Parameterised the same way as
+    // the prefix above — the real key is this prefix + `${tripId}`, value a
+    // JSON array of road ids. That module composes the key itself and goes
+    // through Storage.save/Storage.load, so there's no accessor pair here yet;
+    // the prefix is declared so the keyspace map stays complete.
+    SCENIC_DISMISSED_PREFIX: 'ride_scenic_dismissed_'
+  },
+
+  /**
+   * Per-version migration steps. Key N migrates (N-1) → N.
+   * Each step must be idempotent — it may run on a client that never
+   * had the older shape at all.
+   */
+  MIGRATIONS: {
+    // v1 → v2: introduced the ride_local_trips guest store. Nothing to
+    // transform — older clients simply didn't have local trips.
+    2() {}
+  },
+
+  /**
+   * Run pending migrations and stamp the current schema version.
+   * Called once at script load (bottom of this file).
+   */
+  ensureSchema() {
+    let version = Number(this.load(this.KEYS.SCHEMA_VERSION, 1)) || 1;
+    if (version >= this.SCHEMA_VERSION) return;
+    while (version < this.SCHEMA_VERSION) {
+      version += 1;
+      const step = this.MIGRATIONS[version];
+      if (typeof step === 'function') {
+        try {
+          step.call(this);
+        } catch (e) {
+          console.error(`Storage migration to v${version} failed:`, e);
+        }
+      }
+    }
+    this.save(this.KEYS.SCHEMA_VERSION, this.SCHEMA_VERSION);
   },
 
   /**
@@ -63,10 +134,35 @@ const Storage = {
   },
 
   /**
+   * Guest-mode trip store (full trip objects, cloud-shaped).
+   * Read/written by the API local shim — see api.js.
+   */
+  getLocalTrips() {
+    const trips = this.load(this.KEYS.LOCAL_TRIPS, []);
+    return Array.isArray(trips) ? trips : [];
+  },
+
+  /**
+   * Persist the guest-mode trip store. Returns false when the write
+   * failed (e.g. quota exceeded) so callers can surface the problem.
+   */
+  saveLocalTrips(trips) {
+    return this.save(this.KEYS.LOCAL_TRIPS, Array.isArray(trips) ? trips : []);
+  },
+
+  clearLocalTrips() {
+    return this.remove(this.KEYS.LOCAL_TRIPS);
+  },
+
+  /**
    * Generate unique ID
    */
   generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    // Fallback for very old WebViews without crypto.randomUUID
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
   },
 
   /**
@@ -87,8 +183,30 @@ const Storage = {
     this.saveTrips([]);
     this.remove(this.KEYS.CURRENT_TRIP);
     this.remove(this.KEYS.TRIP_ORDER);
+  },
+
+  /** Waypoints-list leg collapse state, persisted per trip + leg-break waypoint id. */
+  getLegCollapsed(tripId, legId) {
+    if (!tripId || !legId) return false;
+    try {
+      return localStorage.getItem(this.KEYS.LEG_COLLAPSE_PREFIX + tripId + '_' + legId) === '1';
+    } catch (e) {
+      return false;
+    }
+  },
+
+  setLegCollapsed(tripId, legId, collapsed) {
+    if (!tripId || !legId) return;
+    try {
+      localStorage.setItem(this.KEYS.LEG_COLLAPSE_PREFIX + tripId + '_' + legId, collapsed ? '1' : '0');
+    } catch (e) {
+      // Quota or private-browsing storage errors are non-fatal — the leg just
+      // won't remember its collapsed state across a reload.
+    }
   }
 };
+
+Storage.ensureSchema();
 
 // Make available globally
 window.Storage = Storage;

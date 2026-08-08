@@ -2,8 +2,18 @@
  * Ride Logs handler — save and list actual GPS tracks recorded during ride mode.
  * Each log links to a trip and optionally a private journal entry.
  */
-import { jsonResponse, errorResponse, generateId, parseBody } from './utils.js';
-import { safeJsonParse } from './handler-utils.js';
+import { jsonResponse, errorResponse, generateId } from './utils.js';
+import { safeJsonParse, readJsonBody } from './handler-utils.js';
+
+/** Keep stored tracks bounded — one log is a breadcrumb trail, not raw telemetry. */
+const MAX_TRACK_POINTS = 3000;
+
+/** A track point is {lat, lng, t}; anything else is dropped rather than stored. */
+function isValidTrackPoint(p) {
+  return p && typeof p === 'object'
+    && Number.isFinite(p.lat) && p.lat >= -90 && p.lat <= 90
+    && Number.isFinite(p.lng) && p.lng >= -180 && p.lng <= 180;
+}
 
 export const RideLogsHandler = {
   /**
@@ -12,14 +22,15 @@ export const RideLogsHandler = {
    */
   async saveRideLog(context) {
     const { env, user, params, request } = context;
-    const body = await parseBody(request);
+    const { body, error } = await readJsonBody(request);
+    if (error) return error;
 
     const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
       'SELECT id FROM trips WHERE id = ? AND user_id = ?'
     ).bind(params.tripId, user.id).first();
     if (!trip) return errorResponse('Trip not found', 404);
 
-    const track = Array.isArray(body.track) ? body.track : [];
+    const track = (Array.isArray(body.track) ? body.track : []).filter(isValidTrackPoint);
     if (track.length < 2) return errorResponse('Track must have at least 2 points', 400);
 
     const distanceMeters = typeof body.distance_meters === 'number' && body.distance_meters >= 0
@@ -27,8 +38,8 @@ export const RideLogsHandler = {
     const durationSeconds = typeof body.duration_seconds === 'number' && body.duration_seconds >= 0
       ? body.duration_seconds : null;
 
-    // Limit track size to 3000 points to keep storage reasonable
-    const trimmedTrack = track.length > 3000 ? track.slice(-3000) : track;
+    // Limit track size to keep storage reasonable
+    const trimmedTrack = track.length > MAX_TRACK_POINTS ? track.slice(-MAX_TRACK_POINTS) : track;
 
     const id = generateId();
     await env.RIDE_TRIP_PLANNER_DB.prepare(

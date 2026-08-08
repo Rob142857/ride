@@ -2,6 +2,8 @@
  * UI module — core DOM interactions, navigation, modals, forms, toast
  * Renderers are in ui-renderers.js, place search in ui-place-search.js
  */
+const ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
 const UI = {
   currentView: 'map',
   toastTimeout: null,
@@ -9,8 +11,13 @@ const UI = {
   placeSearchResults: [],
   authGateLastStatus: 'Signed out',
   landingGateLastShown: false,
+  _modalStack: [],
+  _modalTriggers: {},
+  _defaultLoginSubtitle: '',
+  _authGateWasVisible: false,
 
   init() {
+    this._injectRuntimeStyles();
     this.bindNavigation();
     this.bindRefreshButtons();
     this.bindMenu();
@@ -22,9 +29,27 @@ const UI = {
     this.bindLocateButton();
     this.bindAuthGate();
     this.bindLandingGate();
+    this._initToastA11y();
+    this._bindGlobalKeys();
+    this._bindLightboxDelegate();
+    const loginSub = document.getElementById('loginModalSubtitle');
+    this._defaultLoginSubtitle = loginSub ? loginSub.textContent : '';
     const attachmentList = document.getElementById('noteAttachmentList');
     if (attachmentList) attachmentList.innerHTML = '<div class="microcopy">No attachments yet.</div>';
     return this;
+  },
+
+  /**
+   * Suggest signing in when an action genuinely needs the cloud
+   * (photo upload, share links, sync). Guests keep planning locally.
+   */
+  suggestLogin(actionLabel = 'sync your trips') {
+    const sub = document.getElementById('loginModalSubtitle');
+    if (sub) {
+      if (!this._defaultLoginSubtitle) this._defaultLoginSubtitle = sub.textContent;
+      sub.textContent = `Sign in to ${actionLabel} — your local trips stay on this device until you sync.`;
+    }
+    this.openModal('loginModal');
   },
 
   bindLocateButton() {
@@ -136,6 +161,11 @@ const UI = {
   hideAuthGate() {
     const gate = document.getElementById('authGate');
     if (gate) gate.classList.add('hidden');
+  },
+
+  isAuthGateVisible() {
+    const gate = document.getElementById('authGate');
+    return !!gate && !gate.classList.contains('hidden');
   },
 
   bindRefreshButtons() {
@@ -319,7 +349,7 @@ const UI = {
 
     document.getElementById('importBtn').addEventListener('click', () => {
       closeMenuFn();
-      App.importTrip();
+      Share.startImport();
     });
 
     document.getElementById('exportBtn').addEventListener('click', () => {
@@ -395,6 +425,8 @@ const UI = {
     // Add note button
     document.getElementById('addNoteBtn').addEventListener('click', () => {
       if (!App.ensureEditable('add notes')) return;
+      const title = document.getElementById('noteModalTitle');
+      if (title) title.textContent = 'Add note';
       this.openModal('noteModal');
     });
 
@@ -412,27 +444,48 @@ const UI = {
   },
 
   /**
-   * Open modal
+   * Open modal — tracks the open stack, moves focus into the dialog.
    */
   openModal(modalId) {
     const modal = document.getElementById(modalId);
-    if (modal) {
-      // Never allow the auth gate overlay to block login.
-      if (modalId === 'loginModal') {
-        this.hideAuthGate();
-        this.hideLandingGate();
-      }
-      modal.classList.remove('hidden');
+    if (!modal) return;
+    // Never allow the auth gate overlay to block login.
+    if (modalId === 'loginModal') {
+      this._authGateWasVisible = this.isAuthGateVisible();
+      this.hideAuthGate();
+      this.hideLandingGate();
     }
+    if (!this._modalStack.includes(modalId)) {
+      this._modalTriggers[modalId] = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      this._modalStack.push(modalId);
+    }
+    modal.classList.remove('hidden');
+    // Move focus to the first meaningful control inside the dialog.
+    setTimeout(() => {
+      if (modal.classList.contains('hidden')) return;
+      const content = modal.querySelector('.modal-content') || modal;
+      if (content.contains(document.activeElement)) return; // something already focused it
+      const focusables = this._getFocusable(content).filter(el => !el.classList.contains('modal-close'));
+      const target = focusables[0];
+      if (target) {
+        target.focus({ preventScroll: true });
+      } else {
+        content.setAttribute('tabindex', '-1');
+        content.focus({ preventScroll: true });
+      }
+    }, 30);
   },
 
   /**
-   * Close modal
+   * Close modal — restores focus to the element that opened it.
    */
   closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
       modal.classList.add('hidden');
+
+      const stackIdx = this._modalStack.lastIndexOf(modalId);
+      if (stackIdx >= 0) this._modalStack.splice(stackIdx, 1);
 
       // Reset forms
       const form = modal.querySelector('form');
@@ -445,21 +498,142 @@ const UI = {
       if (modalId === 'noteModal') {
         const attachmentList = document.getElementById('noteAttachmentList');
         if (attachmentList) attachmentList.innerHTML = '<div class="microcopy">No attachments yet.</div>';
-        // Drop any deferred ride-mode waypoint if the note was dismissed unsaved.
-        if (App && App._pendingRideNoteWaypoint) App._pendingRideNoteWaypoint = null;
-      }
-
-      // If user dismisses login modal while still signed out, keep failing closed.
-      if (modalId === 'loginModal') {
-        try {
-          if (!App?.currentUser || !App?.useCloud) {
-            this.showAuthGate(this.authGateLastStatus || 'Signed out');
-          }
-        } catch (_) {
-          this.showAuthGate(this.authGateLastStatus || 'Signed out');
+        const title = document.getElementById('noteModalTitle');
+        if (title) title.textContent = 'Add note';
+        const fileName = document.getElementById('journalAttachmentFileName');
+        if (fileName) fileName.textContent = '';
+        // Drop any deferred ride-mode waypoint / pending photo if dismissed unsaved.
+        if (typeof App !== 'undefined') {
+          if (App._pendingRideNoteWaypoint) App._pendingRideNoteWaypoint = null;
+          App._pendingNoteFile = null;
         }
       }
+
+      if (modalId === 'loginModal') {
+        // Restore the default subtitle after a contextual login suggestion.
+        const sub = document.getElementById('loginModalSubtitle');
+        if (sub && this._defaultLoginSubtitle) sub.textContent = this._defaultLoginSubtitle;
+        // Only re-show the auth gate if it was covering the app before the
+        // modal opened (expired session flow). Guests just keep planning.
+        try {
+          if (this._authGateWasVisible && (!App?.currentUser || !App?.useCloud)) {
+            this.showAuthGate(this.authGateLastStatus || 'Signed out');
+          }
+        } catch (_) {}
+        this._authGateWasVisible = false;
+      }
+
+      // Return focus to whatever opened the dialog.
+      const trigger = this._modalTriggers[modalId];
+      delete this._modalTriggers[modalId];
+      if (this._modalStack.length === 0 && trigger && document.contains(trigger)) {
+        try { trigger.focus({ preventScroll: true }); } catch (_) {}
+      }
     }
+  },
+
+  /** Focusable elements within a container (visible only). */
+  _getFocusable(root) {
+    if (!root) return [];
+    return Array.from(root.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter(el => el.offsetParent !== null || el === document.activeElement);
+  },
+
+  /** Global keyboard handling: Escape closes topmost layer; Tab is trapped in modals. */
+  _bindGlobalKeys() {
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (this._lightboxEl && this._lightboxEl.style.display !== 'none') {
+          e.preventDefault();
+          this.closeLightbox();
+          return;
+        }
+        const top = this._modalStack[this._modalStack.length - 1];
+        if (top) {
+          e.preventDefault();
+          this.closeModal(top);
+          return;
+        }
+        if (typeof MapManager !== 'undefined' && MapManager.isAddingWaypoint) {
+          MapManager.disableAddWaypointMode();
+          this.setWaypointPlannerState('idle');
+        }
+        return;
+      }
+      if (e.key === 'Tab') {
+        const top = this._modalStack[this._modalStack.length - 1];
+        if (!top) return;
+        const modal = document.getElementById(top);
+        if (!modal || modal.classList.contains('hidden')) return;
+        const content = modal.querySelector('.modal-content') || modal;
+        const focusables = this._getFocusable(content);
+        if (!focusables.length) { e.preventDefault(); return; }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+        if (e.shiftKey) {
+          if (active === first || !content.contains(active)) { e.preventDefault(); last.focus(); }
+        } else if (active === last || !content.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    });
+  },
+
+  /* ── Photo lightbox (tap-to-zoom) ─────────────────────────────── */
+
+  /** Capture-phase delegate: any element with data-lightbox-src opens the viewer. */
+  _bindLightboxDelegate() {
+    document.addEventListener('click', (e) => {
+      const el = e.target?.closest?.('[data-lightbox-src]');
+      if (!el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.openLightbox(el.dataset.lightboxSrc, el.dataset.lightboxAlt || '');
+    }, true);
+  },
+
+  openLightbox(src, alt = '') {
+    if (!src) return;
+    if (!this._lightboxEl) {
+      const overlay = document.createElement('div');
+      overlay.id = 'photoLightbox';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', 'Photo viewer');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:5000;display:none;align-items:center;justify-content:center;background:rgba(7,9,20,0.94);cursor:zoom-out;padding:16px;';
+      const img = document.createElement('img');
+      img.style.cssText = 'max-width:94vw;max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:var(--shadow-3);';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Close photo');
+      close.textContent = '×';
+      close.style.cssText = 'position:absolute;top:calc(var(--safe-area-top, 0px) + 14px);right:18px;width:44px;height:44px;border-radius:999px;border:1px solid var(--border-elegant);background:var(--bg-glass);color:var(--text-primary);font-size:26px;line-height:1;cursor:pointer;';
+      overlay.appendChild(img);
+      overlay.appendChild(close);
+      overlay.addEventListener('click', () => this.closeLightbox());
+      document.body.appendChild(overlay);
+      this._lightboxEl = overlay;
+      this._lightboxImg = img;
+      this._lightboxClose = close;
+    }
+    this._lightboxImg.src = src;
+    this._lightboxImg.alt = alt || 'Photo';
+    this._lightboxReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this._lightboxEl.style.display = 'flex';
+    setTimeout(() => { try { this._lightboxClose.focus({ preventScroll: true }); } catch (_) {} }, 30);
+  },
+
+  closeLightbox() {
+    if (!this._lightboxEl) return;
+    this._lightboxEl.style.display = 'none';
+    this._lightboxImg.removeAttribute('src');
+    if (this._lightboxReturnFocus && document.contains(this._lightboxReturnFocus)) {
+      try { this._lightboxReturnFocus.focus({ preventScroll: true }); } catch (_) {}
+    }
+    this._lightboxReturnFocus = null;
   },
 
   /**
@@ -485,7 +659,9 @@ const UI = {
   async handleWaypointSubmit() {
     if (!App.ensureEditable('add waypoints')) return;
     const name = document.getElementById('waypointName').value.trim();
-    const address = document.getElementById('waypointAddress').value.trim();
+    let address = document.getElementById('waypointAddress').value.trim();
+    // Never persist the map-pick placeholder as a real address.
+    if (/^dropped pin from map$/i.test(address)) address = '';
     const lat = parseFloat(document.getElementById('waypointLat').value);
     const lng = parseFloat(document.getElementById('waypointLng').value);
     const type = document.getElementById('waypointType').value;
@@ -524,6 +700,13 @@ const UI = {
       : await App.addJournalEntry({ title, content, isPrivate, tags });
 
     if (result) {
+      // A photo chosen before the note existed is uploaded now that we
+      // have the new entry's id (see bindJournalAttachmentPicker).
+      if (!entryId && App._pendingNoteFile && result.id) {
+        const pending = App._pendingNoteFile;
+        App._pendingNoteFile = null;
+        await App.uploadJournalAttachment(result.id, pending);
+      }
       // If a ride-mode waypoint creation was deferred until note save,
       // commit it now and tag the note's title with the GPS coords.
       if (!entryId && App.isRiding && App._pendingRideNoteWaypoint) {
@@ -637,7 +820,7 @@ const UI = {
       settings.fuelRate = rateInput.value;
       settings.fuelPrice = priceInput.value;
       Storage.save(Storage.KEYS.SETTINGS, settings);
-      modal.classList.add('hidden');
+      this.closeModal('settingsModal');
       this.showToast('Settings saved', 'success');
       // Refresh stats if a trip is loaded
       if (typeof App !== 'undefined' && App.currentTrip) {
@@ -646,10 +829,10 @@ const UI = {
     };
 
     document.getElementById('settingsCancel').onclick = () => {
-      modal.classList.add('hidden');
+      this.closeModal('settingsModal');
     };
 
-    modal.classList.remove('hidden');
+    this.openModal('settingsModal');
   },
 
   formatDistance(meters) {
@@ -666,38 +849,236 @@ const UI = {
     return `${minutes}m`;
   },
 
-  /**
-   * Show toast notification
-   */
-  showToast(message, type = 'info') {
+  /** Make toast announcements reach assistive tech. */
+  _initToastA11y() {
     const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.className = type;
-
-    // Clear any existing timeout
-    if (this.toastTimeout) {
-      clearTimeout(this.toastTimeout);
+    if (toast) {
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
     }
-
-    // Show toast
-    setTimeout(() => {
-      toast.classList.remove('hidden');
-    },10);
-
-    // Hide after delay
-    this.toastTimeout = setTimeout(() => {
-      toast.classList.add('hidden');
-    },3000);
   },
 
   /**
-   * Escape HTML to prevent XSS
+   * Show toast notification. If one is already visible with a different
+   * message, it is bumped up into a secondary slot instead of being lost
+   * (so "Uploading photo…" survives a concurrent "Waypoint saved").
+   */
+  showToast(message, type = 'info') {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+
+    if (!toast.classList.contains('hidden') && toast.textContent && toast.textContent !== message) {
+      this._showSecondaryToast(toast.textContent);
+    }
+
+    toast.textContent = message;
+    toast.className = `${type} hidden`;
+
+    if (this.toastTimeout) clearTimeout(this.toastTimeout);
+
+    // Force a reflow so the reveal transition actually plays.
+    void toast.offsetHeight;
+    toast.classList.remove('hidden');
+
+    this.toastTimeout = setTimeout(() => {
+      toast.classList.add('hidden');
+    }, 3000);
+  },
+
+  /** Second toast slot, stacked above the primary one (max 2 visible). */
+  _showSecondaryToast(message) {
+    let el = document.getElementById('toastSecondary');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toastSecondary';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);' +
+        'bottom:calc(var(--nav-height, 64px) + var(--safe-area-bottom, 0px) + 76px);' +
+        'background:var(--bg-glass, rgba(18,22,46,0.85));color:var(--text-secondary,#aab1d0);' +
+        'padding:9px 18px;border-radius:12px;border:1px solid var(--border-subtle, rgba(255,255,255,0.06));' +
+        'box-shadow:var(--shadow-2);z-index:var(--z-toast, 3000);font-size:0.8rem;font-weight:500;' +
+        'white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis;';
+      document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.style.display = 'block';
+    clearTimeout(this._toastSecondaryTimer);
+    this._toastSecondaryTimer = setTimeout(() => { el.style.display = 'none'; }, 2200);
+  },
+
+  /**
+   * Escape HTML to prevent XSS. Quotes are escaped too, so the same helper is
+   * safe inside attribute values (see escapeAttr alias).
    */
   escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>"']/g, (c) => ESCAPE_MAP[c]);
+  },
+
+  /** Alias — use at call sites that build attribute values, for intent. */
+  escapeAttr(str) {
+    return this.escapeHtml(str);
+  },
+
+  /** Reject javascript:/data: URLs before they reach href/src. */
+  safeUrl(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return '';
+    if (/^(javascript|vbscript|data):/i.test(raw.replace(/\s/g, ''))) return '';
+    return raw;
+  },
+
+  /* ── Read-only / attachment helpers (shared by all list renderers) ── */
+
+  /** True when the loaded trip may not be mutated (shared-link viewers). */
+  isReadOnlyTrip() {
+    return typeof App !== 'undefined' && !!App.isSharedView;
+  },
+
+  attachmentUrl(att) {
+    return this.safeUrl(att?.url || (att?.id ? `/api/attachments/${att.id}` : ''));
+  },
+
+  attachmentName(att) {
+    return att?.originalName || att?.original_name || att?.filename || att?.name || 'Attachment';
+  },
+
+  isImageAttachment(att) {
+    const mime = att?.mimeType || att?.mime_type || att?.contentType || att?.content_type || '';
+    if (mime) return String(mime).startsWith('image/');
+    return /\.(jpe?g|png|gif|webp|avif|heic|heif|bmp)$/i.test(this.attachmentName(att));
+  },
+
+  /**
+   * Attachment markup shared by the journal list, the note modal and the
+   * waypoint details modal: images become tappable thumbnails (lightbox via
+   * the global [data-lightbox-src] delegate), other files stay as pills.
+   */
+  renderAttachmentsHtml(attachments, options = {}) {
+    const list = (Array.isArray(attachments) ? attachments : []).filter(Boolean);
+    if (!list.length) return '';
+    const canRemove = options.canRemove !== false && !this.isReadOnlyTrip();
+    const entryAttr = options.entryId ? ` data-entry-id="${this.escapeAttr(options.entryId)}"` : '';
+    const images = list.filter((a) => this.isImageAttachment(a));
+    const files = list.filter((a) => !this.isImageAttachment(a));
+    let html = '';
+
+    if (images.length) {
+      html += '<div class="attachment-thumbs">' + images.map((att) => {
+        const url = this.escapeAttr(this.attachmentUrl(att));
+        const name = this.escapeAttr(this.attachmentName(att));
+        const id = this.escapeAttr(att.id);
+        return `<div class="attachment-thumb" data-attachment-id="${id}"${entryAttr}>
+            <img src="${url}" alt="${name}" loading="lazy" decoding="async"
+                 data-lightbox-src="${url}" data-lightbox-alt="${name}"
+                 role="button" tabindex="0" aria-label="View ${name} full size">
+            ${canRemove ? `<button type="button" class="attachment-thumb-remove" data-attachment-id="${id}"${entryAttr} aria-label="Remove ${name}">×</button>` : ''}
+          </div>`;
+      }).join('') + '</div>';
+    }
+
+    if (files.length) {
+      html += files.map((att) => {
+        const url = this.escapeAttr(this.attachmentUrl(att));
+        const name = this.escapeHtml(this.attachmentName(att));
+        const id = this.escapeAttr(att.id);
+        return `<div class="attachment-pill" data-attachment-id="${id}"${entryAttr}>
+            <a href="${url}" target="_blank" rel="noopener">${name}</a>
+            ${canRemove ? `<button type="button" class="attachment-remove" data-attachment-id="${id}"${entryAttr} aria-label="Remove ${name}">×</button>` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    return html;
+  },
+
+  /**
+   * Wire remove buttons produced by renderAttachmentsHtml. Removal is
+   * destructive, so the button arms itself first (see confirmInline).
+   */
+  bindAttachmentRemovals(container, onRemove) {
+    if (!container || typeof onRemove !== 'function') return;
+    container.querySelectorAll('.attachment-thumb-remove, .attachment-remove').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.confirmInline(btn, () => onRemove(btn.dataset.attachmentId, btn.dataset.entryId || ''), { label: 'Remove?' });
+      });
+    });
+    container.querySelectorAll('img[data-lightbox-src]').forEach((img) => {
+      img.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          this.openLightbox(img.dataset.lightboxSrc, img.dataset.lightboxAlt || '');
+        }
+      });
+    });
+  },
+
+  /**
+   * Two-tap delete without a blocking dialog: the button morphs into
+   * "Delete?" and only the second tap within 3s commits. Nothing is
+   * destroyed by a stray tap, and nothing steals focus on mobile.
+   */
+  confirmInline(btn, onConfirm, options = {}) {
+    if (!btn || typeof onConfirm !== 'function') return;
+    if (btn.dataset.confirmArmed === '1') {
+      this._disarmConfirm(btn);
+      onConfirm();
+      return;
+    }
+    if (this._armedConfirmBtn && this._armedConfirmBtn !== btn) {
+      this._disarmConfirm(this._armedConfirmBtn);
+    }
+    btn.dataset.confirmArmed = '1';
+    btn.dataset.confirmHtml = btn.innerHTML;
+    btn.dataset.confirmAria = btn.getAttribute('aria-label') || '';
+    btn.textContent = options.label || 'Delete?';
+    btn.setAttribute('aria-label', `${options.label || 'Delete?'} Activate again to confirm.`);
+    btn.classList.add('is-confirming');
+    this._armedConfirmBtn = btn;
+    clearTimeout(this._confirmTimer);
+    this._confirmTimer = setTimeout(() => this._disarmConfirm(btn), options.timeout || 3000);
+  },
+
+  _disarmConfirm(btn) {
+    if (!btn || btn.dataset.confirmArmed !== '1') return;
+    clearTimeout(this._confirmTimer);
+    btn.innerHTML = btn.dataset.confirmHtml || '';
+    if (btn.dataset.confirmAria) btn.setAttribute('aria-label', btn.dataset.confirmAria);
+    btn.classList.remove('is-confirming');
+    delete btn.dataset.confirmArmed;
+    delete btn.dataset.confirmHtml;
+    delete btn.dataset.confirmAria;
+    if (this._armedConfirmBtn === btn) this._armedConfirmBtn = null;
+  },
+
+  /**
+   * Styling for markup this module generates and the stylesheets don't know
+   * about. Rules for classes that already exist in app.css use `:where()`
+   * (zero specificity) so the stylesheet always wins; rules for classes
+   * introduced here carry normal specificity so they actually apply.
+   */
+  _injectRuntimeStyles() {
+    if (document.getElementById('rideUiRuntimeStyles')) return;
+    const style = document.createElement('style');
+    style.id = 'rideUiRuntimeStyles';
+    style.textContent = [
+      '.attachment-thumbs{display:flex;flex-wrap:wrap;gap:var(--space-2,8px);margin-top:var(--space-2,8px)}',
+      '.attachment-thumb{position:relative;width:76px;height:76px;border-radius:var(--radius-sm,6px);overflow:hidden;border:1px solid var(--border-subtle,rgba(255,255,255,.06));background:var(--surface-2,#1a1f3d)}',
+      '.attachment-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}',
+      '.attachment-thumb .attachment-thumb-remove{position:absolute;top:2px;right:2px;min-width:26px;height:26px;padding:0 6px;border:0;border-radius:var(--radius-full,999px);background:rgba(7,9,20,.74);color:var(--text-primary,#f4f5fb);font-size:15px;line-height:1;cursor:pointer}',
+      '.waypoint-via-label{font-size:var(--text-xs,.75rem);color:var(--text-muted,#7e86ad);text-transform:uppercase;letter-spacing:.05em}',
+      '.icon-btn.is-confirming,.link-btn.is-confirming,button.is-confirming{color:var(--danger,#ef4444);font-size:var(--text-xs,.75rem);font-weight:600;width:auto;min-width:var(--touch-target,44px);padding:0 8px;white-space:nowrap}',
+      '.journal-entry-readonly .journal-actions{display:none}',
+      ':where(.journal-content,.waypoint-notes){white-space:pre-wrap;overflow-wrap:anywhere}',
+      ':where(.waypoint-item.is-via){opacity:.75}',
+      ':where(.photo-marker-inner){display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:var(--radius-full,999px);background:var(--wp-photo,#fbbf24);color:var(--text-on-gold,#211a04);border:2px solid var(--surface-0,#0b0e1f);box-shadow:var(--shadow-1,0 1px 3px rgba(0,0,0,.28))}'
+    ].join('\n');
+    // Prepended so every linked stylesheet still wins a specificity tie —
+    // this block is a fallback, never an override.
+    document.head.insertBefore(style, document.head.firstChild);
   },
 
   /**

@@ -18,7 +18,15 @@ Object.assign(App, {
       const entryId = fileInput.dataset.entryId;
       const file = fileInput.files?.[0];
       fileName.textContent = file ? file.name : '';
-      if (!file || !entryId) return;
+      if (!file) return;
+      if (!entryId) {
+        // The note doesn't exist yet. Hold the file and upload it as soon as
+        // handleNoteSubmit has an entry id — previously it was dropped.
+        this._pendingNoteFile = file;
+        fileName.textContent = `${file.name} — uploads when you save`;
+        return;
+      }
+      this._pendingNoteFile = null;
       await this.uploadJournalAttachment(entryId, file);
     });
   },
@@ -32,11 +40,14 @@ Object.assign(App, {
     const privateEl = document.getElementById('notePrivate');
     const tagsEl = document.getElementById('noteTags');
     const idEl = document.getElementById('noteEntryId');
+    const modalTitle = document.getElementById('noteModalTitle');
     if (titleEl) titleEl.value = entry.title || '';
     if (contentEl) contentEl.value = entry.content || '';
     if (privateEl) privateEl.checked = !!entry.isPrivate;
     if (tagsEl) tagsEl.value = (entry.tags || []).join(', ');
     if (idEl) idEl.value = entry.id;
+    if (modalTitle) modalTitle.textContent = 'Edit note';
+    this._pendingNoteFile = null;
     this.renderNoteAttachments(entry);
     UI.openModal('noteModal');
   },
@@ -59,21 +70,9 @@ Object.assign(App, {
       listEl.innerHTML = '<div class="microcopy">No attachments yet.</div>';
       return;
     }
-    listEl.innerHTML = attachments.map(att => {
-      const name = UI.escapeHtml(att.original_name || att.filename || att.name || 'Attachment');
-      return `
-        <div class="attachment-pill" data-attachment-id="${att.id}">
-          <a href="${att.url}" target="_blank" rel="noopener">${name}</a>
-          <button type="button" class="attachment-remove" data-attachment-id="${att.id}" data-entry-id="${entry.id}" aria-label="Remove attachment">×</button>
-        </div>`;
-    }).join('');
-    listEl.querySelectorAll('.attachment-remove').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation(); e.preventDefault();
-        const attachmentId = btn.dataset.attachmentId;
-        const entryId = btn.dataset.entryId;
-        if (attachmentId && entryId) this.deleteAttachment(attachmentId, entryId);
-      });
+    listEl.innerHTML = UI.renderAttachmentsHtml(attachments, { entryId: entry.id });
+    UI.bindAttachmentRemovals(listEl, (attachmentId, entryId) => {
+      if (attachmentId) this.deleteAttachment(attachmentId, entryId || entry.id);
     });
   },
 
@@ -89,6 +88,7 @@ Object.assign(App, {
       entry.attachments = [];
       this.currentTrip.journal.push(entry);
     } catch (error) {
+      if (error?.code === 'LOGIN_REQUIRED') { UI.suggestLogin('save this note to the cloud'); return null; }
       console.error('Failed to add journal entry:', error);
       UI.showToast('Note not saved to cloud.', 'error');
       return null;
@@ -136,23 +136,27 @@ Object.assign(App, {
   },
 
   async uploadJournalAttachment(entryId, file) {
-    if (!this.currentTrip || !this.ensureEditable('upload attachments')) return;
+    if (!this.currentTrip || !this.ensureEditable('upload attachments')) return false;
+    const tripId = this.currentTrip.id;
     this._activeUploads++;
     try {
-      UI.showToast('Uploading attachment...', 'info');
-      const attachment = await API.attachments.upload(this.currentTrip.id, file, { journal_entry_id: entryId });
+      UI.showToast('Uploading photo…', 'info');
+      const attachment = await API.attachments.upload(tripId, file, { journal_entry_id: entryId });
+      if (this.currentTrip?.id !== tripId) return true; // trip switched mid-upload
       this.addAttachmentToEntry(entryId, attachment, true);
-      UI.showToast('Attachment uploaded', 'success');
+      UI.showToast('Photo added', 'success');
     } catch (err) {
+      if (err?.code === 'LOGIN_REQUIRED') { UI.suggestLogin('upload photos'); return false; }
       console.error('Attachment upload failed', err);
-      UI.showToast('Attachment upload failed', 'error');
-      return;
+      UI.showToast('Photo upload failed', 'error');
+      return false;
     } finally {
       this._activeUploads = Math.max(0, this._activeUploads - 1);
     }
     UI.renderJournal(this.currentTrip.journal);
     const entry = (this.currentTrip.journal || []).find(e => e.id === entryId);
     if (entry) this.renderNoteAttachments(entry);
+    return true;
   },
 
   addAttachmentToEntry(entryId, attachment, prepend = false) {
@@ -192,8 +196,9 @@ Object.assign(App, {
       this.removeAttachmentFromState(attachmentId);
       UI.showToast('Attachment removed', 'success');
     } catch (err) {
+      if (err?.code === 'LOGIN_REQUIRED') { UI.suggestLogin('manage photos'); return; }
       console.error('Failed to delete attachment', err);
-      UI.showToast('Could not delete attachment', 'error');
+      UI.showToast('Could not delete photo', 'error');
       return;
     }
     UI.renderJournal(this.currentTrip.journal || []);
@@ -209,34 +214,55 @@ Object.assign(App, {
     }
   },
 
-  async addPhotoAttachment(file) {
+  async addPhotoAttachment(file, location = null) {
     if (!this.currentTrip || !this.ensureEditable('save photos')) return;
+    const tripId = this.currentTrip.id;
     const title = `Photo ${new Date().toLocaleString()}`;
     let entry;
     try {
-      entry = await API.journal.add(this.currentTrip.id, {
-        title, content: '', is_private: false, tags: []
+      entry = await API.journal.add(tripId, {
+        title, content: '', is_private: false, tags: [],
+        ...(location && Number.isFinite(location.lat) && Number.isFinite(location.lng)
+          ? { location: { lat: location.lat, lng: location.lng } }
+          : {})
       });
       if (!this.currentTrip.journal) this.currentTrip.journal = [];
       entry.attachments = [];
       this.currentTrip.journal.push(entry);
     } catch (err) {
+      if (err?.code === 'LOGIN_REQUIRED') { UI.suggestLogin('upload photos'); return; }
       console.error('Failed to create photo note', err);
       UI.showToast('Could not create note for photo.', 'error');
       return;
     }
     this._activeUploads++;
+    let uploaded = false;
     try {
-      UI.showToast('Uploading photo...', 'info');
-      const attachment = await API.attachments.upload(this.currentTrip.id, file, { journal_entry_id: entry.id });
+      UI.showToast('Uploading photo…', 'info');
+      const attachment = await API.attachments.upload(tripId, file, { journal_entry_id: entry.id });
+      if (this.currentTrip?.id !== tripId) return;
       this.addAttachmentToEntry(entry.id, attachment, true);
+      uploaded = true;
       UI.showToast('Photo saved to trip', 'success');
     } catch (err) {
-      console.error('Photo upload failed', err);
-      UI.showToast('Photo upload failed', 'error');
+      if (err?.code === 'LOGIN_REQUIRED') UI.suggestLogin('upload photos');
+      else console.error('Photo upload failed', err);
+      if (err?.code !== 'LOGIN_REQUIRED') UI.showToast('Photo upload failed', 'error');
     } finally {
       this._activeUploads = Math.max(0, this._activeUploads - 1);
     }
+
+    if (!uploaded) {
+      // Don't leave an empty "Photo <date>" note behind with nothing in it.
+      try { await API.journal.delete(tripId, entry.id); } catch (_) { /* best effort */ }
+      if (this.currentTrip?.id === tripId) {
+        Trip.removeJournalEntry(this.currentTrip, entry.id);
+        UI.renderJournal(this.currentTrip.journal);
+      }
+      return;
+    }
+
+    if (this.currentTrip?.id !== tripId) return;
     UI.renderJournal(this.currentTrip.journal);
     this.renderNoteAttachments(entry);
   },
@@ -284,3 +310,16 @@ Object.assign(App, {
     }
   }
 });
+
+/**
+ * Fallback for the login suggestion hook used by App.ensureEditable and the
+ * import flow. Defined only if the core module hasn't provided one, so the
+ * canonical implementation always wins.
+ */
+if (typeof App !== 'undefined' && typeof App._suggestLogin !== 'function') {
+  App._suggestLogin = function (actionLabel) {
+    if (typeof UI !== 'undefined' && typeof UI.suggestLogin === 'function') {
+      UI.suggestLogin(actionLabel || 'sync your trips');
+    }
+  };
+}

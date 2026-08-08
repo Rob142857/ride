@@ -43,21 +43,24 @@ fs.writeFileSync(WORKER_PATH, src, 'utf8');
 
 console.log(`\n  BUILD_ID: ${oldId || '(none)'} → ${newId}\n`);
 
-// Update CSS/JS cache-busting query params in public/index.html
+// Update CSS/JS cache-busting query params in the public HTML pages
 function bustAssetUrls(html, buildId) {
-  // Add/replace ?v=BUILD_ID on local css/*.css and js/*.js assets
+  // Add/replace ?v=BUILD_ID on local css/js/vendor assets
   return html.replace(
-    /((?:href|src)=["'])(\/?(?:css|js)\/[^"']+\.(?:css|js))(?:\?[^"']*)?(["'])/gi,
+    /((?:href|src)=["'])(\/?(?:css|js|vendor)\/[^"']+\.(?:css|js))(?:\?[^"']*)?(["'])/gi,
     `$1$2?v=${buildId}$3`
   );
 }
 
-if (fs.existsSync(INDEX_PATH)) {
-  let html = fs.readFileSync(INDEX_PATH, 'utf8');
+const HTML_PAGES = ['index.html', 'trip.html', 'about.html', 'admin.html', 'deletion.html'];
+for (const page of HTML_PAGES) {
+  const pagePath = path.resolve(__dirname, '..', 'public', page);
+  if (!fs.existsSync(pagePath)) continue;
+  let html = fs.readFileSync(pagePath, 'utf8');
   html = bustAssetUrls(html, newId);
-  fs.writeFileSync(INDEX_PATH, html, 'utf8');
-  const count = (html.match(/(css|js)\/[^"']+\.(css|js)\?v=/g) || []).length;
-  console.log(`  Updated cache-bust in public/index.html: ${count} assets tagged with v=${newId}\n`);
+  fs.writeFileSync(pagePath, html, 'utf8');
+  const count = (html.match(/(css|js|vendor)\/[^"']+\.(css|js)\?v=/g) || []).length;
+  console.log(`  Cache-bust public/${page}: ${count} assets tagged v=${newId}`);
 }
 
 // Run wrangler deploy (vanilla JS served from public/ — no build step)

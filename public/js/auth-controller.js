@@ -1,19 +1,30 @@
 /**
  * Auth Controller — login/logout, session management, auth UI
- * Uses a state machine: UNKNOWN → CHECKING → AUTHENTICATED | UNAUTHENTICATED | ERROR
- * All UI side effects are driven by _setAuthState transitions.
+ *
+ * Guest-first: signing in is never required to use the app. The state machine
+ * is UNKNOWN → CHECKING → AUTHENTICATED | UNAUTHENTICATED, where
+ * UNAUTHENTICATED simply means guest mode (local trips through the API shim).
+ *
+ * Connectivity is deliberately NOT an auth signal. A network failure, timeout
+ * or 5xx never changes auth state, never clears the trip and never covers the
+ * map — it only raises a quiet degraded notice. Solely a confirmed 401 on a
+ * live cloud session shows the sign-in prompt, and even then the map and the
+ * loaded trip stay visible underneath it.
+ *
  * Extends App object (loaded after app-core.js)
  */
 Object.assign(App, {
-  /** @type {'UNKNOWN'|'CHECKING'|'AUTHENTICATED'|'UNAUTHENTICATED'|'ERROR'} */
+  /** @type {'UNKNOWN'|'CHECKING'|'AUTHENTICATED'|'UNAUTHENTICATED'} */
   _authState: 'UNKNOWN',
+  /** Timestamp of the last degraded-connectivity notice (throttles the toast) */
+  _degradedNoticeAt: 0,
 
   /**
    * Central state transition — drives all auth-related UI.
-   * @param {'CHECKING'|'AUTHENTICATED'|'UNAUTHENTICATED'|'ERROR'} state
-   * @param {string} [reason] Human-readable reason for the transition
+   * @param {'CHECKING'|'AUTHENTICATED'|'UNAUTHENTICATED'} state
+   * @param {{expired?: boolean}} [options] expired: a cloud session lapsed (401)
    */
-  _setAuthState(state, reason = '') {
+  _setAuthState(state, options = {}) {
     const prev = this._authState;
     if (prev === state && state !== 'CHECKING') return; // no-op for same state (allow re-CHECKING)
     this._authState = state;
@@ -31,41 +42,44 @@ Object.assign(App, {
 
       case 'UNAUTHENTICATED':
         this.currentUser = null;
-        this.useCloud = false;
-        localStorage.removeItem('ride_last_user_id');
+        this.useCloud = false; // API.* now reads/writes localStorage
+        try { localStorage.removeItem('ride_last_user_id'); } catch (_) {}
         this.updateUserUI();
-        if (prev === 'AUTHENTICATED') {
-          // Was logged in, now logged out — clear trip state
-          this._clearTripUI();
-        }
-        if (reason && prev !== 'CHECKING') UI.showToast(reason, prev === 'AUTHENTICATED' ? 'error' : 'info');
-        if (!this.isSharedView && !UI.isLandingGateVisible()) {
+        if (options.expired && !this.isSharedView) {
+          // Trip + map stay on screen; the prompt just offers to resume syncing.
           UI.closeModal('loginModal');
-          UI.showAuthGate(reason || 'Sign in to save & share');
-        }
-        break;
-
-      case 'ERROR':
-        this.currentUser = null;
-        this.useCloud = false;
-        localStorage.removeItem('ride_last_user_id');
-        this.updateUserUI();
-        if (prev === 'AUTHENTICATED') this._clearTripUI();
-        if (reason) UI.showToast(reason, 'error');
-        if (!this.isSharedView && !UI.isLandingGateVisible()) {
-          UI.showAuthGate(reason || 'Auth error');
+          UI.showAuthGate('Session expired — sign in to keep syncing');
+        } else {
+          UI.hideAuthGate();
         }
         break;
     }
   },
 
+  /**
+   * Resolve the session silently. Returns true when a cloud session is live.
+   * Skipped entirely mid-ride and while offline, and a transport failure never
+   * downgrades the session — we keep whatever state we already had.
+   */
   async checkAuth() {
+    if (this.isRiding) return this._authState === 'AUTHENTICATED';
+    if (!navigator.onLine) {
+      // Nothing to ask. On a cold offline start settle into guest mode so
+      // nothing waits on an answer that will never arrive; a session that was
+      // already live stays live.
+      if (this._authState === 'UNKNOWN') this._setAuthState('UNAUTHENTICATED');
+      return this._authState === 'AUTHENTICATED';
+    }
+
+    const prev = this._authState;
     this._setAuthState('CHECKING');
     try {
+      // getUser() resolves null on a confirmed 401 and throws on anything else.
       const user = await API.auth.getUser();
       if (user) {
         const lastUserId = localStorage.getItem('ride_last_user_id');
         if (lastUserId && lastUserId !== user.id) {
+          // Different account on this device — drop the previous cloud ordering.
           Storage.clearTrips();
           Storage.setTripOrder([]);
         }
@@ -75,32 +89,40 @@ Object.assign(App, {
         this._setAuthState('AUTHENTICATED');
         return true;
       }
-      this._setAuthState('UNAUTHENTICATED', 'Signed out');
+      this._setAuthState('UNAUTHENTICATED', { expired: prev === 'AUTHENTICATED' });
       return false;
     } catch (error) {
-      const reason = error.status === 401
-        ? 'Session expired. Please sign in again.'
-        : 'Auth check failed. Working offline until re-auth.';
-      this._setAuthState(error.status === 401 ? 'UNAUTHENTICATED' : 'ERROR', reason);
-      return false;
+      this._authState = prev; // transient — not an auth answer
+      this._noteDegraded(error);
+      return prev === 'AUTHENTICATED';
     }
+  },
+
+  /**
+   * Transient transport trouble (offline, timeout, 5xx). Non-blocking by
+   * design: at most one toast a minute, no state change, no trip teardown,
+   * and complete silence while a ride is in progress.
+   */
+  _noteDegraded(detail) {
+    if (this.isRiding || this.isSharedView) return;
+    const now = Date.now();
+    if (now - (this._degradedNoticeAt || 0) < 60000) return;
+    this._degradedNoticeAt = now;
+    const isServer = detail?.kind === 'server' || Number(detail?.status) >= 500;
+    let message;
+    if (isServer) message = 'Server unreachable — recent changes may not be saved.';
+    else if (this.useCloud && this.currentUser) message = 'Connection lost — recent changes may not be saved.';
+    else message = 'Connection lost — your trips are safe on this device.';
+    UI.showToast(message, 'info');
   },
 
   handleAuthExpired() {
     if (this._authState !== 'AUTHENTICATED') return;
-    this._setAuthState('UNAUTHENTICATED', 'Session expired. Please sign in again.');
+    this._setAuthState('UNAUTHENTICATED', { expired: true });
   },
 
   handleConnectionLost(detail) {
-    if (this._authState !== 'AUTHENTICATED') {
-      if (!this.isSharedView) UI.showAuthGate('Sign in to save & share');
-      return;
-    }
-    const kind = detail?.kind;
-    const reason = kind === 'network'
-      ? 'Signed out — connection lost.'
-      : 'Signed out — server unavailable.';
-    this._setAuthState('ERROR', reason);
+    this._noteDegraded(detail);
   },
 
   handleAuthErrorFromUrl(code, description) {
@@ -126,28 +148,12 @@ Object.assign(App, {
     });
   },
 
-  showLoginPromptIfNeeded() {
-    if (!this.currentUser && !this.loginPromptShown) {
-      const landingSeen = (() => {
-        try { return localStorage.getItem('ride_landing_seen') === '1'; } catch (_) { return true; }
-      })();
-      if (!landingSeen) {
-        UI.showLandingGate();
-      } else {
-        UI.showAuthGate('Sign in to save & share');
-      }
-      this.loginPromptShown = true;
-    }
-  },
-
   bindUserButton() {
     const userBtn = document.getElementById('userBtn');
+    if (!userBtn) return;
     userBtn.addEventListener('click', () => {
-      if (this.currentUser) {
-        this.showUserDropdown();
-      } else {
-        UI.showAuthGate('Sign in to save & share');
-      }
+      if (this.currentUser) this.showUserDropdown();
+      else this._suggestLogin('sync your trips across devices');
     });
   },
 
@@ -216,25 +222,34 @@ Object.assign(App, {
 
   async logout() {
     try { await API.auth.logout(); } catch (e) {}
+    // Only the cloud ordering cache — guest trips (ride_local_trips) survive.
     Storage.clearTrips();
     const dropdown = document.querySelector('.user-dropdown');
     if (dropdown) dropdown.remove();
-    this._setAuthState('UNAUTHENTICATED', 'Signed out');
-    UI.showToast('Signed out', 'success');
+    this._setAuthState('UNAUTHENTICATED');
+    this._failedMigrationIds = null;
+    this._clearTripUI();
+    await this.loadInitialTrip();
+    this.refreshTripsList();
+    UI.showToast('Signed out — you can keep planning as a guest', 'success');
   },
 
+  /**
+   * Re-check the session when the tab comes back or the network returns.
+   * Never while riding (a mid-ride trip reload freezes the HUD) and never
+   * while offline (an offline check would only produce a false negative).
+   */
   bindSessionRefresh() {
     document.addEventListener('visibilitychange', async () => {
-      if (document.hidden) return;
-      const hadUser = !!this.currentUser;
-      const authed = await this.checkAuth();
-      if (authed || hadUser) {
-        await this.refreshData('visibility');
-      }
+      if (document.hidden || this.isRiding || !navigator.onLine) return;
+      if (await this.checkAuth()) await this.refreshData('visibility');
     });
     window.addEventListener('online', async () => {
-      const authed = await this.checkAuth();
-      if (authed) await this.refreshData('online');
+      if (this.isRiding) return;
+      if (!await this.checkAuth()) return;
+      // Anything planned while offline (guest store) belongs in the account.
+      await this.migrateLocalTripsToCloud();
+      await this.refreshData('online');
     });
   }
 });

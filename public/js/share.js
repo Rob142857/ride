@@ -78,8 +78,9 @@ const Share = {
     App.currentTrip.settings = { ...(App.currentTrip.settings || {}), share };
     App.currentTrip.share = share;
 
-    if (!App.useCloud || !App.currentUser) return;
-
+    // API.trips.update writes to localStorage in guest mode (same shape as
+    // the cloud call), so these toggles persist for local trips too — only
+    // the share LINK itself needs the cloud (see publishCurrentTrip).
     try {
       const updatedTrip = await API.trips.update(App.currentTrip.id, { settings: { share } });
       App.currentTrip = { ...App.currentTrip, ...updatedTrip };
@@ -96,9 +97,10 @@ const Share = {
   async publishCurrentTrip(publicToggle) {
     if (!App.currentTrip) return;
     if (!App.useCloud || !App.currentUser) {
+      // Share links live in the cloud — this is the moment to suggest login.
       if (publicToggle) publicToggle.checked = false;
-      UI.showToast('Sign in to publish trips', 'error');
       this.updateShareLinkUI();
+      UI.suggestLogin('create a share link');
       return;
     }
 
@@ -117,12 +119,18 @@ const Share = {
       this.updateShareLinkUI();
       UI.showToast('Trip is now public', 'success');
     } catch (err) {
-      console.error('Share link generation failed', err);
       if (publicToggle) publicToggle.checked = false;
       App.currentTrip.isPublic = false;
       App.currentTrip.is_public = 0;
       this.updateShareLinkUI();
-      UI.showToast('Failed to generate share link. Check you are online and signed in.', 'error');
+      if (err?.code === 'LOGIN_REQUIRED') {
+        this.setShareStatus('Sign in to publish this trip.', 'muted');
+        UI.suggestLogin('create a share link');
+        return;
+      }
+      console.error('Share link generation failed', err);
+      this.setShareStatus('Could not generate a link.', 'error');
+      UI.showToast('Failed to generate share link. Check you are online.', 'error');
     }
   },
 
@@ -196,9 +204,10 @@ const Share = {
       this.nativeShare();
     };
 
-    // Export buttons
+    // Export buttons — inside the share modal, JSON means "the shared
+    // version". The side-menu export is the full backup.
     document.getElementById('exportJsonBtn').onclick = () => {
-      this.exportJSON();
+      this.exportSharedJSON();
     };
 
     document.getElementById('exportGpxBtn').onclick = () => {
