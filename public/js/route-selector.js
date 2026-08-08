@@ -89,17 +89,22 @@
     windyBtn.dataset.mode = 'windy';
     windyBtn.setAttribute('aria-pressed', 'false');
 
-    modeToggle.appendChild(fastestBtn);
-    modeToggle.appendChild(windyBtn);
-
     const avoidBtn = el('button', 'route-avoid-motorways', 'Avoid highways and arterials');
     avoidBtn.type = 'button';
     avoidBtn.setAttribute('role', 'switch');
     avoidBtn.setAttribute('aria-checked', 'false');
     avoidBtn.style.pointerEvents = 'auto';
 
+    // All three controls share the one glass bar. The avoid switch used to be
+    // appended to `root` instead, which is a transparent pointer-events:none
+    // overlay — so it rendered as bare text directly on the map (unreadable
+    // over light terrain) and claimed a whole flex row of its own, leaving the
+    // close button stranded on a fourth row.
+    modeToggle.appendChild(fastestBtn);
+    modeToggle.appendChild(windyBtn);
+    modeToggle.appendChild(avoidBtn);
+
     root.appendChild(modeToggle);
-    root.appendChild(avoidBtn);
     root.appendChild(list);
     root.appendChild(toggle);
     container.appendChild(root);

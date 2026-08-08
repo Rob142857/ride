@@ -766,7 +766,14 @@ const UI = {
     const titleEl = document.getElementById('tripTitle');
     const labelEl = document.getElementById('tripLabel');
     if (titleEl) titleEl.textContent = name || 'New Trip';
-    if (labelEl) labelEl.textContent = name ? 'Trip loaded' : 'Ride';
+    // The eyebrow only earns its line when there's no trip to name. "Trip
+    // loaded" sitting above the trip's own name said nothing, and on a phone
+    // it wrapped to two lines and collided with the stats row — the stats now
+    // own that second line instead (see .trip-stats in css/app.css).
+    if (labelEl) {
+      labelEl.textContent = 'Ride';
+      labelEl.classList.toggle('hidden', !!name);
+    }
   },
 
   updateTripStats(trip) {

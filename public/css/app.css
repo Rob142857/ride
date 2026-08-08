@@ -631,6 +631,11 @@ body.doc-page {
   text-transform: uppercase;
   color: var(--accent-hover);
   line-height: 1.1;
+  /* Never wrap: uppercase + wide tracking makes this the widest thing in the
+     column, and a second line pushed the title out of the fixed-height bar. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #tripTitle {
@@ -643,17 +648,35 @@ body.doc-page {
   color: rgba(255, 255, 255, 0.95);
 }
 
+/* Second line of the title column, under the trip name. Previously a sibling
+   of .topbar-trip-info with flex-shrink:0, so on a phone it refused to yield
+   width and the (then-wrapping) label painted straight over it. Stacked, it
+   gets the column's full width and competes with nothing; if the pills still
+   overrun — three stats plus a long trip name on a narrow phone — they scroll
+   horizontally rather than wrap into a third line the 56px bar can't show. */
 .trip-stats {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
-  flex-shrink: 0;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  margin-top: 2px;
   font-size: 0.8rem;
-  margin-left: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.trip-stats::-webkit-scrollbar {
+  display: none;
+}
+
+.trip-stats:empty {
+  display: none;
 }
 
 .trip-stat-pill {
+  flex: 0 0 auto;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.06);
@@ -662,6 +685,7 @@ body.doc-page {
   font-size: var(--text-xs);
   font-weight: 500;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 /* ── Touch targets ────────────────────────────────────────────────────
@@ -3564,10 +3588,12 @@ body.doc-page {
     height: 19px;
   }
 
+  /* Reclaimed for the title column: on a phone the bar has ~180px of middle
+     space to split between the trip name and its stats, and the logo is pure
+     decoration there — the trip name is the identity, and the app icon is
+     already on the home screen. */
   .topbar-logo-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: var(--radius-sm);
+    display: none;
   }
 
   .trip-label {

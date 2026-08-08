@@ -314,10 +314,19 @@
    — but stays a self-contained compact glass bar if rendered elsewhere, so
    it never looks broken either way.
    -------------------------------------------------------------------------- */
+/* Holds the Fastest/Windy segmented control *and* the avoid switch. It wraps
+   rather than scrolling: the switch's label is long enough that a phone can't
+   fit all three on one row, and horizontally scrolling a settings control hides
+   it off-screen — wrapping to a second row inside the same glass keeps it
+   visible and keeps the whole thing reading as one panel. */
 .route-mode-toggle {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  /* Row gap is --space-2, not --space-1: the avoid switch keeps a 44px tall
+     invisible hit area (::after) around a 30px chip, so it reaches 7px above
+     itself — a 4px row gap would let it steal taps from the mode button
+     sitting directly above once the bar wraps. */
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
   max-width: 100%;
@@ -327,13 +336,7 @@
   box-shadow: var(--shadow-2);
   backdrop-filter: blur(14px) saturate(1.35);
   -webkit-backdrop-filter: blur(14px) saturate(1.35);
-  overflow-x: auto;
-  scrollbar-width: none;
   pointer-events: auto;
-}
-
-.route-mode-toggle::-webkit-scrollbar {
-  display: none;
 }
 
 /* Nested inside the pill bar: park it on its own row above the alternatives
@@ -427,19 +430,26 @@
   color: var(--text-on-gold);
 }
 
-/* Avoid-motorways — small toggle chip, role="switch" pattern; aria-checked
-   is reflected by the emitting JS toggling `is-active`. */
+/* Avoid highways and arterials — role="switch" chip, sharing the glass bar with
+   the Fastest/Windy control. aria-checked is reflected by the emitting JS
+   toggling `is-active`.
+
+   It sits beside two mode buttons, so it must not read as a third mode: the
+   ::before box below gives it checkbox semantics at a glance (empty = off,
+   accent-filled = on), which a plain text chip could not. Background is no
+   longer transparent — that only worked when this chip was assumed to be on a
+   solid surface, and it was in fact floating over the map. */
 .route-avoid-motorways {
   position: relative;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   min-height: 30px;
-  padding: 0 var(--space-2);
+  padding: 0 var(--space-3) 0 var(--space-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-secondary);
   font-size: var(--text-xs);
   font-weight: 500;
@@ -448,6 +458,27 @@
   pointer-events: auto;
   -webkit-tap-highlight-color: transparent;
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+/* Checkbox indicator. Fill-only (no tick glyph) on purpose: a tick would have
+   to be a data-URI SVG with a baked-in colour, and every colour here comes
+   from tokens.css. */
+.route-avoid-motorways::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border-elegant);
+  background: transparent;
+  transition: background var(--transition-fast), border-color var(--transition-fast),
+              box-shadow var(--transition-fast);
+}
+
+.route-avoid-motorways.is-active::before {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* Vertical-only hit-area expansion to 44px — same technique as
