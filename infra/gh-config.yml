@@ -1,0 +1,19 @@
+# GraphHopper server config — the "windy route" engine, self-hosted alongside
+# OSRM on mjw-vm. See docs/PLAN-scenic-routing-and-legs.md section A3 for the
+# curvature-penalty custom_model sent per-request by api/gh.js.
+graphhopper:
+  datareader.file: /graphhopper/data/data.osm.pbf
+  graph.location: /graphhopper/data/graph-cache
+  graph.encoded_values: car_access, car_average_speed, road_class, curvature
+  profiles:
+    - name: car
+  # Landmarks (not full CH) so an arbitrary per-request custom_model stays fast.
+  profiles_lm:
+    - profile: car
+  routing.max_visited_nodes: 5000000
+
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 0.0.0.0

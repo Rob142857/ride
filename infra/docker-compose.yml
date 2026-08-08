@@ -3,6 +3,12 @@ services:
     image: osrm/osrm-backend:latest
     container_name: osrm
     restart: unless-stopped
+    # `deploy.resources.limits` is Swarm-only and is silently ignored under
+    # plain `docker compose up` — it was NEVER actually applied, which let
+    # this container grow unbounded and fight other host processes for
+    # memory (see FINDINGS.md, mjw-vm OOM incident, 2026-08-08). `mem_limit`
+    # is the key that's actually enforced by the classic Compose engine.
+    mem_limit: 3g
     ports:
       - "127.0.0.1:5000:5000"
     volumes:
@@ -13,7 +19,26 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 6G
+
+  # GraphHopper — the "windy route" engine. OSRM optimizes for speed only and
+  # has no concept of curvature; GraphHopper's custom_model lets us penalize
+  # straight/fast roads at request time so the scenic route actually wins.
+  # See docs/PLAN-scenic-routing-and-legs.md section A3.
+  graphhopper:
+    image: israelhikingmap/graphhopper:latest
+    container_name: graphhopper
+    restart: unless-stopped
+    mem_limit: 3.5g
+    ports:
+      - "127.0.0.1:8989:8989"
+    volumes:
+      - ./gh-data:/graphhopper/data
+      - ./gh-config.yml:/graphhopper/config.yml:ro
+    environment:
+      - JAVA_OPTS=-Xmx3g -Xms1g
+    command: -Ddw.graphhopper.datareader.file=/graphhopper/data/data.osm.pbf --config /graphhopper/config.yml
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8989/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

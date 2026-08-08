@@ -37,3 +37,7 @@ bucket_name = "ride-attachments"
 ENVIRONMENT = "production"
 BASE_URL = "https://ride.incitat.io"
 ADMIN_EMAILS = "robert.evans@rmesolutions.com.au,admin@incitat.io"
+# GraphHopper "windy route" engine — self-hosted alongside OSRM, exposed
+# through the same Cloudflare Tunnel. See docs/PLAN-scenic-routing-and-legs.md
+# section A4. Falls back to a hardcoded default in api/gh.js if unset.
+GH_SERVICE_URL = "https://maps.incitat.io/gh"
