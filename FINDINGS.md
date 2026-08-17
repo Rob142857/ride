@@ -5,10 +5,16 @@ Running log from executing `docs/PLAN-scenic-routing-and-legs.md`. Format:
 
 ## Gate checks (resolved before build started)
 
-- **Waypoint `type` CHECK constraint (§D1 gate item) — CLEARED.** Probed prod D1 directly
+- **Waypoint `type` CHECK constraint (§D1 gate item) — ~~CLEARED~~ THIS WAS WRONG, see
+  2026-08-17 below.** The original note read: "Probed prod D1 directly
   (`wrangler d1 execute ride-db --remote`): `waypoints.type` is `TEXT DEFAULT 'stop'` with
-  **no CHECK constraint**. `via` and `leg-break` write freely. No migration needed — the
-  schema_v2.sql CHECK referenced in earlier review notes is not what's actually live.
+  **no CHECK constraint**. `via` and `leg-break` write freely. No migration needed." The
+  column indeed has no inline CHECK — but the probe only looked at the column definition and
+  missed the **BEFORE INSERT/UPDATE triggers** `2026-06-28_hardening.sql` installs, which
+  enforce the same thing by `RAISE(ABORT)`. Those triggers WERE live in prod and did NOT
+  allow `leg-break`. Cost: every cloud-mode `leg-break`/`lodging`/`custom` waypoint write
+  500'd from the day legs shipped until 2026-08-17. Lesson: probing a constraint means
+  checking `sqlite_master` for triggers and views too, not just the `CREATE TABLE` text.
 - **LRM `requestParameters` support (§B3) — CLEARED.** Confirmed in the vendored
   `leaflet-routing-machine.min.js`: `buildRouteUrl` appends `this.options.requestParameters`
   via `L.Util.getParamString`. `requestParameters: {exclude: 'motorway'}` will work as

@@ -2,10 +2,17 @@
 -- Its waypoint-type triggers (section 3 below) enforce an enum that PREDATES
 -- the current app: it is missing 'lodging', 'custom', and 'leg-break' — all
 -- three of which api/waypoints.js allowlists and the live app writes today.
--- Running it would make every lodging/custom/leg-break waypoint write 500.
--- FINDINGS.md records that this file is NOT applied to prod. If you are doing
--- a "run all pending migrations" pass: SKIP this file, or first update its
--- trigger enums to match the WAYPOINT_TYPES set in api/waypoints.js.
+--
+-- THIS ALREADY HAPPENED. These triggers were applied to prod, and from then
+-- until 2026-08-17 every cloud-mode waypoint write of those three types
+-- returned HTTP 500 ('invalid waypoint type'). Superseded by
+-- api/migrations/2026-08-17_fix_waypoint_type_trigger.sql, which drops and
+-- recreates the two type triggers with the full union of valid types — that
+-- file is the current state of prod, NOT this one.
+--
+-- If you are doing a "run all pending migrations" pass: SKIP this file, or run
+-- the 2026-08-17 fix immediately after it. Any change to WAYPOINT_TYPES in
+-- api/waypoints.js needs a matching trigger update.
 --
 -- 2026-06-28: Database hardening — indexes, NOT NULL defaults, CHECK constraints
 -- NOTE: SQLite does not support ALTER COLUMN to add CHECK/NOT NULL after creation.
