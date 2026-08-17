@@ -21,7 +21,7 @@ import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optio
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-08-08T05';
+const BUILD_ID = '2026-08-17T01';
 
 const router = new Router();
 
