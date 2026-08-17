@@ -25,6 +25,13 @@ const MapManager = {
     via: '#8b97b8'                    /* --wp-via       shaping points */
   },
 
+  /** Fallback literals for the fuel-range warning bands — mirrors tokens.css (see ROUTE_COLORS above). */
+  FUEL_COLORS: {
+    warn: '#fb923c',     /* --fuel-warn */
+    low: '#ea580c',      /* --fuel-low */
+    critical: '#ef4444'  /* --fuel-critical → --danger */
+  },
+
   waypointMarkers: {},
   isAddingWaypoint: false,
   pendingLocation: null,
@@ -50,6 +57,13 @@ const MapManager = {
   _lastRoutedWaypoints: [],
   _restoredTripKey: null,     // trip whose saved route we already restored
   _routeErrorAt: 0,
+
+  /* ── Fuel overlay state (public/js/fuel.js supplies the math) ─────── */
+  _fuelLayers: [],            // app-owned polylines + fill circleMarkers, mirrors _routeLayers
+  _fuelChipEl: null,          // the floating "runs dry" warning chip, if shown
+  _fuelChipSignature: null,   // identifies the dry point currently being warned about
+  _fuelChipDismissedFor: null, // signature the rider closed — suppressed until it changes
+  _fuelChipShownFor: null,    // signature of the chip currently in the DOM (rebuild when it moves)
 
   // Extracted UI components
   routeSelector: null,
@@ -125,7 +139,17 @@ const MapManager = {
         if (marker?._wpType) marker.setIcon(this.createIcon(marker._wpType));
       });
       if (this._routeLayers.length) this._restyleRoutes();
+      // Fuel overlay has no in-place restyle (§ refreshFuelOverlay doc) — a
+      // full recompute is cheap and only actually redraws when there is
+      // something to draw, so only bother when it already drew something.
+      if (this._fuelLayers.length || this._fuelChipEl) this.refreshFuelOverlay();
     });
+
+    // Fuel planning is entirely event-driven from here — settings/markup and
+    // fuel.js own the triggers, this module only reacts (contract §5/§6).
+    window.addEventListener('ride:routeComputed', () => this.refreshFuelOverlay());
+    window.addEventListener('ride:fuelStopsChanged', () => this.refreshFuelOverlay());
+    window.addEventListener('ride:fuelSettingsChanged', () => this.refreshFuelOverlay());
 
     return this;
   },
@@ -553,6 +577,14 @@ const MapManager = {
 
       this._routeLayers.push(entry);
     });
+
+    // Every path that puts a route on screen funnels through here — a fresh
+    // compute (_applyRoutes), picking an alternative (_selectRoute), and the
+    // restore path used when a trip is simply opened (_restoreStoredRoute /
+    // drawRoute / _adoptStoredRoutes). ride:routeComputed only fires from
+    // _persistSelected, so without this the fuel overlay would never appear
+    // on trip open — only after an edit forced a reroute.
+    this.refreshFuelOverlay();
   },
 
   _routeTooltip(route) {
@@ -614,6 +646,401 @@ const MapManager = {
       this.routeEditor.update(this._lastRoutedWaypoints || [], selected.coordinates, selected.waypointIndices);
     }
     this._persistSelected();
+  },
+
+  /* ══════════════════════════════════════════════════════════════════
+     Fuel overlay (planning view) — pure rendering; all fuel math lives in
+     window.FuelPlanner (public/js/fuel.js). This module never computes a
+     range or a fill point itself, only draws what FuelPlanner returns.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /** Read the fuel settings out of the shared settings blob (contract §1). */
+  _fuelSettings() {
+    const raw = (window.Storage?.load && window.Storage.load(window.Storage.KEYS.SETTINGS, {})) || {};
+    return {
+      enabled: !!raw.fuelPlanningEnabled,
+      tankRangeKm: Number(raw.fuelTankRangeKm) || 0,
+      warnMode: raw.fuelWarnMode || 'percent30'
+    };
+  },
+
+  /**
+   * The route currently on screen — same source _persistSelected reads from.
+   * While riding, currentTrip.route wins: an in-ride reroute replaces it
+   * (ride-controller.js applyRideReroute) without touching the cached
+   * planning alternatives, and the startAtIdx the ride HUD hands us indexes
+   * that array — reading a stale alternative here would misplace the rider.
+   */
+  _activeRouteCoordinates() {
+    if (window.App?.isRiding) {
+      const live = this._normalizeCoords(window.App?.currentTrip?.route?.coordinates);
+      if (live.length >= 2) return live;
+    }
+    const selected = (this._cachedAlternatives || [])[this._selectedRouteIndex];
+    if (selected?.coordinates?.length) return selected.coordinates;
+    return this._normalizeCoords(window.App?.currentTrip?.route?.coordinates);
+  },
+
+  /** Dedicated pane so fuel segments paint above the base route (400) but
+   *  below the route-editor's drag handles / via markers (450, route-editor.js:59). */
+  _ensureFuelPane() {
+    if (!this.map) return undefined;
+    if (!this.map.getPane('fuelOverlayPane')) {
+      const pane = this.map.createPane('fuelOverlayPane');
+      if (pane) pane.style.zIndex = 420;
+    }
+    return 'fuelOverlayPane';
+  },
+
+  _fuelLevelColor(level) {
+    if (level === 'warn') return this._cssVar('--fuel-warn', this.FUEL_COLORS.warn);
+    if (level === 'low') return this._cssVar('--fuel-low', this.FUEL_COLORS.low);
+    if (level === 'critical' || level === 'empty') {
+      return this._cssVar('--fuel-critical', this._cssVar('--danger', this.FUEL_COLORS.critical));
+    }
+    return null; // 'ok' — no overlay drawn for this stretch
+  },
+
+  /** Slightly under the route line's own weight so its gold edges still show either side. */
+  _fuelWeight() {
+    return Math.max(2, this._routeWeight() - 2);
+  },
+
+  _clearFuelLayers() {
+    (this._fuelLayers || []).forEach((layer) => {
+      try { this.map.removeLayer(layer); } catch (_) { /* already detached */ }
+    });
+    this._fuelLayers = [];
+  },
+
+  /** One polyline per non-'ok' segment, drawn over the base route. */
+  _drawFuelSegments(coordinates, segments) {
+    if (!Array.isArray(segments) || !segments.length) return;
+    const pane = this._ensureFuelPane();
+    const weight = this._fuelWeight();
+
+    segments.forEach((seg) => {
+      const color = seg && this._fuelLevelColor(seg.level);
+      if (!color) return;
+      const from = Math.max(0, Number(seg.from) || 0);
+      const to = Math.min(coordinates.length - 1, Number(seg.to) || 0);
+      if (to < from) return;
+      // FuelPlanner returns a STRICT partition (adjacent segments share no
+      // index) so 'empty' starts exactly at dryPointIdx. Drawn as-is that
+      // leaves a one-edge gap at every boundary, so extend each slice by the
+      // next coordinate — the overlap is one edge, painted by both colours,
+      // which is what makes the bands look continuous. This is also what lets
+      // a single-coordinate band (from === to) draw at all.
+      const latlngs = coordinates.slice(from, Math.min(to + 2, coordinates.length)).map((c) => [c.lat, c.lng]);
+      if (latlngs.length < 2) return;
+
+      const layer = L.polyline(latlngs, {
+        pane,
+        color,
+        weight,
+        opacity: 0.92,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: false,
+        // The empty stretch is dashed on top of the (also critical-colored)
+        // solid line so it reads as "gone", not just "still critical".
+        dashArray: seg.level === 'empty' ? '2 9' : null,
+        className: `fuel-line fuel-line--${seg.level}`
+      }).addTo(this.map);
+      this._fuelLayers.push(layer);
+    });
+  },
+
+  /**
+   * One subtle marker per refill point — but only where the existing
+   * waypoint pin doesn't already say "fuel". addWaypointMarker() (§ Markers
+   * below) gives every real stop a pin regardless of fuelStop; only
+   * type 'fuel' pins render the ⛽ glyph via createIcon()/waypointIcons.fuel.
+   * A fuelStop:true waypoint of some other type (e.g. a lodging stop that
+   * happens to also have a pump) shows a pin with no fuel cue at all, so
+   * that's the case this circleMarker exists for — reusing --wp-fuel (the
+   * same color createIcon() already uses for fuel pins) rather than one of
+   * the new --fuel-* range-warning tokens, since this marks "you can refill
+   * here", not a warning band.
+   */
+  _drawFuelFills(coordinates, waypoints, fills) {
+    if (!Array.isArray(fills) || !fills.length) return;
+    const pane = this._ensureFuelPane();
+    const color = this._cssVar('--wp-fuel', this.waypointIcons.fuel.color);
+    const ring = this._cssVar('--surface-0', '#0b0e1f');
+    const SNAP_TOLERANCE_M = 250; // fills[].coordIdx is the nearest route vertex to the waypoint, not the waypoint itself
+
+    fills.forEach((fill) => {
+      const coord = coordinates[fill?.coordIdx];
+      if (!coord) return;
+      const alreadyMarked = (waypoints || []).some((wp) => (
+        wp?.type === 'fuel' &&
+        Number.isFinite(Number(wp.lat)) && Number.isFinite(Number(wp.lng)) &&
+        RideUtils.haversine(wp, coord) <= SNAP_TOLERANCE_M
+      ));
+      if (alreadyMarked) return;
+
+      const marker = L.circleMarker([coord.lat, coord.lng], {
+        pane,
+        radius: 6,
+        weight: 2,
+        color: ring,
+        fillColor: color,
+        fillOpacity: 0.95,
+        opacity: 1,
+        interactive: false,
+        className: 'fuel-fill-marker'
+      }).addTo(this.map);
+      this._fuelLayers.push(marker);
+    });
+  },
+
+  /**
+   * Where a NEW scenic-suggest chip (js/scenic-suggest.js) would currently
+   * sit, plus clearance for its own height — so the fuel chip can never end
+   * up under it, whichever chip appears first. Prefers measuring the real
+   * DOM over recomputing route-components.css's pill-bar arithmetic: if a
+   * scenic chip is already on screen, its rendered bottom edge already
+   * reflects that CSS (route-components.css:561-568), so just stack under it.
+   */
+  _fuelChipTopOffset() {
+    const GAP = 10;
+    const SCENIC_CHIP_RESERVE = 92; // generous estimate of scenic-suggest.js's chip height (name + 2-line blurb + padding)
+    const scenicChip = document.querySelector('.scenic-chip');
+    if (scenicChip) {
+      const rect = scenicChip.getBoundingClientRect();
+      return `${Math.round(rect.bottom + GAP)}px`;
+    }
+
+    const bar = document.querySelector('.route-selector:not(.hidden):not(.route-selector--bottom)');
+    const barIsTop = bar && !document.body.classList.contains('ride-mode') && window.innerWidth > 640;
+    if (barIsTop) {
+      const rect = bar.getBoundingClientRect();
+      return `${Math.round(rect.bottom + GAP + SCENIC_CHIP_RESERVE)}px`;
+    }
+
+    return `calc(var(--header-height, 56px) + var(--safe-area-top, 0px) + 10px + ${SCENIC_CHIP_RESERVE}px)`;
+  },
+
+  _removeFuelChip() {
+    if (this._fuelChipEl?.parentNode) this._fuelChipEl.parentNode.removeChild(this._fuelChipEl);
+    this._fuelChipEl = null;
+    this._fuelChipShownFor = null;
+  },
+
+  /**
+   * Styling follows js/scenic-suggest.js's buildChip() precedent exactly:
+   * inline styles only (no stylesheet dependency), tokens.css var() with a
+   * literal fallback for every color, 44px dismiss target.
+   * Class contract for a future CSS pass: .fuel-chip, .fuel-chip-text,
+   * .fuel-chip-dismiss.
+   */
+  _buildFuelChip(remainingKm) {
+    const wrap = document.createElement('div');
+    wrap.className = 'fuel-chip';
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', 'Fuel range warning');
+    wrap.style.cssText = [
+      'position:fixed',
+      'left:50%',
+      'transform:translateX(-50%)',
+      `top:${this._fuelChipTopOffset()}`,
+      'z-index:var(--z-chrome, 900)',
+      'display:flex',
+      'align-items:center',
+      'gap:10px',
+      'max-width:min(92vw, 420px)',
+      'width:max-content',
+      'background:var(--bg-glass, rgba(18,22,46,0.82))',
+      'border:1px solid var(--border-elegant, rgba(255,255,255,0.11))',
+      'border-radius:var(--radius-lg, 14px)',
+      'box-shadow:var(--shadow-2, 0 4px 20px rgba(0,0,0,0.3))',
+      '-webkit-backdrop-filter:blur(16px) saturate(1.3)',
+      'backdrop-filter:blur(16px) saturate(1.3)',
+      'padding:10px 8px 10px 14px',
+      'color:var(--text-primary, #f4f5fb)',
+      'font-family:var(--font-sans, sans-serif)'
+    ].join(';');
+
+    const text = document.createElement('div');
+    text.className = 'fuel-chip-text';
+    text.style.cssText = 'flex:1;min-width:0;display:flex;align-items:center;gap:8px;';
+
+    const icon = document.createElement('span');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '⛽';
+    icon.style.cssText = 'font-size:18px;line-height:1;flex-shrink:0;';
+    text.appendChild(icon);
+
+    const msg = document.createElement('span');
+    msg.style.cssText = [
+      'font-weight:600',
+      'font-size:var(--text-sm, 0.875rem)',
+      'color:var(--fuel-critical, var(--danger, #ef4444))'
+    ].join(';');
+    msg.textContent = `Runs dry ~${remainingKm} km before the end — add a fuel stop`;
+    text.appendChild(msg);
+    wrap.appendChild(text);
+
+    const dismissBtn = document.createElement('button');
+    dismissBtn.type = 'button';
+    dismissBtn.className = 'fuel-chip-dismiss';
+    dismissBtn.setAttribute('aria-label', 'Dismiss fuel warning');
+    dismissBtn.textContent = '×';
+    dismissBtn.style.cssText = [
+      'width:44px',
+      'height:44px',
+      'display:flex',
+      'align-items:center',
+      'justify-content:center',
+      'background:transparent',
+      'border:none',
+      'color:var(--text-muted, #7e86ad)',
+      'font-size:22px',
+      'line-height:1',
+      'cursor:pointer',
+      'border-radius:50%',
+      'flex-shrink:0'
+    ].join(';');
+    dismissBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._fuelChipDismissedFor = this._fuelChipSignature;
+      this._removeFuelChip();
+    });
+    wrap.appendChild(dismissBtn);
+
+    // Same reasoning as scenic-suggest.js: this chip floats over the map, so
+    // gesture-starts on it must not fall through to Leaflet underneath.
+    ['pointerdown', 'touchstart', 'mousedown'].forEach((type) =>
+      wrap.addEventListener(type, (e) => e.stopPropagation()));
+
+    return wrap;
+  },
+
+  /**
+   * Show/update/hide the "runs dry" chip. Re-arms the same way
+   * scenic-suggest.js's per-road dismissal does: a dismissal only suppresses
+   * the exact dry point it was shown for — a materially different route (a
+   * different trip, a different coordinate count, or the dry point landing
+   * somewhere new) gets its own signature and can show again.
+   */
+  _updateFuelChip(trip, coordinates, profile) {
+    // Never during a ride: this chip is fixed to the top centre of the screen,
+    // which in ride mode is the turn-by-turn banner. The rider already gets
+    // the fuel warning in the HUD (ride-controller.js _setFuelAlertLine), so
+    // covering the next manoeuvre with a second copy of it would be worse
+    // than useless at 100 km/h.
+    if (window.App?.isRiding) {
+      this._removeFuelChip();
+      this._fuelChipSignature = null;
+      return;
+    }
+
+    const dryIdx = profile?.dryPointIdx;
+    if (dryIdx == null || !Number.isFinite(dryIdx) || !coordinates[dryIdx]) {
+      this._removeFuelChip();
+      this._fuelChipSignature = null;
+      this._fuelChipShownFor = null;
+      return;
+    }
+
+    let remainingM = 0;
+    for (let i = dryIdx; i < coordinates.length - 1; i++) {
+      remainingM += RideUtils.haversine(coordinates[i], coordinates[i + 1]);
+    }
+    const remainingKm = Math.round(remainingM / 1000);
+    const signature = `${trip?.id || 'local'}:${coordinates.length}:${dryIdx}`;
+    this._fuelChipSignature = signature;
+
+    if (this._fuelChipDismissedFor === signature) {
+      this._removeFuelChip();
+      this._fuelChipShownFor = null;
+      return;
+    }
+    // Already showing this exact warning — leave it alone. A DIFFERENT
+    // signature must rebuild, or the chip would keep quoting the km figure
+    // from a route the rider has since changed.
+    if (this._fuelChipEl && this._fuelChipShownFor === signature) return;
+
+    this._removeFuelChip();
+    const host = document.getElementById('app') || document.body;
+    this._fuelChipEl = this._buildFuelChip(remainingKm);
+    this._fuelChipShownFor = signature;
+    host.appendChild(this._fuelChipEl);
+  },
+
+  /**
+   * Defaults for a refresh that wasn't given an explicit position/percent.
+   * Outside a ride that's simply "the whole route on the stored tank".
+   *
+   * Mid-ride it has to be the rider's live numbers instead: the stored
+   * percent is only rewritten on a Tank Filled tap, so ride-controller.js
+   * tracks the km ridden since that fill in _fuelKmRidden and _rideNearIdx
+   * (an index into currentTrip.route.coordinates — see _activeRouteCoordinates).
+   * Deriving both here means an unqualified refreshFuelOverlay() — the one
+   * every window event fires — agrees with the explicit call _onTankFilled
+   * makes, instead of clobbering it back to the start of the route on a full
+   * tank.
+   */
+  _liveRideFuel(app, tankRangeKm, storedPercent) {
+    const out = { percent: storedPercent, startAtIdx: 0 };
+    if (!app?.isRiding || !(tankRangeKm > 0)) return out;
+    out.startAtIdx = Number.isFinite(app._rideNearIdx) ? app._rideNearIdx : 0;
+    const ridden = Number(app._fuelKmRidden);
+    if (Number.isFinite(ridden) && ridden > 0) {
+      const remaining = Math.max(0, tankRangeKm * (storedPercent / 100) - ridden);
+      out.percent = Math.max(0, Math.min(100, (remaining / tankRangeKm) * 100));
+    }
+    return out;
+  },
+
+  /**
+   * Public entry point (contract §5) — settings changes, fuel-stop toggles
+   * and every route recompute all funnel through here via the window events
+   * wired in init(). Always clears its own layers/chip first: disabled,
+   * no route, or no tank range set all mean "remove the overlay and stop".
+   */
+  refreshFuelOverlay({ startAtIdx, percent } = {}) {
+    this._clearFuelLayers();
+
+    const app = window.App;
+    const settings = this._fuelSettings();
+    if (!this.map || !app?.currentTrip || !settings.enabled || !(settings.tankRangeKm > 0)) {
+      this._removeFuelChip();
+      this._fuelChipSignature = null;
+      return;
+    }
+
+    const coordinates = this._activeRouteCoordinates();
+    const waypoints = Array.isArray(app.currentTrip.waypoints) ? app.currentTrip.waypoints : [];
+    if (coordinates.length < 2 || waypoints.length < 2 || typeof window.FuelPlanner?.computeProfile !== 'function') {
+      this._removeFuelChip();
+      this._fuelChipSignature = null;
+      return;
+    }
+
+    const state = typeof window.FuelPlanner.getState === 'function' ? window.FuelPlanner.getState() : null;
+    const stored = Number.isFinite(state?.percent) ? state.percent : 100;
+    const live = this._liveRideFuel(app, settings.tankRangeKm, stored);
+    const startPercent = Number.isFinite(percent) ? percent : live.percent;
+    const startAt = Number.isFinite(startAtIdx) ? startAtIdx : live.startAtIdx;
+
+    const profile = window.FuelPlanner.computeProfile({
+      coordinates,
+      waypoints,
+      tankRangeKm: settings.tankRangeKm,
+      startPercent,
+      startAtIdx: startAt
+    });
+    if (!profile) {
+      this._removeFuelChip();
+      this._fuelChipSignature = null;
+      return;
+    }
+
+    this._drawFuelSegments(coordinates, profile.segments);
+    this._drawFuelFills(coordinates, waypoints, profile.fills);
+    this._updateFuelChip(app.currentTrip, coordinates, profile);
   },
 
   /* ══════════════════════════════════════════════════════════════════
@@ -862,6 +1289,13 @@ const MapManager = {
 
     this._selectedRouteIndex = selected;
     this._applyRoutes(routes, orderedWaypoints, { persist: false });
+    // The restore path never reaches _persistSelected (the event's only other
+    // dispatcher), so purely event-driven consumers — scenic-suggest's chip in
+    // particular — would miss every trip that opens with a saved route and is
+    // never edited. Same detail shape as _persistSelected's dispatch.
+    window.dispatchEvent(new CustomEvent('ride:routeComputed', {
+      detail: { trip: window.App?.currentTrip }
+    }));
     return true;
   },
 
@@ -1200,6 +1634,10 @@ const MapManager = {
     if (this.routeEditor) this.routeEditor.clear();
     this._selectedRouteIndex = 0;
     this._cachedAlternatives = [];
+    // No route means nothing for the fuel overlay to draw either.
+    this._clearFuelLayers();
+    this._removeFuelChip();
+    this._fuelChipSignature = null;
   },
 
   /* ══════════════════════════════════════════════════════════════════

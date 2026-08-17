@@ -288,8 +288,15 @@ Object.assign(MapManager, {
 
   createRideIcon(heading) {
     const rotation = `transform: rotate(${heading || 0}deg);`;
+    // iconSize/iconAnchor must be explicit: L.DivIcon's default is [12,12],
+    // and Leaflet writes that as INLINE width/height/margins which override
+    // .ride-marker's 28px CSS box — leaving the visual centre ~8px down-right
+    // of the true GPS fix on every tick. Every other divIcon in the codebase
+    // passes both; this one was the outlier.
     return L.divIcon({
       className: 'ride-marker',
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
       html: `<div class="ride-marker-inner" style="${rotation}"><div class="ride-arrow"></div></div>`
     });
   },

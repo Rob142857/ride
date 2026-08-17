@@ -1,3 +1,12 @@
+-- ⚠️⚠️ DO NOT RUN THIS MIGRATION AGAINST PROD AS-IS ⚠️⚠️
+-- Its waypoint-type triggers (section 3 below) enforce an enum that PREDATES
+-- the current app: it is missing 'lodging', 'custom', and 'leg-break' — all
+-- three of which api/waypoints.js allowlists and the live app writes today.
+-- Running it would make every lodging/custom/leg-break waypoint write 500.
+-- FINDINGS.md records that this file is NOT applied to prod. If you are doing
+-- a "run all pending migrations" pass: SKIP this file, or first update its
+-- trigger enums to match the WAYPOINT_TYPES set in api/waypoints.js.
+--
 -- 2026-06-28: Database hardening — indexes, NOT NULL defaults, CHECK constraints
 -- NOTE: SQLite does not support ALTER COLUMN to add CHECK/NOT NULL after creation.
 -- We add CHECKs via triggers on INSERT/UPDATE to enforce at the app-data layer.

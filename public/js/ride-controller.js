@@ -49,12 +49,18 @@ Object.assign(App, {
       MapManager.recenterRide();
     });
     document.getElementById('rideBannerExitBtn')?.addEventListener('click', () => this.exitRideMode());
+    document.getElementById('tankFilledBtn')?.addEventListener('click', () => this._onTankFilled());
 
     // Sync locally-queued ride logs whenever connectivity returns, and rescue
     // any checkpointed track left behind by a ride that never exited cleanly
     // (app killed, tab discarded, mid-ride reload).
     window.addEventListener('online', () => this._flushPendingRideLogs());
     setTimeout(() => this._scheduleRideRecovery(), 1500);
+
+    // Fuel settings/percent can change from the Settings modal (or another
+    // tap of Tank Filled) — resync visibility and, if mid-ride, the HUD's
+    // cached percent whenever that happens.
+    window.addEventListener('ride:fuelSettingsChanged', () => this._onFuelSettingsChanged());
   },
 
   /**
@@ -243,6 +249,21 @@ Object.assign(App, {
     this._setHudText('rideNextInstruction', 'Follow the route');
     this._setHudText('rideNextMeta', 'Waiting for GPS…');
     this._setManeuverIcon('straight');
+
+    // Fuel HUD: hidden + zero per-tick work unless the feature is on and a
+    // tank range is actually configured. Re-checked on every ride start
+    // since settings may have changed since the last ride.
+    this._loadFuelSettings();
+    if (this._updateFuelVisibility()) {
+      this._resetFuelRideState();
+      const startRemaining = this._fuelSettings.tankRangeKm * (this._fuelPercent / 100);
+      this._setFuelValueHud(startRemaining, this._fuelLevel(startRemaining));
+    }
+    // The map's fuel overlay is position-aware and drops the "runs dry" chip
+    // while riding (it would sit on top of the turn-by-turn banner) — it needs
+    // one refresh now that isRiding is true, since nothing else fires here.
+    MapManager.refreshFuelOverlay?.();
+
     this.precomputeRouteMetrics();
     MapManager.startRide(pos => this.onRidePosition(pos));
   },
@@ -282,6 +303,16 @@ Object.assign(App, {
     }
 
     this._flushPendingRideLogs();
+
+    // Bank the fuel actually burned on this ride before the live counters go
+    // away, so tomorrow's planning starts from the tank the bike really has.
+    // Erring low is the safe direction here: a percent that's too low warns
+    // early, one that's too high strands someone.
+    this._persistRideFuelBurn();
+    // Back to the planning view of the fuel overlay: whole route, stored tank
+    // percent, chip allowed again (see MapManager._liveRideFuel).
+    this._clearFuelAlertLine();
+    MapManager.refreshFuelOverlay?.();
 
     // Tell the shell the ride is over (deferred build updates apply now)
     window.dispatchEvent(new CustomEvent('ride:ended'));
@@ -364,6 +395,11 @@ Object.assign(App, {
     this.offRouteCounter = 0;
     this._rideNearIdx = 0;
     this._maneuverIconKey = null; // force glyph refresh against the new steps
+    // The new route's `along` numbering starts fresh from the rider's current
+    // position — anchoring the fuel delta to the old numbering would read as
+    // a huge (or negative) jump. Drop the anchor; the accumulated km-ridden
+    // total itself is untouched, so fuel range doesn't reset on a reroute.
+    this._fuelLastAlongM = null;
     UI.updateTripStats(this.currentTrip);
   },
 
@@ -405,7 +441,14 @@ Object.assign(App, {
       if (this.rideVisitedWaypoints.has(wp.id)) return;
       if (this.haversine(wp, position) <= threshold) {
         this.rideVisitedWaypoints.add(wp.id);
-        if (!silent) UI.showToast(`Arrived at ${wp.name || 'waypoint'}`, 'success');
+        if (!silent) {
+          UI.showToast(`Arrived at ${wp.name || 'waypoint'}`, 'success');
+          // Suggest, never auto-reset — the rider may be passing the pin
+          // without actually stopping to fill up.
+          if (this._fuelActive && wp.fuelStop) {
+            UI.showToast('Fuel stop — tap Tank Filled once you’ve filled up.', 'info');
+          }
+        }
       }
     });
   },
@@ -549,6 +592,10 @@ Object.assign(App, {
     // excluded); falls back to route duration scaled by the remaining fraction.
     const etaSeconds = this._estimateEtaSeconds(remaining, total);
     if (etaSeconds != null) this._setHudText('rideEta', this._formatEtaClock(etaSeconds));
+
+    // Live fuel range HUD — a no-op (feature checked internally) unless fuel
+    // planning is enabled and a tank range is configured.
+    this._updateFuelHud(along);
 
     // Arrival detection
     if (remaining < 30 && remainingWaypoints.length === 0 && !this._rideArrived) {
@@ -710,6 +757,215 @@ Object.assign(App, {
       this._setHudText('rideNextMeta', `${RideUtils.formatDistance(remaining)} remaining`);
       this._setHudText('rideManeuverDist', this._fmtManeuverDist(remaining));
       this._setManeuverIcon('straight');
+    }
+  },
+
+  /* --- Fuel planning: live remaining range + threshold alerts ---
+   * Fuel state (tank percent) is device-local via window.FuelPlanner —
+   * deliberately not trip data. Everything here is a no-op when the feature
+   * is off or no tank range is configured (see _updateFuelVisibility). */
+
+  _loadFuelSettings() {
+    const raw = Storage.load(Storage.KEYS.SETTINGS, {}) || {};
+    this._fuelSettings = {
+      enabled: !!raw.fuelPlanningEnabled,
+      tankRangeKm: Number(raw.fuelTankRangeKm) || 0,
+      warnMode: raw.fuelWarnMode || 'percent30'
+    };
+    return this._fuelSettings;
+  },
+
+  /**
+   * Show/hide the fuel stat + Tank Filled FAB and widen the stat strip to
+   * a 5th column while active. Called on ride start and whenever fuel
+   * settings change. Returns whether the feature is active.
+   */
+  _updateFuelVisibility() {
+    const s = this._fuelSettings || this._loadFuelSettings();
+    const active = !!(s.enabled && s.tankRangeKm > 0);
+    this._fuelActive = active;
+    document.getElementById('rideFuelVal')?.closest('.ride-stat')?.classList.toggle('hidden', !active);
+    document.getElementById('tankFilledBtn')?.classList.toggle('hidden', !active);
+    document.querySelector('.ride-statbar')?.classList.toggle('has-fuel', active);
+    if (!active) this._clearFuelAlertLine();
+    return active;
+  },
+
+  /** Reset per-ride fuel tracking to "current stored percent, zero ridden since". */
+  _resetFuelRideState() {
+    this._fuelKmRidden = 0;
+    this._fuelLastAlongM = null;
+    this._fuelAlertActive = false;
+    this._clearFuelAlertLine();
+    const state = (typeof FuelPlanner !== 'undefined' && typeof FuelPlanner.getState === 'function')
+      ? FuelPlanner.getState() : null;
+    this._fuelPercent = (state && Number.isFinite(state.percent)) ? state.percent : 100;
+  },
+
+  /**
+   * Write the ride's fuel consumption back into the device-local tank state on
+   * exit. Without this the stored percent only ever moves on a Tank Filled tap,
+   * so the map would happily plan tomorrow's ride on a tank that was emptied
+   * today. No-op when the feature is off or nothing was ridden.
+   */
+  _persistRideFuelBurn() {
+    if (!this._fuelActive) return;
+    const s = this._fuelSettings || this._loadFuelSettings();
+    const ridden = Number(this._fuelKmRidden);
+    if (!(s.tankRangeKm > 0) || !Number.isFinite(ridden) || ridden <= 0) return;
+    if (typeof FuelPlanner === 'undefined' || typeof FuelPlanner.setPercent !== 'function') return;
+    const startPercent = Number.isFinite(this._fuelPercent) ? this._fuelPercent : 100;
+    const remainingKm = Math.max(0, s.tankRangeKm * (startPercent / 100) - ridden);
+    FuelPlanner.setPercent((remainingKm / s.tankRangeKm) * 100);
+    this._fuelPercent = (remainingKm / s.tankRangeKm) * 100;
+    this._fuelKmRidden = 0;
+    this._fuelLastAlongM = null;
+  },
+
+  /** Fixed colour bands — mirrors FuelPlanner.levelForRemaining as a fallback. */
+  _fuelLevel(remainingKm) {
+    if (typeof FuelPlanner !== 'undefined' && typeof FuelPlanner.levelForRemaining === 'function') {
+      return FuelPlanner.levelForRemaining(remainingKm);
+    }
+    if (remainingKm <= 0) return 'empty';
+    if (remainingKm <= 20) return 'critical';
+    if (remainingKm <= 50) return 'low';
+    if (remainingKm <= 100) return 'warn';
+    return 'ok';
+  },
+
+  _setFuelValueHud(remainingKm, level) {
+    const valEl = document.getElementById('rideFuelVal');
+    if (!valEl) return;
+    valEl.textContent = RideUtils.formatDistance(Math.max(0, remainingKm) * 1000);
+    valEl.classList.remove('ride-fuel-warn', 'ride-fuel-low', 'ride-fuel-critical', 'ride-fuel-empty');
+    if (level === 'warn') valEl.classList.add('ride-fuel-warn');
+    else if (level === 'low') valEl.classList.add('ride-fuel-low');
+    else if (level === 'critical') valEl.classList.add('ride-fuel-critical');
+    else if (level === 'empty') valEl.classList.add('ride-fuel-critical', 'ride-fuel-empty');
+    // 'ok' → no class, default stat colour.
+  },
+
+  /**
+   * Per-tick fuel update: accumulate km ridden since the last fill via the
+   * delta between consecutive ticks' `along` (reroute-safe — a reroute
+   * renumbers `along` from the rider's live position, so it resets the
+   * anchor rather than the accumulated total; see applyRideReroute).
+   */
+  _updateFuelHud(along) {
+    if (!this._fuelActive) return;
+    const s = this._fuelSettings || this._loadFuelSettings();
+    if (this._fuelLastAlongM != null) {
+      const deltaM = along - this._fuelLastAlongM;
+      // Ignore backtrack jitter (<=0) and implausible jumps from an anchor
+      // discontinuity (e.g. right after a reroute) rather than a real ride.
+      if (deltaM > 0 && deltaM < 2000) this._fuelKmRidden += deltaM / 1000;
+    }
+    this._fuelLastAlongM = along;
+
+    const percent = Number.isFinite(this._fuelPercent) ? this._fuelPercent : 100;
+    const remainingKm = Math.max(0, s.tankRangeKm * (percent / 100) - this._fuelKmRidden);
+    const level = this._fuelLevel(remainingKm);
+    this._setFuelValueHud(remainingKm, level);
+    this._checkFuelAlert(remainingKm, s);
+  },
+
+  /** fuelWarnMode is an alert threshold only — the colour bands are fixed regardless. */
+  _fuelAlertThresholdKm(s) {
+    switch (s.warnMode) {
+      case 'km100': return 100;
+      case 'km50': return 50;
+      case 'km20': return 20;
+      case 'percent30':
+      default: return s.tankRangeKm * 0.30;
+    }
+  },
+
+  /** Fires the toast once per crossing; the persistent banner line keeps updating until refuel. */
+  _checkFuelAlert(remainingKm, s) {
+    const crossed = remainingKm <= this._fuelAlertThresholdKm(s);
+    if (crossed) {
+      const msg = `⛽ Fuel low — ~${Math.round(remainingKm)} km left. Plan a fuel stop.`;
+      if (!this._fuelAlertActive) {
+        this._fuelAlertActive = true;
+        UI.showToast(msg, 'error');
+      }
+      this._setFuelAlertLine(msg);
+    } else if (this._fuelAlertActive) {
+      // remainingKm only decreases between refuels, so this is defensive —
+      // but a settings/percent resync could legitimately clear it.
+      this._fuelAlertActive = false;
+      this._clearFuelAlertLine();
+    }
+  },
+
+  /** Persistent second line under the turn-by-turn text — #rideNextMeta gets
+   * overwritten every good-fix tick, so the fuel warning needs its own node. */
+  _ensureFuelAlertEl() {
+    let el = document.getElementById('rideFuelAlertLine');
+    if (!el) {
+      const container = document.querySelector('.ride-banner-content');
+      if (!container) return null;
+      el = document.createElement('div');
+      el.id = 'rideFuelAlertLine';
+      el.className = 'ride-fuel-alert hidden';
+      el.setAttribute('role', 'status');
+      el.setAttribute('aria-live', 'polite');
+      container.appendChild(el);
+    }
+    return el;
+  },
+
+  _setFuelAlertLine(msg) {
+    const el = this._ensureFuelAlertEl();
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    document.getElementById('tankFilledBtn')?.classList.add('ride-fab-fuel-alert');
+  },
+
+  _clearFuelAlertLine() {
+    document.getElementById('rideFuelAlertLine')?.classList.add('hidden');
+    document.getElementById('tankFilledBtn')?.classList.remove('ride-fab-fuel-alert');
+  },
+
+  /**
+   * Tank Filled tap: resets the tank to full and the km-since-fill baseline,
+   * re-arms the alert, refreshes the map's fuel overlay from the rider's
+   * current position, and tells other listeners (map overlay, settings) the
+   * fuel state changed.
+   */
+  _onTankFilled() {
+    if (!this.isRiding || !this._fuelActive) return;
+    if (typeof FuelPlanner === 'undefined' || typeof FuelPlanner.tankFilled !== 'function') return;
+    const s = this._fuelSettings || this._loadFuelSettings();
+
+    FuelPlanner.tankFilled();
+    this._fuelPercent = 100;
+    this._fuelKmRidden = 0;
+    this._fuelAlertActive = false;
+    this._clearFuelAlertLine();
+    this._setFuelValueHud(s.tankRangeKm, this._fuelLevel(s.tankRangeKm));
+
+    MapManager.refreshFuelOverlay?.({ startAtIdx: this._rideNearIdx || 0, percent: 100 });
+    UI.showToast(`Tank filled — range ~${Math.round(s.tankRangeKm)} km`, 'success');
+    window.dispatchEvent(new CustomEvent('ride:fuelSettingsChanged'));
+  },
+
+  /** Fuel settings/percent changed elsewhere (Settings modal, or this same event
+   * looping back from _onTankFilled) — resync visibility and, if the stored
+   * percent actually moved, the HUD's cached percent + counters. */
+  _onFuelSettingsChanged() {
+    this._loadFuelSettings();
+    this._updateFuelVisibility();
+    if (!this.isRiding) return;
+    const state = (typeof FuelPlanner !== 'undefined' && typeof FuelPlanner.getState === 'function')
+      ? FuelPlanner.getState() : null;
+    if (state && Number.isFinite(state.percent) && state.percent !== this._fuelPercent) {
+      this._fuelPercent = state.percent;
+      this._fuelKmRidden = 0;
+      this._fuelAlertActive = false;
+      this._clearFuelAlertLine();
     }
   },
 

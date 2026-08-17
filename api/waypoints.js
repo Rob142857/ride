@@ -25,6 +25,24 @@ function normalizeWaypointType(value, fallback = 'stop') {
   return WAYPOINT_TYPES.has(type) ? type : null;
 }
 
+/**
+ * True when `err` is D1's failure for referencing the not-yet-migrated
+ * fuel_stop column (api/migrations/2026-08-17_waypoint_fuel_stop.sql).
+ * addWaypoint/updateWaypoint check this specifically so a deploy of this
+ * file ahead of that migration retries the write with fuel_stop dropped
+ * instead of 500ing the whole request.
+ *
+ * SQLite phrases the two statements differently and BOTH have to match:
+ *   UPDATE waypoints SET fuel_stop = ? → "no such column: fuel_stop"
+ *   INSERT INTO waypoints (fuel_stop)  → "table waypoints has no column named fuel_stop"
+ * Missing the INSERT wording would 500 every 'Fuel/Rest' waypoint created
+ * before the migration runs, since those auto-tick the flag below.
+ */
+function isMissingFuelStopColumnError(err) {
+  const message = `${err?.message || ''} ${err?.cause?.message || ''} ${err || ''}`;
+  return /no such column:\s*fuel_stop/i.test(message) || /has no column named\s*fuel_stop/i.test(message);
+}
+
 export const WaypointsHandler = {
   /**
    * Add waypoint to trip
@@ -56,11 +74,43 @@ export const WaypointsHandler = {
     const sortOrder = (lastWp?.max_order ?? -1) + 1;
     const id = generateId();
 
-    await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'INSERT INTO waypoints (id, trip_id, name, address, lat, lng, type, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(id, params.tripId, body.name, body.address || '', body.lat, body.lng, type, body.notes || '', sortOrder).run();
+    // fuel_stop: "the tank is refilled here" (window.FuelPlanner, public/js/
+    // fuel.js, resets its remaining-range math to fuelTankRangeKm here).
+    // Coerced to 0/1 like every other boolean column in this codebase
+    // (is_public, is_cover). Pre-ticked by default for a 'Fuel/Rest' stop
+    // unless the caller explicitly says otherwise.
+    const fuelStop = body.fuelStop !== undefined ? (body.fuelStop ? 1 : 0) : (type === 'fuel' ? 1 : 0);
+
+    const columns = ['id', 'trip_id', 'name', 'address', 'lat', 'lng', 'type', 'notes', 'sort_order'];
+    const values = [id, params.tripId, body.name, body.address || '', body.lat, body.lng, type, body.notes || '', sortOrder];
+    if (fuelStop) { columns.push('fuel_stop'); values.push(fuelStop); }
+
+    // fuel_stop ships in a migration (api/migrations/2026-08-17_waypoint_fuel_stop.sql)
+    // that may not have run on every environment yet. If this INSERT fails
+    // specifically because that column doesn't exist, retry without it —
+    // including for the type:'fuel' auto-tick above — so plain waypoint
+    // creation never 500s ahead of that migration; the flag is just lost
+    // until it's applied. DEPLOY ORDER: run the migration before relying on
+    // fuel_stop actually persisting.
+    try {
+      await env.RIDE_TRIP_PLANNER_DB.prepare(
+        `INSERT INTO waypoints (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`
+      ).bind(...values).run();
+    } catch (err) {
+      if (fuelStop && isMissingFuelStopColumnError(err)) {
+        const idx = columns.indexOf('fuel_stop');
+        columns.splice(idx, 1);
+        values.splice(idx, 1);
+        await env.RIDE_TRIP_PLANNER_DB.prepare(
+          `INSERT INTO waypoints (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`
+        ).bind(...values).run();
+      } else {
+        throw err;
+      }
+    }
 
     const waypoint = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM waypoints WHERE id = ?').bind(id).first();
+    if (waypoint) waypoint.fuelStop = !!waypoint.fuel_stop;
     const tripState = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT version, updated_at FROM trips WHERE id = ?').bind(params.tripId).first();
 
     return jsonResponse({ waypoint, trip_version: tripState?.version ?? 0, trip_updated_at: tripState?.updated_at ?? null }, 201);
@@ -96,14 +146,41 @@ export const WaypointsHandler = {
       }
     });
 
+    // fuel_stop is special-cased exactly like `type` above: the client field
+    // name (fuelStop) differs from the column name, and it needs the same
+    // 0/1 coercion as every other boolean column (is_public, is_cover).
+    const fuelStopIncluded = body.fuelStop !== undefined;
+    if (fuelStopIncluded) {
+      updates.push('fuel_stop = ?');
+      values.push(body.fuelStop ? 1 : 0);
+    }
+
     if (updates.length > 0) {
       values.push(params.id, params.tripId);
-      await env.RIDE_TRIP_PLANNER_DB.prepare(
-        `UPDATE waypoints SET ${updates.join(', ')} WHERE id = ? AND trip_id = ?`
-      ).bind(...values).run();
+      const sql = `UPDATE waypoints SET ${updates.join(', ')} WHERE id = ? AND trip_id = ?`;
+      try {
+        await env.RIDE_TRIP_PLANNER_DB.prepare(sql).bind(...values).run();
+      } catch (err) {
+        // See addWaypoint: fuel_stop's migration may not have run on every
+        // environment yet. Retry without it so every other field in this
+        // update still saves instead of 500ing the whole request.
+        if (fuelStopIncluded && isMissingFuelStopColumnError(err)) {
+          const idx = updates.indexOf('fuel_stop = ?');
+          updates.splice(idx, 1);
+          values.splice(idx, 1);
+          if (updates.length > 0) {
+            await env.RIDE_TRIP_PLANNER_DB.prepare(
+              `UPDATE waypoints SET ${updates.join(', ')} WHERE id = ? AND trip_id = ?`
+            ).bind(...values).run();
+          }
+        } else {
+          throw err;
+        }
+      }
     }
 
     const waypoint = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM waypoints WHERE id = ?').bind(params.id).first();
+    if (waypoint) waypoint.fuelStop = !!waypoint.fuel_stop;
     const tripState = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT version, updated_at FROM trips WHERE id = ?').bind(params.tripId).first();
 
     return jsonResponse({ waypoint, trip_version: tripState?.version ?? 0, trip_updated_at: tripState?.updated_at ?? null });

@@ -65,6 +65,15 @@ Object.assign(App, {
     if (notesEl) notesEl.value = wp.notes || '';
     if (typeEl) typeEl.value = wp.type && wp.type !== 'via' && wp.type !== 'leg-break' ? wp.type : 'stop';
     if (addressEl) addressEl.value = wp.address || '';
+    // Fuel stop is meaningful only on real stops (never via/leg-break — the
+    // latter can't reach this modal anyway, see the early return above) and
+    // only while the fuel range planner is switched on in Settings.
+    const fuelStopRow = document.getElementById('waypointDetailFuelStopRow');
+    const fuelStopEl = document.getElementById('waypointDetailFuelStop');
+    const fuelPlanningEnabled = !!(Storage.load(Storage.KEYS.SETTINGS, {}) || {}).fuelPlanningEnabled;
+    const showFuelStop = fuelPlanningEnabled && wp.type !== 'via' && wp.type !== 'leg-break';
+    if (fuelStopRow) fuelStopRow.style.display = showFuelStop ? '' : 'none';
+    if (fuelStopEl) fuelStopEl.checked = !!wp.fuelStop;
     this.setWaypointDetailsReadOnly(UI.isReadOnlyTrip());
     this.renderWaypointAttachments(wp.id);
     UI.openModal('waypointDetailsModal');
@@ -91,7 +100,26 @@ Object.assign(App, {
         <option value="lodging">Lodging</option>
         <option value="custom">Custom</option>
       </select>
+      <div class="form-section" id="waypointDetailFuelStopRow" style="display:none">
+        <label class="toggle-switch">
+          <input type="checkbox" id="waypointDetailFuelStop">
+          <span class="toggle-track"></span>
+          <span class="toggle-label-text">Fuel stop — tank is refilled here</span>
+        </label>
+      </div>
     `);
+    // Live toggle, not part of the form submit: persists immediately so the
+    // fuel planner (and anyone else listening for ride:fuelStopsChanged)
+    // reacts right away, the same way leg renames commit on blur rather
+    // than waiting for a save button.
+    const fuelStopEl = document.getElementById('waypointDetailFuelStop');
+    if (fuelStopEl) {
+      fuelStopEl.addEventListener('change', () => {
+        const id = document.getElementById('waypointDetailId')?.value || '';
+        if (!id) return;
+        this.toggleWaypointFuelStop(id, fuelStopEl.checked);
+      });
+    }
   },
 
   /**
@@ -108,6 +136,8 @@ Object.assign(App, {
     });
     const typeEl = document.getElementById('waypointDetailType');
     if (typeEl) typeEl.disabled = !!readOnly;
+    const fuelStopEl = document.getElementById('waypointDetailFuelStop');
+    if (fuelStopEl) fuelStopEl.disabled = !!readOnly;
     const hide = (el, hidden) => { if (el) el.classList.toggle('hidden', !!hidden); };
     hide(document.getElementById('waypointAttachmentBtn')?.closest('.field-row'), readOnly);
     hide(modal.querySelector('.modal-actions .primary-btn'), readOnly);
@@ -157,6 +187,39 @@ Object.assign(App, {
       console.error('Failed to update waypoint details:', error);
       if (error.status === 409 || error.status === 428) { await this.handleTripConflict(error); return; }
       UI.showToast('Waypoint update failed. Not saved.', 'error');
+    }
+  },
+
+  /**
+   * Fuel stop is a live toggle (see _ensureWaypointDetailsExtraFields), not
+   * part of the Title/Notes/Type/Address form submit: it persists the
+   * moment the rider flips it, then tells the fuel planner / map overlay
+   * to recompute via ride:fuelStopsChanged.
+   */
+  async toggleWaypointFuelStop(waypointId, fuelStop) {
+    const revert = () => {
+      const cb = document.getElementById('waypointDetailFuelStop');
+      if (cb) cb.checked = !fuelStop;
+    };
+    if (!this.currentTrip) { revert(); return; }
+    if (!this.ensureEditable('update waypoints')) { revert(); return; }
+    try {
+      const res = await API.waypoints.update(this.currentTrip.id, waypointId, { fuelStop: !!fuelStop }, { headers: this.getTripIfMatchHeaders() });
+      this.applyTripMetaFromResponse(this.currentTrip, res);
+      // Keep BOTH shapes in step: API._normalizeWaypoint derives fuelStop from
+      // the raw fuel_stop column, so writing only the camelCase field here
+      // would be silently undone the next time this trip is re-normalized.
+      if (res?.waypoint) Trip.updateWaypoint(this.currentTrip, waypointId, res.waypoint);
+      else Trip.updateWaypoint(this.currentTrip, waypointId, { fuelStop: !!fuelStop, fuel_stop: fuelStop ? 1 : 0 });
+      this.markTripWritten(this.currentTrip.id);
+      UI.renderWaypoints(this.currentTrip.waypoints);
+      window.dispatchEvent(new CustomEvent('ride:fuelStopsChanged', { detail: { waypointId, fuelStop: !!fuelStop } }));
+      await this.refreshTripsList();
+    } catch (error) {
+      console.error('Failed to update fuel stop flag:', error);
+      if (error.status === 409 || error.status === 428) { await this.handleTripConflict(error); return; }
+      revert();
+      UI.showToast('Could not update fuel stop. Not saved.', 'error');
     }
   },
 

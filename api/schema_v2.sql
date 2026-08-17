@@ -134,6 +134,10 @@ CREATE TABLE IF NOT EXISTS waypoints (
   type        TEXT NOT NULL DEFAULT 'stop' CHECK(type IN ('stop','scenic','fuel','food','lodging','custom')),
   notes       TEXT DEFAULT '' CHECK(length(notes) <= 5000),
   sort_order  INTEGER NOT NULL DEFAULT 0 CHECK(sort_order >= 0),
+  -- The tank is refilled here: FuelPlanner (public/js/fuel.js) resets its
+  -- remaining-range math to the rider's full tank range at this waypoint.
+  -- Added to existing databases by api/migrations/2026-08-17_waypoint_fuel_stop.sql.
+  fuel_stop   INTEGER NOT NULL DEFAULT 0 CHECK(fuel_stop IN (0,1)),
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

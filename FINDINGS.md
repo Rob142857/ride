@@ -212,3 +212,157 @@ treat it as closed.
   fallback and cache-hit behavior against real upstreams; whether the missing turn-`modifier`
   gap above is acceptable in the real ride-mode HUD.
 
+## Fuel planning feature — 2026-08-17
+
+Built by five parallel agents against a fixed contract, then integrated. Format as above.
+
+### What was built
+
+- **`public/js/fuel.js` (new) — `window.FuelPlanner`**: pure range math, no DOM/Leaflet, own
+  haversine, `module.exports`-guarded so it runs under plain `node`. Fixed colour bands on
+  *remaining km* — ok >100, warn <=100, low <=50, critical <=20, empty <=0 (`levelForRemaining`,
+  non-finite input becomes `'empty'`, the cautious end). `computeProfile({coordinates, waypoints,
+  tankRangeKm, startPercent, startAtIdx})` returns `{totalKm, segments, fills, dryPointIdx,
+  remainingAtEndKm}`; `getState`/`setPercent`/`tankFilled` over `Storage.KEYS.FUEL_STATE`.
+- **Settings** (`public/index.html`, `public/js/ui.js`): `#fuelPlanningToggle` (default OFF),
+  `#fuelTankRange`, `#fuelWarnMode` (percent30/km100/km50/km20), `#fuelPercentNow` + Full/three-
+  quarter/half/quarter chips, in a new section of the existing settings modal sharing its Save
+  button.
+- **Fuel state** is device-local (`ride_fuel_state`, `public/js/storage.js`), deliberately not
+  trip data — the tank belongs to the bike, not the trip.
+- **Waypoint flag** `fuel_stop` / `fuelStop` end to end: D1 migration, `api/waypoints.js`,
+  `public/js/api.js` (cloud + guest `LocalDB` parity), a live toggle in the waypoint details
+  modal (`public/js/waypoint-controller.js`), a fuel badge in the itinerary
+  (`public/js/ui-renderers.js`).
+- **Map overlay** (`public/js/map.js` `refreshFuelOverlay`): per-level polylines in a dedicated
+  `fuelOverlayPane` (z 420, above the route, below route-editor handles), fill markers, and a
+  dismissible "runs dry ~N km before the end" chip.
+- **Ride HUD** (`public/js/ride-controller.js`, `public/css/ride-mode.css`): 5th stat
+  `#rideFuelVal` with the colour bands, `#tankFilledBtn`, a persistent second banner line for
+  the alert, one toast per threshold crossing.
+- **Tokens** (`public/css/tokens.css`): `--fuel-warn`, `--fuel-low`, `--fuel-critical:
+  var(--danger)`. Red is correct, not an exception: running dry in remote Australia *is* danger.
+
+### Seam bugs found and fixed at integration
+
+- **[critical] `api/waypoints.js:41`** — the pre-migration fallback detector only matched
+  `no such column: fuel_stop`. SQLite words the two statements differently (verified with
+  `node:sqlite`): `UPDATE` says `no such column: fuel_stop`, but `INSERT` says **`table
+  waypoints has no column named fuel_stop`**. Since `addWaypoint` auto-ticks the flag for
+  `type: 'fuel'`, deploying ahead of the migration would have **500'd every Fuel/Rest waypoint
+  creation** — a regression in existing functionality. Now matches both wordings (plus
+  `err.cause`), and is still narrow enough not to swallow unrelated errors.
+- **[high] `public/js/map.js:587`** — the overlay never appeared when a trip was simply
+  *opened*: it was wired only to `ride:routeComputed`, which fires from `_persistSelected()`
+  only, i.e. after an edit forces a reroute. Opening a trip restores the stored route through
+  `_restoreStoredRoute`/`drawRoute`/`_adoptStoredRoutes` and fires nothing. Fixed by calling
+  `refreshFuelOverlay()` at the end of `_drawRoutes()`, the single funnel every draw path
+  (fresh compute, alternative selection, restore) passes through.
+- **[high] `public/js/fuel.js:137`** — fuel stops were snapped to the nearest coordinate
+  *at index >= startAtIdx*, so mid-ride a station the rider had already ridden past was snapped
+  **forward** onto the road ahead and granted a refill that will never happen — the one failure
+  mode of this feature that can strand someone. Now snaps over the whole route and skips any
+  stop whose nearest coordinate is behind `startAtIdx`. Regression-tested.
+- **[high] `public/js/map.js:1024` / `public/js/ride-controller.js:950`** — `_onTankFilled()`
+  called `refreshFuelOverlay({startAtIdx, percent:100})` and then dispatched
+  `ride:fuelSettingsChanged`, whose listener immediately re-ran `refreshFuelOverlay()` with no
+  args, clobbering the rider's position back to the start of the route on a full tank. Added
+  `MapManager._liveRideFuel()`: an unqualified refresh now derives `startAtIdx` from
+  `App._rideNearIdx` and the percent from `stored - _fuelKmRidden` whenever `App.isRiding`, so
+  both call sites agree.
+- **[medium] `public/js/map.js:933`** — the "runs dry" chip is `position: fixed` at top centre,
+  which in ride mode is the turn-by-turn banner. It would have covered the next manoeuvre while
+  riding, duplicating a warning the HUD already gives. Now suppressed while `App.isRiding`;
+  `enterRideMode`/`exitRideMode` each trigger one refresh so the transition is clean.
+- **[medium] `public/js/ui-renderers.js:45,105`** — `addWaypoint` pre-ticks `fuel_stop` for
+  `type: 'fuel'` regardless of the feature flag, so the fuel badge appeared in the itinerary for
+  riders who never turned fuel planning on. Badge is now gated on `fuelPlanningEnabled`, and
+  saving settings re-renders the waypoint list so the toggle takes effect immediately
+  (`public/js/ui.js:898`).
+- **[medium] `public/js/map.js:734`** — `_drawFuelSegments` drew `slice(from, to+1)` against a
+  **strict** partition from `computeProfile`, leaving a one-edge gap at every band boundary and
+  dropping single-coordinate bands entirely. Now `slice(from, to+2)` with a `to < from` guard,
+  as `fuel.js`'s own rendering note specifies.
+- **[medium] `public/js/map.js:963`** — the chip was never rebuilt once shown, so after a route
+  change it kept quoting the old "~N km" figure. Added `_fuelChipShownFor` so a new signature
+  rebuilds while an identical one is left alone (dismissal semantics unchanged).
+- **[medium] `public/js/map.js:674`** — `_activeRouteCoordinates()` preferred the cached
+  planning alternative, but an in-ride reroute replaces `currentTrip.route` *without* touching
+  that cache, and `_rideNearIdx` indexes the latter. Mismatched arrays would misplace the rider
+  after a reroute. While riding, `currentTrip.route` now wins.
+- **[medium] `public/js/ui.js:877`** — settings saved `fuelTankRangeKm` as the raw input
+  **string**. `computeProfile` type-checks `tankRangeKm` and returns its inert shape on a
+  string; it only worked because both current consumers happened to wrap it in `Number()`.
+  Now stored as a real number (or `''` when unset).
+- **[medium] `api/schema.sql:75`, `api/schema_v2.sql:140`** — the migration was written but the
+  base schemas were not updated, so a **freshly created** database would never have
+  `fuel_stop` and the flag would silently never persist there. Added to both (repo convention:
+  `cover_focus_x` is carried in both places).
+- **[low] `public/js/waypoint-controller.js:213`** — the no-response fallback wrote only
+  `fuelStop`, which `API._normalizeWaypoint` re-derives from raw `fuel_stop`; the flag would be
+  silently undone on the next normalize. Now writes both shapes.
+- **[low] `public/css/ride-mode.css:195,198,326,330,405-407`** — seven `var(--fuel-warn,
+  #fb923c)`-style hex fallbacks inside CSS, with no precedent anywhere in `public/css` and
+  pointless (tokens.css always loads first). Stripped to bare `var(--...)`. The literal fallbacks
+  in `map.js` (`FUEL_COLORS`, `_cssVar`) and the inline chip styles are the sanctioned JS
+  pattern and match `scenic-suggest.js` exactly — left alone.
+- **[low] `public/js/ui.js:853`** — the new sub-fields were dimmed-but-visible while the
+  feature is off, unlike the fuel-cost section directly above it in the same modal. Now hidden
+  *and* disabled, matching the neighbour.
+- **[low, new behaviour] `public/js/ride-controller.js` `_persistRideFuelBurn`** — nothing wrote
+  the ride's fuel consumption back to the stored percent (it only ever moved on a Tank Filled
+  tap), so the map would plan tomorrow's ride on a tank emptied today. `exitRideMode` now banks
+  the km burned. Erring low is the safe direction: too low warns early, too high strands.
+
+### Migration and deploy order
+
+- `api/migrations/2026-08-17_waypoint_fuel_stop.sql` — `ALTER TABLE waypoints ADD COLUMN
+  fuel_stop INTEGER NOT NULL DEFAULT 0;`. **Not applied.** Apply to both:
+  `npx wrangler d1 execute ride-db --file=./api/migrations/2026-08-17_waypoint_fuel_stop.sql --remote`
+  (and `--local`).
+- The API tolerates the column being absent (retries the write with `fuel_stop` stripped), so
+  a deploy before the migration will not 500 — but until it runs, ticking "Fuel stop" appears
+  to work and then the checkbox reverts on reopen, because the flag was dropped. Run the
+  migration before telling anyone the feature exists.
+- `api/worker.js` `BUILD_ID` bumped to `2026-08-08T05` and every `?v=` in `index.html` bumped
+  to match; `/js/fuel.js` added to `sw.js` `STATIC_ASSETS`.
+
+### Verified here (static + node)
+
+- `node --check` on every touched JS file. `node:sqlite` used to confirm both SQLite
+  missing-column wordings. A 9-case `require()`-based smoke test of `fuel.js` passes: bands,
+  fill/reset, dry detection, the strict partition, guards (no args, 1 coord, zero/string tank
+  range, out-of-range/NaN percent, malformed coordinates), via/leg-break never refuelling even
+  when wrongly flagged, passed-stop rejection, off-route flagging, persistence with no
+  `Storage`/`window` globals, and that every non-`ok` band is drawable under map.js's slicing.
+- Contract joins: all six required IDs exist exactly once in `index.html`; all three event
+  names byte-identical across dispatchers and listeners; `fuel.js` loads before `map.js`.
+- via/leg-break exclusion logic untouched everywhere; `fuel.js` re-excludes them defensively.
+
+### Still unverified — needs Rob in a browser / on the bike
+
+- **Nothing-appears-when-off**, end to end in a real browser with a fresh profile: settings
+  sub-fields hidden, no HUD stat, no FAB, no overlay, no chip, no waypoint tick box, no fuel
+  badge, no console errors. Reasoned through statically, never rendered.
+- **Guest mode** (`App.useCloud === false`) round trip: tick a fuel stop, reload, confirm it
+  persisted through `LocalDB` and that no `LOGIN_REQUIRED` surfaces. Code paths traced, not run.
+- **Chip stacking geometry.** `_fuelChipTopOffset()` measures a real `.scenic-chip` when one is
+  present, otherwise reserves a flat **92px** for one that may appear later. The scenic chip's
+  own `top` is a fixed `calc(header + safe-area + 10px)` and does *not* stack under the
+  route-selector bar, so the arithmetic should hold — but a scenic chip taller than 92px (a long
+  road name wrapping on a narrow phone) could overlap. Also: the fuel chip's `top` is computed
+  once at build, so a rotate/resize while it is showing leaves it slightly stale. Needs eyes.
+- **The taller ride banner.** The fuel alert adds a third line inside `.ride-banner-content`,
+  growing the banner mid-ride. The manoeuvre icon logic is untouched, but how much map it eats
+  on a 360px phone in daylight is a bike question.
+- **Unit asymmetry, by design but worth a sanity check**: `#rideFuelVal` is unit-aware via
+  `RideUtils.formatDistance` (miles under imperial) while the toast/alert text is literal km
+  per the spec's example wording.
+- **Alert threshold feel**: `percent30` on a 350 km tank fires at 105 km remaining, which lands
+  in the same band as the `warn` colour. Whether that's the right first nudge is a road call.
+- **`_updateFuelHud` delta filter** ignores per-tick jumps of 2000 m or more as anchor
+  discontinuities. Fine at any legal speed with a normal GPS tick, but unproven against real
+  tunnel/dropout behaviour on the bike.
+- **Waypoint details**: changing an existing waypoint's type *to* Fuel/Rest does not auto-tick
+  `fuelStop` (only creation does). Deliberate — an edit shouldn't silently change fuel
+  planning — but confirm that's the wanted behaviour.

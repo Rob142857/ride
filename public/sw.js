@@ -93,6 +93,7 @@ const STATIC_ASSETS = [
   '/js/trip.js',
   '/js/map-tiles.js',
   '/js/offline-maps.js',
+  '/js/fuel.js',
   '/js/map.js',
   '/js/map-ride.js',
   '/js/map-photos.js',

@@ -76,6 +76,17 @@
   --danger: #ef4444;
   --danger-hover: #f87171;
 
+  /* ── Fuel planning — remaining-range warning bands ───────────────
+     Used by MapManager.refreshFuelOverlay() (public/js/map.js) to paint the
+     stretch of the planned route a rider would cover at each fuel level.
+     --fuel-critical deliberately reuses --danger rather than inventing a new
+     red: the rule above reserves red for danger, and running out of fuel in
+     remote Australia genuinely is danger — so this is the correct color, not
+     an exception to it. */
+  --fuel-warn: #fb923c;            /* <=100 km of range remaining */
+  --fuel-low: #ea580c;             /* <=50 km of range remaining */
+  --fuel-critical: var(--danger);  /* <=20 km remaining, or the dry stretch */
+
   /* ── Borders ───────────────────────────────────────────────────── */
   --border: #2a3054;
   --border-subtle: rgba(255, 255, 255, 0.06);

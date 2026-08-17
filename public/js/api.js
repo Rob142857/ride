@@ -74,6 +74,12 @@ function _normalizeWaypoint(w) {
     ...w,
     order: w.sort_order ?? w.order ?? 0,
     createdAt: w.created_at ?? w.createdAt,
+    // fuel_stop: "the tank is refilled here" (window.FuelPlanner reads this
+    // via waypoint.fuelStop). Cloud rows carry it as a raw 0/1 (or undefined
+    // pre-migration, api/migrations/2026-08-17_waypoint_fuel_stop.sql); guest
+    // rows are stored the same snake_case shape. Either way it must resolve
+    // to a real boolean here, or the checkbox UI would read undefined forever.
+    fuelStop: !!(w.fuel_stop ?? w.fuelStop),
   };
 }
 
@@ -365,6 +371,11 @@ const LocalDB = {
     const trips = this.read();
     const trip = this.requireTrip(trips, tripId);
     const maxOrder = trip.waypoints.reduce((max, w) => Math.max(max, Number(w.sort_order ?? -1)), -1);
+    const type = body.type || 'stop';
+    // fuel_stop: "the tank is refilled here" — same 0/1 coercion and
+    // type:'fuel' auto-tick default as the cloud handler (api/waypoints.js
+    // addWaypoint), so guest and cloud trips behave identically.
+    const fuelStop = body.fuelStop !== undefined ? (body.fuelStop ? 1 : 0) : (type === 'fuel' ? 1 : 0);
     const waypoint = {
       id: Storage.generateId(),
       trip_id: tripId,
@@ -372,15 +383,19 @@ const LocalDB = {
       address: body.address || '',
       lat: body.lat,
       lng: body.lng,
-      type: body.type || 'stop',
+      type,
       notes: body.notes || '',
       sort_order: maxOrder + 1,
+      fuel_stop: fuelStop,
       created_at: _localNow(),
     };
     trip.waypoints.push(waypoint);
     this.touch(trip);
     this.write(trips);
-    return { waypoint: _localClone(waypoint), ...this.meta(trip) };
+    // Mirror the cloud response shape: raw fuel_stop plus an explicit
+    // fuelStop boolean for callers that read the waypoint straight off the
+    // API response instead of going through _normalizeWaypoint.
+    return { waypoint: { ..._localClone(waypoint), fuelStop: !!fuelStop }, ...this.meta(trip) };
   },
 
   updateWaypoint(tripId, waypointId, body) {
@@ -391,10 +406,14 @@ const LocalDB = {
       ['name', 'address', 'lat', 'lng', 'type', 'notes', 'sort_order'].forEach(field => {
         if (body && body[field] !== undefined) waypoint[field] = body[field];
       });
+      // fuel_stop is special-cased exactly like on the cloud side: the
+      // client field name (fuelStop) differs from the stored field name.
+      if (body && body.fuelStop !== undefined) waypoint.fuel_stop = body.fuelStop ? 1 : 0;
     }
     this.touch(trip);
     this.write(trips);
-    return { waypoint: _localClone(waypoint), ...this.meta(trip) };
+    const clone = waypoint ? { ..._localClone(waypoint), fuelStop: !!waypoint.fuel_stop } : waypoint;
+    return { waypoint: clone, ...this.meta(trip) };
   },
 
   deleteWaypoint(tripId, waypointId) {

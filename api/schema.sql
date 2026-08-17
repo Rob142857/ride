@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS waypoints (
   type TEXT DEFAULT 'stop',
   notes TEXT,
   sort_order INTEGER DEFAULT 0,
+  -- The tank is refilled here (see api/migrations/2026-08-17_waypoint_fuel_stop.sql,
+  -- which adds this to databases created before that file).
+  fuel_stop INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
 );

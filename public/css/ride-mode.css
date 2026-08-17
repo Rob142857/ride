@@ -186,6 +186,19 @@ body.ride-mode .leaflet-control-attribution {
   text-overflow: ellipsis;
 }
 
+/* Persistent fuel warning — its own node, not shared with .ride-next-meta,
+   because that line gets overwritten every good-fix tick by the maneuver
+   HUD. Created on demand by ride-controller.js, visible until refuelled. */
+.ride-fuel-alert {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed color-mix(in srgb, var(--fuel-warn) 45%, transparent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fuel-warn);
+  overflow-wrap: anywhere;
+}
+
 .ride-banner-exit {
   flex-shrink: 0;
   display: flex;
@@ -300,6 +313,36 @@ body.ride-mode .leaflet-control-attribution {
   color: var(--text-secondary);
 }
 
+/* 5th column for the fuel stat — added only while fuel planning is active
+   (toggled by ride-controller.js via _updateFuelVisibility), so the plain
+   4-stat layout is untouched when the feature is off or unconfigured. */
+.ride-statbar.has-fuel {
+  grid-template-columns: 1.15fr 0.95fr 0.75fr 0.95fr 0.95fr;
+}
+
+/* Fixed colour bands by remaining range (mirrors FuelPlanner.levelForRemaining).
+   'ok' intentionally carries no class — it uses the default stat colour. */
+#rideFuelVal.ride-fuel-warn {
+  color: var(--fuel-warn);
+}
+
+#rideFuelVal.ride-fuel-low {
+  color: var(--fuel-low);
+}
+
+#rideFuelVal.ride-fuel-critical {
+  color: var(--fuel-critical);
+}
+
+#rideFuelVal.ride-fuel-empty {
+  animation: ride-fuel-empty-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes ride-fuel-empty-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* ── FABs — stacked above the stat strip, thumb-side ──────── */
 
 .ride-fab-group {
@@ -354,6 +397,14 @@ body.ride-mode .leaflet-control-attribution {
 
 .ride-fab-following:hover {
   background: var(--accent-hover);
+}
+
+/* Tank Filled FAB glows once a fuel alert is active — draws the eye without
+   interrupting navigation with a modal. Cleared on refuel. */
+.ride-fab-fuel-alert {
+  border-color: color-mix(in srgb, var(--fuel-warn) 60%, transparent);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--fuel-warn) 35%, transparent),
+              0 0 0 4px color-mix(in srgb, var(--fuel-warn) 22%, transparent);
 }
 
 /* ── Photo markers on the map (js/map-photos.js) ──────────── */
@@ -585,7 +636,7 @@ body.ride-mode .leaflet-control-attribution {
   }
 }
 
-/* Very narrow phones: keep the four stats on one line. */
+/* Very narrow phones: keep the stats on one line. */
 @media (max-width: 360px) {
   .ride-statbar {
     padding-left: var(--space-2);
@@ -599,5 +650,16 @@ body.ride-mode .leaflet-control-attribution {
 
   .ride-stat-speed .ride-stat-value {
     font-size: 32px;
+  }
+
+  /* One extra column needs a further squeeze to stay on one line. Targets
+     #rideFuelVal specifically (not the .ride-stat-value class) so it doesn't
+     out-specificity .ride-stat-speed's own override just above. */
+  .ride-statbar.has-fuel {
+    grid-template-columns: 1.05fr 0.85fr 0.65fr 0.85fr 0.85fr;
+  }
+
+  .ride-statbar.has-fuel #rideFuelVal {
+    font-size: 17px;
   }
 }

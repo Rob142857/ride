@@ -45,7 +45,13 @@ const Storage = {
     // JSON array of road ids. That module composes the key itself and goes
     // through Storage.save/Storage.load, so there's no accessor pair here yet;
     // the prefix is declared so the keyspace map stays complete.
-    SCENIC_DISMISSED_PREFIX: 'ride_scenic_dismissed_'
+    SCENIC_DISMISSED_PREFIX: 'ride_scenic_dismissed_',
+    // Device-local fuel-tank state (fuel.js / window.FuelPlanner). Deliberately
+    // NOT trip data — the tank belongs to the bike, not the trip, so it is
+    // never synced to the cloud and survives switching between trips. Value
+    // is { percent: 0-100, updatedAt: ISO string|null }. Always go through
+    // getFuelState/saveFuelState below rather than touching this key directly.
+    FUEL_STATE: 'ride_fuel_state'
   },
 
   /**
@@ -203,6 +209,32 @@ const Storage = {
       // Quota or private-browsing storage errors are non-fatal — the leg just
       // won't remember its collapsed state across a reload.
     }
+  },
+
+  /**
+   * Device-local fuel-tank state (see FUEL_STATE key comment). Defaults to
+   * a full tank when nothing has been stored yet, or when the stored value
+   * is malformed — never returns a non-numeric percent.
+   */
+  getFuelState() {
+    const state = this.load(this.KEYS.FUEL_STATE, null);
+    if (!state || typeof state !== 'object' || !Number.isFinite(state.percent)) {
+      return { percent: 100, updatedAt: null };
+    }
+    return {
+      percent: Math.max(0, Math.min(100, state.percent)),
+      updatedAt: typeof state.updatedAt === 'string' ? state.updatedAt : null
+    };
+  },
+
+  /** Persist fuel-tank state, clamping percent to 0-100. */
+  saveFuelState(state) {
+    const num = Number(state?.percent);
+    const percent = Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : 0;
+    return this.save(this.KEYS.FUEL_STATE, {
+      percent,
+      updatedAt: typeof state?.updatedAt === 'string' ? state.updatedAt : new Date().toISOString()
+    });
   }
 };
 

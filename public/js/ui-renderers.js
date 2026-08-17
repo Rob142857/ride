@@ -37,6 +37,13 @@ Object.assign(UI, {
         return ao - bo;
       });
 
+    // The ⛽ badge only means something once fuel range planning is switched
+    // on. It has to be gated on the setting, not just on wp.fuelStop: adding
+    // a 'Fuel/Rest' waypoint pre-ticks the flag (api/waypoints.js addWaypoint),
+    // so an unrelated rider with the feature off would otherwise see a new
+    // badge appear on their itinerary.
+    const showFuelBadges = !!(Storage.load(Storage.KEYS.SETTINGS, {}) || {}).fuelPlanningEnabled;
+
     const deleteIcon = '<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
     const dragHandleIcon = '<svg viewBox="0 0 24 24"><path d="M10 4h2v2h-2V4zm0 4h2v2h-2V8zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2zm4-12h2v2h-2V4zm0 4h2v2h-2V8zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2z"/></svg>';
     // Mirrors the existing --select-chevron path already used for dropdowns
@@ -95,7 +102,7 @@ Object.assign(UI, {
             <span style="font-size: 20px;">${this.escapeHtml(MapManager.waypointIcons[wp.type]?.icon || '📍')}</span>
           </div>
           <div class="waypoint-info">
-            <div class="waypoint-name">${stopNumber}. ${this.escapeHtml(wp.name)}</div>
+            <div class="waypoint-name">${stopNumber}. ${this.escapeHtml(wp.name)}${showFuelBadges && wp.fuelStop ? ' <span class="waypoint-fuel-badge" title="Fuel stop — tank refilled here" aria-label="Fuel stop">⛽</span>' : ''}</div>
             ${wp.address ? `<div class="waypoint-address">${this.escapeHtml(wp.address)}</div>` : ''}
             ${wp.notes ? `<div class="waypoint-notes">${this.escapeHtml(wp.notes)}</div>` : ''}
           </div>

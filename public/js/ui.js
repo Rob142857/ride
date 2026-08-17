@@ -822,16 +822,80 @@ const UI = {
 
     toggle.onchange = () => { fields.style.display = toggle.checked ? '' : 'none'; };
 
+    // --- Fuel range planning (separate global toggle; shares this modal/save button) ---
+    const planToggle = document.getElementById('fuelPlanningToggle');
+    const planFields = document.getElementById('fuelPlanningFields');
+    const tankRangeInput = document.getElementById('fuelTankRange');
+    const warnModeSelect = document.getElementById('fuelWarnMode');
+    const percentNowInput = document.getElementById('fuelPercentNow');
+    const percentChips = Array.from(document.querySelectorAll('#fuelPlanningFields [data-fuel-pct]'));
+
+    planToggle.checked = !!settings.fuelPlanningEnabled;
+    tankRangeInput.value = settings.fuelTankRangeKm || '';
+    warnModeSelect.value = settings.fuelWarnMode || 'percent30';
+
+    // Fuel percent lives in device-local fuel state (the bike's tank), not trip settings.
+    // FuelPlanner should already be loaded (fuel.js loads before ui.js), but guard anyway.
+    if (typeof FuelPlanner !== 'undefined' && FuelPlanner.getState) {
+      // Rounded down for display: the stored value can be fractional (ride
+      // mode banks the km burned on exit), and this input is step="1".
+      // Rounding down keeps a saved value from ever inflating the tank.
+      percentNowInput.value = Math.floor(FuelPlanner.getState().percent);
+    } else {
+      const fuelState = Storage.load(Storage.KEYS.FUEL_STATE || 'ride_fuel_state', { percent: 100 });
+      percentNowInput.value = (fuelState && typeof fuelState.percent === 'number') ? fuelState.percent : 100;
+    }
+
+    // Same treatment the fuel-cost section above gets: the sub-fields are
+    // hidden outright while the feature is off (a dimmed-but-visible block
+    // would be the only control in this modal that behaved differently), and
+    // disabled as well so nothing hidden is still focusable.
+    const setPlanningDisabled = (disabled) => {
+      [tankRangeInput, warnModeSelect, percentNowInput, ...percentChips].forEach((el) => { el.disabled = disabled; });
+      planFields.style.display = disabled ? 'none' : '';
+    };
+    setPlanningDisabled(!planToggle.checked);
+
+    planToggle.onchange = () => { setPlanningDisabled(!planToggle.checked); };
+
+    percentChips.forEach((chip) => {
+      chip.onclick = () => {
+        if (chip.disabled) return;
+        percentNowInput.value = chip.getAttribute('data-fuel-pct');
+      };
+    });
+
     document.getElementById('settingsSave').onclick = () => {
       settings.fuelEnabled = toggle.checked;
       settings.fuelRate = rateInput.value;
       settings.fuelPrice = priceInput.value;
+
+      settings.fuelPlanningEnabled = planToggle.checked;
+      // Stored as a real number (or '' for unset) — FuelPlanner.computeProfile
+      // type-checks tankRangeKm and goes inert on a string, so the "e.g. 350"
+      // the input hands back must be converted here, not by each consumer.
+      const tankRangeKm = parseFloat(tankRangeInput.value);
+      settings.fuelTankRangeKm = Number.isFinite(tankRangeKm) && tankRangeKm > 0 ? tankRangeKm : '';
+      settings.fuelWarnMode = warnModeSelect.value || 'percent30';
       Storage.save(Storage.KEYS.SETTINGS, settings);
+
+      const pctRaw = parseFloat(percentNowInput.value);
+      const pct = isNaN(pctRaw) ? 100 : Math.max(0, Math.min(100, pctRaw));
+      if (typeof FuelPlanner !== 'undefined' && FuelPlanner.setPercent) {
+        FuelPlanner.setPercent(pct);
+      } else {
+        Storage.save(Storage.KEYS.FUEL_STATE || 'ride_fuel_state', { percent: pct, updatedAt: new Date().toISOString() });
+      }
+      window.dispatchEvent(new CustomEvent('ride:fuelSettingsChanged'));
+
       this.closeModal('settingsModal');
       this.showToast('Settings saved', 'success');
       // Refresh stats if a trip is loaded
       if (typeof App !== 'undefined' && App.currentTrip) {
         this.updateTripStats(App.currentTrip);
+        // The ⛽ badges in the itinerary are gated on fuelPlanningEnabled
+        // (ui-renderers.js), so flipping that toggle has to re-render the list.
+        this.renderWaypoints(App.currentTrip.waypoints || []);
       }
     };
 

@@ -1,0 +1,22 @@
+-- Add a fuel_stop flag to waypoints.
+--
+-- Meaning: the tank is refilled at this waypoint. window.FuelPlanner
+-- (public/js/fuel.js) resets its remaining-range calculation to
+-- fuelTankRangeKm at any waypoint with fuel_stop = 1. Only meaningful on
+-- real stops — never set on 'via' (route-shaping) or 'leg-break' (leg
+-- divider) waypoints; the waypoint edit UI never offers the checkbox for
+-- those types.
+--
+-- Deploy order: api/waypoints.js is written to tolerate this column being
+-- absent (see the comments around fuel_stop there), so the API can deploy
+-- before this migration runs without 500ing. Apply this migration whenever
+-- convenient after that deploy to make the flag actually persist.
+--
+-- Apply (per repo convention — api/migrations/*.sql are applied by hand,
+-- nothing tracks which files have run against prod):
+--   Remote: npx wrangler d1 execute ride-db --file=./api/migrations/2026-08-17_waypoint_fuel_stop.sql --remote
+--   Local:  npx wrangler d1 execute ride-db --file=./api/migrations/2026-08-17_waypoint_fuel_stop.sql --local
+--
+-- NOT applied yet. Do not run this against any environment as part of
+-- writing/reviewing this file.
+ALTER TABLE waypoints ADD COLUMN fuel_stop INTEGER NOT NULL DEFAULT 0;
