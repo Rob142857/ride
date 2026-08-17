@@ -18,6 +18,11 @@ wrangler.private.toml
 *.swp
 *.swo
 
+# Claude Code: track .claude/ (launch config etc.) but never the worktree
+# checkouts that live under it in the main clone — those are whole working
+# copies, not project files.
+.claude/worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
