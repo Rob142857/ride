@@ -423,8 +423,21 @@
           <button type="button" class="secondary-btn" id="placeUseCurrentLocation">Use current location</button>
           <button type="button" class="primary-btn" id="placeSearchSubmit">Search</button>
         </div>
+        <button type="button" class="link-btn" id="findFuelAlongRouteBtn">⛽ Find fuel along route</button>
         <div id="placeSearchStatus" class="microcopy">Type a search to begin.</div>
         <div id="placeSearchResults" class="place-results"></div>
+      </div>
+    </div>
+
+    <div id="fuelFinderModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="fuelFinderModalTitle">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="fuelFinderModalTitle">Find Fuel Along Route</h3>
+          <button type="button" class="modal-close" data-close aria-label="Close">×</button>
+        </div>
+        <p class="modal-subtitle">Petrol stations near where your tank is expected to run low.</p>
+        <div id="fuelFinderStatus" class="microcopy">Searching…</div>
+        <div id="fuelFinderResults" class="place-results"></div>
       </div>
     </div>
     
@@ -741,6 +754,7 @@
   <script src="js/ui.js?v=2026-08-17T01"></script>
   <script src="js/ui-renderers.js?v=2026-08-17T01"></script>
   <script src="js/ui-place-search.js?v=2026-08-17T01"></script>
+  <script src="js/fuel-finder.js?v=2026-08-17T01"></script>
   <script src="js/share.js?v=2026-08-17T01"></script>
   <script src="js/export-import.js?v=2026-08-17T01"></script>
   <script src="js/app-core.js?v=2026-08-17T01"></script>

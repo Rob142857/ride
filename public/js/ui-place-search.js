@@ -11,12 +11,27 @@ Object.assign(UI, {
     const resultsEl = document.getElementById('placeSearchResults');
     const statusEl = document.getElementById('placeSearchStatus');
     const useLocationBtn = document.getElementById('placeUseCurrentLocation');
+    const findFuelBtn = document.getElementById('findFuelAlongRouteBtn');
 
     if (!openBtn || !input || !submit || !resultsEl || !statusEl) return;
 
     openBtn.addEventListener('click', () => {
       this.openPlaceSearchModal();
     });
+
+    // Second discoverability path for "Find fuel along route" (the other is
+    // the fuel chip's own action button — see map.js/fuel-finder.js). Lives
+    // here because this modal is the app's one waypoint-search surface.
+    if (findFuelBtn) {
+      findFuelBtn.addEventListener('click', () => {
+        this.closeModal('placeSearchModal');
+        if (typeof window.FuelFinder?.openForRoute === 'function') {
+          window.FuelFinder.openForRoute();
+        } else {
+          this.showToast("Fuel finder isn't available. Try reloading the page.", 'error');
+        }
+      });
+    }
 
     submit.addEventListener('click', () => this.performPlaceSearch());
     input.addEventListener('keydown', (e) => {
@@ -48,6 +63,16 @@ Object.assign(UI, {
     const input = document.getElementById('placeSearchInput');
     const resultsEl = document.getElementById('placeSearchResults');
     const statusEl = document.getElementById('placeSearchStatus');
+    // Feature-off invariant (same gate as waypoint-controller.js's fuel-stop
+    // row): with fuel planning switched off in Settings, "Find fuel along
+    // route" has nothing to search for, so it shouldn't be discoverable here
+    // either — only the chip path (map.js/fuel.js) is truly settings-gated
+    // by construction; this static button needs the same check applied live.
+    const findFuelBtn = document.getElementById('findFuelAlongRouteBtn');
+    if (findFuelBtn) {
+      const fuelPlanningEnabled = !!(Storage.load(Storage.KEYS.SETTINGS, {}) || {}).fuelPlanningEnabled;
+      findFuelBtn.style.display = fuelPlanningEnabled ? '' : 'none';
+    }
     let address = document.getElementById('waypointAddress')?.value || '';
     // The map-pick placeholder is not a real address — don't seed a search
     // with it (and never save it, see UI.handleWaypointSubmit).

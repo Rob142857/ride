@@ -372,3 +372,115 @@ Built by five parallel agents against a fixed contract, then integrated. Format 
 - **Waypoint details**: changing an existing waypoint's type *to* Fuel/Rest does not auto-tick
   `fuelStop` (only creation does). Deliberate — an edit shouldn't silently change fuel
   planning — but confirm that's the wanted behaviour.
+
+## Fuel polish + fuel finder + return leg — 2026-08-17
+
+Built by three parallel agents against a fixed contract (`FuelPlanner.refuelSearchPoints`, the
+fuel chip's "Find fuel" button, `ride:fuelStopsChanged`), then integrated. Format as above.
+
+### What was built
+
+- **Overlay legibility (`public/js/map.js`, `public/js/fuel.js`)**: fuel-band polylines were
+  nearly as wide and nearly as opaque as the route itself, hiding both the gold route and tile
+  street labels. `_fuelWeight()` now floors at half the route's weight; `_fuelOpacity()` caps at
+  0.5 (0.62 for the dashed 'empty' stretch). `FuelPlanner.refuelSearchPoints(profile,
+  coordinates)` added — one search point per fill-to-fill span that drops below 20% of tank
+  range, at the ~80%-consumed mark, clamped before any dry point.
+- **Fuel finder (`public/js/fuel-finder.js` new, `api/places.js`, `api/worker.js`,
+  `public/js/ui-place-search.js`, `public/index.html`, `public/sw.js`)**: `window.FuelFinder.
+  openForRoute()` reads the fuel profile, asks `refuelSearchPoints` where to look, searches up
+  to 2 points (15km, widened once to 40km if empty) via a new `GET /api/places/fuel`
+  (`PlacesHandler.searchFuel`, Nearby Search by `gas_station`, same auth/quota bucket as
+  `search()`), and inserts the chosen station via the canonical `App.addWaypoint` +
+  `App.reorderWaypoints` path (fuelStop:true, dispatches `ride:fuelStopsChanged`). Two
+  discoverability paths: the fuel chip's new button, and `#findFuelAlongRouteBtn` inside the
+  place-search modal.
+- **Return leg (`public/js/trip-details.js`)**: "Create return trip..." in Trip Details builds a
+  brand-new trip with the source trip's real stops + vias reversed (leg-breaks dropped), via
+  the canonical `API.trips.create` + sequential `API.waypoints.add` path (If-Match versioning
+  via a local `shell`, mirroring the pre-existing `appendTripAsLeg`). Also fixed two pre-existing
+  bugs in `appendTripAsLeg`'s waypoint-copy loop found while building the shared
+  `_normalizeCopyWaypointType` helper: `fuelStop` was dropped entirely on copy, and every
+  waypoint type except `via` collapsed to `'stop'`.
+
+### Seams found and fixed at integration
+
+- **[critical] `public/js/fuel-finder.js` `_useStation`'s insertion-boundary scan (previously
+  ~line 241)** — the loop finding "the first waypoint whose along-route km exceeds the search
+  point's km" explicitly `continue`d past `type === 'leg-break'` entries, same as it skips
+  `via`. For a multi-leg trip where a leg's own route geometry extends past its last real stop
+  (a trailing `via` shape point placed after the last stop but before the leg-break — OSRM
+  routes through it, so the leg's coordinates genuinely extend that far), a low-fuel point
+  landing in that tail would skip over the leg-break divider (still `> pointKm`-eligible once
+  it's not excluded) and land on the first real stop of the next leg instead — silently
+  inserting the fuel stop into the leg that didn't need it while leaving the leg that actually
+  runs dry exactly as fuel-starved as before. `map.js`'s `_splitIntoLegs` routes each leg
+  independently, so this isn't cosmetic — the rider genuinely gets no fuel stop where one was
+  computed to be needed. Fixed: leg-break is now a full boundary candidate in the scan (only
+  `via` is still skipped), so the fuel stop can never be spliced in past a leg's closing divider.
+  Reproduced the bug and confirmed the fix with a standalone harness (leg 1 = stopA-stopB-viaY,
+  leg-break anchored to viaY, leg 2 far away; a low point between stopB and viaY: pre-fix
+  resolves to the leg-2 stop, post-fix resolves to the leg-break, staying in leg 1).
+- **[medium] `public/js/ui-place-search.js` `openPlaceSearchModal` / `public/index.html`'s
+  `#findFuelAlongRouteBtn`** — the button was static markup, always visible regardless of the
+  `fuelPlanningEnabled` setting (violates the same feature-off invariant
+  `waypoint-controller.js`'s fuel-stop toggle already respects). Clicking it with the feature off
+  just degraded to a toast, but the button itself shouldn't be discoverable when fuel planning
+  is off. Fixed: `openPlaceSearchModal()` now reads `Storage.KEYS.SETTINGS` live and hides the
+  button when `fuelPlanningEnabled` is false, same check `waypoint-controller.js` already makes
+  for the fuel-stop row.
+
+### Verified, no change needed
+
+- Overlay math: re-ran a copy of the overlay agent's node harness against `fuel.js` directly —
+  all scenarios (580km/300km-tank band placement, fuel-stop mid-route reset, 40% start
+  percent, slice-seam partition audit, camelCase-only `fuelStop`/via/leg-break exclusion, inert-
+  input guards) pass. `_fuelWeight`/`_fuelOpacity`/`interactive:false` apply uniformly to every
+  drawn fuel layer including the dashed 'empty' segment and the fill circleMarkers.
+  `refreshFuelOverlay` call sites (init's zoomend, the three `ride:fuel*`/`ride:routeComputed`
+  listeners, `_drawRoutes`, and ride-controller.js's explicit `_onTankFilled` call with
+  `startAtIdx`) are all unchanged/compatible with the new signature.
+- Places quota: `openForRoute()` caps at 2 search points, each with at most 1 widening retry
+  (max 4 upstream calls, same shared quota bucket as text search); guests short-circuit to
+  `UI.suggestLogin` before opening the results modal; a 429 mid-search shows the existing
+  rate-limit toast rather than a raw error.
+- Registrations: `fuel-finder.js`'s script tag sits after both `fuel.js` and `ui-place-search.js`,
+  carries the `?v=2026-08-17T01` convention, and is listed in `sw.js` STATIC_ASSETS.
+  `node --check` clean on every touched/created JS file. No hex colours outside tokens.css other
+  than `var(--x, #literal)` fallbacks matching the existing inline-chip precedent.
+- Return leg: reversed order is correct because `API.trips.get` (cloud `ORDER BY sort_order`,
+  guest `LocalDB.getTrip`) already returns waypoints pre-sorted, so `Trip.normalizeWaypointOrder
+  (...).reverse()` reverses display order, not insertion order. `order`/`sort_order` in the add
+  payload are dead — both `api/waypoints.js addWaypoint` and `LocalDB.addWaypoint` always append
+  at `max+1` server/local-side regardless — but harmless, since sequential awaited adds already
+  produce the correct final order by construction. Guest parity confirmed by reading
+  `LocalDB.createTrip`/`addWaypoint`. `appendTripAsLeg`'s `fuelStop` fix covers a return trip
+  later appended as a leg into another trip (the exact interaction the task called out).
+
+### Decisions worth Rob's attention
+
+- Fuel-stop insertion in `fuel-finder.js` is add-then-reorder (two canonical calls, two
+  undo/toast steps) rather than one combined step — acceptable since both are independently
+  correct, flagged in case a single-undo-step insert is wanted later.
+- `/api/places/fuel` is a sibling endpoint to `/api/places/search` rather than a `type=fuel`
+  param, to avoid tangling the query-text and lat/lng-radius call shapes; same quota bucket
+  either way.
+- Not fixed (pre-existing, not part of this batch, ambiguous rather than clear-cut): if both
+  trips in `appendTripAsLeg` have zero copyable waypoints it shows an info toast and returns
+  without throwing, so the confirm modal closes as if it succeeded. Also: neither
+  `createReturnTrip` nor `appendTripAsLeg` roll back or resume a partial failure — retrying
+  re-runs from scratch (a second, duplicate-named trip for the return-trip path). Both are
+  narrow edge cases inherited from the pre-existing append-leg v1 design, not introduced here.
+
+### Unverified — needs Rob in a browser
+
+- The fuel-finder insertion fix is verified against a standalone harness reproducing the exact
+  scan logic, not against a live multi-leg trip with a real OSRM/GraphHopper route and a real
+  Google Places result — worth one manual pass: a 2-leg trip, drain the tank inside leg 1 past
+  its last real stop, confirm "Find fuel" lands the new waypoint inside leg 1's segment (before
+  the leg-break) and the route recompute reflects it.
+- `Object.assign(API.places, {...searchFuel})` and the new `/api/places/fuel` route are
+  untested against a live Google Places key/quota (no network access in this sandbox) — the
+  400/502/429 paths are code-reviewed, not exercised.
+- The two-toast (add, then reorder) sequence on a repositioned fuel-stop insert — confirm the UX
+  reads fine in practice, not just "acceptable" on paper.

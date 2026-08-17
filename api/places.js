@@ -35,6 +35,49 @@ function monthlyCounterKey() {
   return { key: `places_monthly:${monthId}`, ttl };
 }
 
+/**
+ * Shared per-user weekly + global monthly quota check, used by both the
+ * text search and the fuel-station search below — a fuel search costs the
+ * same upstream call as any other place search, so it draws on the exact
+ * same budget rather than getting its own bucket.
+ * Returns an error Response when the caller is over budget, else null.
+ */
+async function consumeSearchQuota(context) {
+  const { env } = context;
+  const userId = context.user?.id;
+  if (userId) {
+    const { key, ttl } = rateLimitKey(userId);
+    const count = parseInt(await env.RIDE_TRIP_PLANNER_SESSIONS.get(key) || '0', 10);
+    if (count >= WEEKLY_LIMIT) {
+      return errorResponse(`Weekly place search limit reached (${WEEKLY_LIMIT}). Resets Monday.`, 429);
+    }
+    // Increment (fire-and-forget is fine; expirationTtl ensures cleanup)
+    await env.RIDE_TRIP_PLANNER_SESSIONS.put(key, String(count + 1), { expirationTtl: ttl });
+  }
+
+  // Increment global monthly counter
+  const mc = monthlyCounterKey();
+  const monthCount = parseInt(await env.RIDE_TRIP_PLANNER_SESSIONS.get(mc.key) || '0', 10);
+  await env.RIDE_TRIP_PLANNER_SESSIONS.put(mc.key, String(monthCount + 1), { expirationTtl: mc.ttl });
+  return null;
+}
+
+/**
+ * Haversine distance in km. Duplicated locally rather than imported —
+ * same reasoning as public/js/fuel.js's own copy: one small pure formula
+ * isn't worth a cross-module dependency.
+ */
+function haversineKm(a, b) {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
 export const PlacesHandler = {
   async search(context) {
     const { request, env } = context;
@@ -44,22 +87,8 @@ export const PlacesHandler = {
       return errorResponse('Places search not configured', 503);
     }
 
-    // --- Per-user weekly rate limit ---
-    const userId = context.user?.id;
-    if (userId) {
-      const { key, ttl } = rateLimitKey(userId);
-      const count = parseInt(await env.RIDE_TRIP_PLANNER_SESSIONS.get(key) || '0', 10);
-      if (count >= WEEKLY_LIMIT) {
-        return errorResponse(`Weekly place search limit reached (${WEEKLY_LIMIT}). Resets Monday.`, 429);
-      }
-      // Increment (fire-and-forget is fine; expirationTtl ensures cleanup)
-      await env.RIDE_TRIP_PLANNER_SESSIONS.put(key, String(count + 1), { expirationTtl: ttl });
-    }
-
-    // Increment global monthly counter
-    const mc = monthlyCounterKey();
-    const monthCount = parseInt(await env.RIDE_TRIP_PLANNER_SESSIONS.get(mc.key) || '0', 10);
-    await env.RIDE_TRIP_PLANNER_SESSIONS.put(mc.key, String(monthCount + 1), { expirationTtl: mc.ttl });
+    const quotaError = await consumeSearchQuota(context);
+    if (quotaError) return quotaError;
 
     const url = new URL(request.url);
     const query = (url.searchParams.get('q') || '').trim();
@@ -115,6 +144,82 @@ export const PlacesHandler = {
       rating: place.rating,
       types: place.types || []
     })).filter((p) => p.location);
+
+    return jsonResponse({ results });
+  },
+
+  /**
+   * Fuel-station search — Nearby Search around a route point, ranked by
+   * distance from that point (used by the "Find fuel along route" flow,
+   * public/js/fuel-finder.js). Sibling endpoint rather than a mode on
+   * search() above: a location-anchored gas_station lookup has different
+   * required params (lat/lng instead of q) and a different upstream Places
+   * endpoint, so folding it into the same function would mostly be
+   * branching. Same key/quota plumbing either way.
+   */
+  async searchFuel(context) {
+    const { request, env } = context;
+    const apiKey = env.GOOGLE_PLACES_API_KEY;
+
+    if (!apiKey) {
+      return errorResponse('Places search not configured', 503);
+    }
+
+    const quotaError = await consumeSearchQuota(context);
+    if (quotaError) return quotaError;
+
+    const url = new URL(request.url);
+    const lat = Number(url.searchParams.get('lat'));
+    const lng = Number(url.searchParams.get('lng'));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return errorResponse('Missing location', 400);
+    }
+    // Clamp to something sane — the client only ever asks for ~15km or
+    // ~40km, but never trust a query param that far.
+    const requestedRadius = Number(url.searchParams.get('radius')) || 15000;
+    const radius = Math.max(1000, Math.min(50000, requestedRadius));
+
+    const apiUrl = new URL('https://maps.googleapis.com/maps/api/place/nearbysearch/json');
+    apiUrl.searchParams.set('key', apiKey);
+    apiUrl.searchParams.set('language', 'en');
+    apiUrl.searchParams.set('location', `${lat},${lng}`);
+    apiUrl.searchParams.set('radius', String(radius));
+    apiUrl.searchParams.set('type', 'gas_station');
+
+    let data;
+    try {
+      const resp = await fetch(apiUrl.toString());
+      data = await resp.json();
+    } catch (error) {
+      console.error('Places API network error:', error);
+      return errorResponse('Fuel station search failed', 502);
+    }
+
+    if (data?.status && !['OK', 'ZERO_RESULTS'].includes(data.status)) {
+      // Same reasoning as search() above: log the detail, return a fixed string.
+      console.error('Places API error:', data.status, data?.error_message);
+      if (data.status === 'OVER_QUERY_LIMIT') {
+        return errorResponse('Place search is busy right now. Try again in a moment.', 502);
+      }
+      return errorResponse('Place search is temporarily unavailable', 502);
+    }
+
+    const origin = { lat, lng };
+    const results = (data?.results || [])
+      .map((place) => ({
+        id: place.place_id,
+        name: place.name,
+        address: place.formatted_address || place.vicinity || '',
+        location: place.geometry?.location
+          ? { lat: place.geometry.location.lat, lng: place.geometry.location.lng }
+          : null,
+        rating: place.rating,
+        types: place.types || []
+      }))
+      .filter((p) => p.location)
+      .map((p) => ({ ...p, distanceKm: Math.round(haversineKm(origin, p.location) * 10) / 10 }))
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, 8);
 
     return jsonResponse({ results });
   },

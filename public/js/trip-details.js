@@ -11,8 +11,11 @@ Object.assign(App, {
       if (!trip) { UI.showToast('Trip not found', 'error'); return; }
       this.tripDetailId = tripId;
       this.fillTripDetailsForm(trip);
+      this._ensureReturnTripButton();
       this._ensureAppendLegButton();
       this._ensureOfflineSection();
+      const returnTripSection = document.getElementById('tripDetailReturnTripSection');
+      if (returnTripSection) returnTripSection.classList.toggle('hidden', UI.isReadOnlyTrip());
       const appendSection = document.getElementById('tripDetailAppendLegSection');
       if (appendSection) appendSection.classList.toggle('hidden', UI.isReadOnlyTrip());
       UI.openModal('tripDetailsModal');
@@ -198,6 +201,200 @@ Object.assign(App, {
     }
   },
 
+  /* --- Create return trip ---
+   * One tap builds a SEPARATE new trip with this trip's real stops and via
+   * shaping points in full reverse order — the ride home. Deliberately a new
+   * trip, not a leg appended to this one: the return may take a different
+   * road entirely, and it gets its own route computed from scratch. Stitching
+   * outbound + return into a single trip afterward is what "Append another
+   * trip as a leg" (below) is for.
+   * Injected into the Trip Details modal on first open, same pattern as the
+   * append-leg section below and waypoint-controller.js's
+   * _ensureWaypointDetailsExtraFields. */
+
+  _ensureReturnTripButton() {
+    if (document.getElementById('tripDetailReturnTripBtn')) return;
+    const modalActions = document.querySelector('#tripDetailsModal .modal-actions');
+    if (!modalActions) return;
+    modalActions.insertAdjacentHTML('beforebegin', `
+      <div class="form-section" id="tripDetailReturnTripSection">
+        <label class="field-label">Return trip</label>
+        <button type="button" class="secondary-btn" id="tripDetailReturnTripBtn">Create return trip&hellip;</button>
+        <p class="microcopy">Builds a new trip with this trip's stops reversed — this trip is never changed, and the return gets its own fresh route so you can pick a different way home.</p>
+      </div>
+    `);
+    document.getElementById('tripDetailReturnTripBtn')?.addEventListener('click', () => this.openCreateReturnTrip());
+  },
+
+  _ensureReturnTripModal() {
+    if (document.getElementById('returnTripModal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'returnTripModal';
+    modal.className = 'modal hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'returnTripModalTitle');
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="returnTripModalTitle">Create return trip</h3>
+          <button type="button" class="modal-close" data-close aria-label="Close">×</button>
+        </div>
+        <div id="returnTripModalBody"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('[data-close]')?.addEventListener('click', () => UI.closeModal('returnTripModal'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) UI.closeModal('returnTripModal'); });
+  },
+
+  /** Step 1: load the trip, check it has enough stops to reverse, then confirm. */
+  async openCreateReturnTrip() {
+    const tripId = this.tripDetailId;
+    if (!tripId) return;
+    this._ensureReturnTripModal();
+    const bodyEl = document.getElementById('returnTripModalBody');
+    if (bodyEl) bodyEl.innerHTML = '<div class="microcopy">Loading…</div>';
+    UI.openModal('returnTripModal');
+
+    let trip;
+    try {
+      trip = await API.trips.get(tripId);
+    } catch (err) {
+      console.error('Return trip: failed to load trip', err);
+      if (bodyEl) bodyEl.innerHTML = '<div class="microcopy">Could not load this trip. Try again.</div>';
+      return;
+    }
+
+    const stopCount = UI.countStops(trip.waypoints || []);
+    if (stopCount < 2) {
+      if (bodyEl) bodyEl.innerHTML = '<p class="microcopy">Add at least 2 stops to this trip before creating a return trip.</p>';
+      return;
+    }
+    this._confirmCreateReturnTrip(trip, stopCount);
+  },
+
+  /** Step 2: explicit confirm — this creates a brand-new trip. */
+  _confirmCreateReturnTrip(trip, stopCount) {
+    const bodyEl = document.getElementById('returnTripModalBody');
+    if (!bodyEl) return;
+    const returnName = this._returnTripName(trip.name);
+    bodyEl.innerHTML = `
+      <p>Create <strong>${UI.escapeHtml(returnName)}</strong> — a new trip with ${stopCount} stop${stopCount === 1 ? '' : 's'} in reverse order?</p>
+      <p class="microcopy">"${UI.escapeHtml(trip.name || 'This trip')}" is never changed or moved. The return trip starts with no route of its own, so you're free to plan a different way home.</p>
+      <div class="modal-actions">
+        <button type="button" class="cancel-btn" id="returnTripCancelBtn">Cancel</button>
+        <button type="button" class="primary-btn" id="returnTripConfirmBtn">Create return trip</button>
+      </div>
+    `;
+    document.getElementById('returnTripCancelBtn')?.addEventListener('click', () => UI.closeModal('returnTripModal'));
+    const confirmBtn = document.getElementById('returnTripConfirmBtn');
+    confirmBtn?.addEventListener('click', async () => {
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Creating…';
+      try {
+        await this.createReturnTrip(trip);
+        UI.closeModal('returnTripModal');
+        UI.closeModal('tripDetailsModal');
+      } catch (_) {
+        // createReturnTrip already toasted the specific failure.
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Create return trip';
+      }
+    });
+  },
+
+  /**
+   * "<Trip name> — Return", trimmed to fit the trips.name column's 200-char
+   * cap (api/schema_v2.sql) so an absurdly long trip name can't turn a
+   * routine create into a 500.
+   */
+  _returnTripName(sourceName) {
+    const base = (sourceName || 'Trip').trim() || 'Trip';
+    const suffix = ' — Return';
+    const maxTotal = 200;
+    if (base.length + suffix.length <= maxTotal) return `${base}${suffix}`;
+    const maxBase = Math.max(1, maxTotal - suffix.length - 1);
+    return `${base.slice(0, maxBase).trimEnd()}…${suffix}`;
+  },
+
+  /**
+   * Valid non-divider waypoint types a copy (return trip or append-as-leg)
+   * may carry over unchanged — everything WAYPOINT_TYPES (api/waypoints.js)
+   * accepts except 'leg-break', which copies never include. Anything else,
+   * including a missing/corrupt type, becomes a plain stop rather than
+   * risking a 400 mid-loop that would abort with a partial copy.
+   */
+  _normalizeCopyWaypointType(type) {
+    const VALID = new Set(['stop', 'scenic', 'fuel', 'food', 'lodging', 'custom', 'via']);
+    return VALID.has(type) ? type : 'stop';
+  },
+
+  /**
+   * Builds the actual return trip: a new trip via the canonical create path
+   * (API.trips.create — never a hand-rolled INSERT), then this trip's real
+   * stops + vias added to it in full reverse order via the canonical
+   * waypoint-add path (API.waypoints.add), one at a time so If-Match keeps
+   * pace with the version the server bumps on every add. Leg-break dividers
+   * are dropped — the return is always a single leg. Never copies ids or the
+   * outbound route: the whole point of a separate trip is that the return
+   * computes its own route fresh.
+   */
+  async createReturnTrip(sourceTrip) {
+    const reversed = Trip.normalizeWaypointOrder(sourceTrip.waypoints || [])
+      .filter(w => !UI.isLegBreakWaypoint(w))
+      .reverse();
+
+    const returnName = this._returnTripName(sourceTrip.name);
+    let newTrip;
+    try {
+      newTrip = await API.trips.create({ name: returnName });
+    } catch (err) {
+      if (err?.code === 'LOGIN_REQUIRED') { UI.suggestLogin('create trips in the cloud'); throw err; }
+      console.error('Return trip: create failed', err);
+      UI.showToast('Could not create the return trip.', 'error');
+      throw err;
+    }
+
+    const shell = { version: newTrip.version };
+    let addedCount = 0;
+    try {
+      for (const wp of reversed) {
+        if (!Number.isFinite(Number(wp.lat)) || !Number.isFinite(Number(wp.lng))) continue;
+        const res = await API.waypoints.add(newTrip.id, {
+          lat: Number(wp.lat),
+          lng: Number(wp.lng),
+          name: wp.name || 'Waypoint',
+          type: this._normalizeCopyWaypointType(wp.type),
+          notes: wp.notes || '',
+          address: wp.address || '',
+          // Reversed fuel stops stay fuel stops — you refuel there again on
+          // the way home. Vias carry no fuel state; !! keeps it a clean bool.
+          fuelStop: !!wp.fuelStop,
+          order: addedCount,
+          sort_order: addedCount
+        }, { headers: this.getTripIfMatchHeaders(shell) });
+        this.applyTripMetaFromResponse(shell, res);
+        addedCount++;
+      }
+    } catch (err) {
+      console.error('Return trip: waypoint copy failed partway through', err);
+      UI.showToast(
+        `Created "${returnName}" but only copied ${addedCount} of ${reversed.length} waypoints — open it from your trip list to check.`,
+        'error'
+      );
+      this.refreshTripsList();
+      throw err;
+    }
+
+    UI.showToast('Return trip created', 'success');
+    this.bumpTripToTop(newTrip.id);
+    // Normal trip-switch path: loads the map/waypoints and computes the
+    // return's own route fresh, same as picking it from the trips list.
+    await this.loadTrip(newTrip.id);
+    return newTrip;
+  },
+
   /* --- Append another trip as a leg (D4) ---
    * Injected into the Trip Details modal on first open — the modal only
    * ships name/cover/sharing fields in index.html, same pattern as
@@ -368,9 +565,12 @@ Object.assign(App, {
           lat: Number(wp.lat),
           lng: Number(wp.lng),
           name: wp.name || 'Waypoint',
-          type: wp.type === 'via' ? 'via' : 'stop',
+          type: this._normalizeCopyWaypointType(wp.type),
           notes: wp.notes || '',
           address: wp.address || '',
+          // Fuel stops must survive the copy — a stitched master trip still
+          // needs to know where the tank gets refilled.
+          fuelStop: !!wp.fuelStop,
           order: nextOrder,
           sort_order: nextOrder
         }, { headers: this.getTripIfMatchHeaders(shell) });

@@ -701,9 +701,26 @@ const MapManager = {
     return null; // 'ok' — no overlay drawn for this stretch
   },
 
-  /** Slightly under the route line's own weight so its gold edges still show either side. */
+  /**
+   * Materially thinner than the route line — about half its weight, not
+   * just 2px less — so the gold route edges AND the street-name labels
+   * baked into the raster tiles both still read under the band at street
+   * zoom (user report: "route now orange, hides street names"). At the
+   * widest route weight (8, zoom>=16) this is 4px; at the narrowest (3,
+   * zoom<10) it floors at 2px so the band doesn't vanish at region zoom.
+   */
   _fuelWeight() {
-    return Math.max(2, this._routeWeight() - 2);
+    return Math.max(2, Math.round(this._routeWeight() * 0.5));
+  },
+
+  /**
+   * Translucent so both the gold route underneath and the map's own labels
+   * read through — target ~0.45-0.55 for the live warning bands. The empty
+   * ("runs dry") stretch stays the most visually assertive band, since it's
+   * the actual danger signal, but is still capped well short of opaque.
+   */
+  _fuelOpacity(level) {
+    return level === 'empty' ? 0.62 : 0.5;
   },
 
   _clearFuelLayers() {
@@ -738,7 +755,7 @@ const MapManager = {
         pane,
         color,
         weight,
-        opacity: 0.92,
+        opacity: this._fuelOpacity(seg.level),
         lineCap: 'round',
         lineJoin: 'round',
         interactive: false,
@@ -881,6 +898,40 @@ const MapManager = {
     msg.textContent = `Runs dry ~${remainingKm} km before the end — add a fuel stop`;
     text.appendChild(msg);
     wrap.appendChild(text);
+
+    // Contract §2 (cross-agent): second action button that hands off to
+    // fuel-finder.js's search flow. Built only when that module is actually
+    // loaded — nothing else in this chip depends on FuelFinder existing, so
+    // an app build without it just never gets the button ("hides itself").
+    if (typeof window.FuelFinder?.openForRoute === 'function') {
+      const findBtn = document.createElement('button');
+      findBtn.type = 'button';
+      findBtn.className = 'fuel-chip-find';
+      findBtn.textContent = 'Find fuel';
+      findBtn.style.cssText = [
+        'flex-shrink:0',
+        'padding:8px 14px',
+        'border-radius:var(--radius-full, 999px)',
+        'border:1px solid var(--fuel-critical, var(--danger, #ef4444))',
+        'background:transparent',
+        'color:var(--fuel-critical, var(--danger, #ef4444))',
+        'font-family:inherit',
+        'font-weight:600',
+        'font-size:var(--text-xs, 0.75rem)',
+        'line-height:1',
+        'cursor:pointer',
+        'white-space:nowrap'
+      ].join(';');
+      findBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window.FuelFinder?.openForRoute === 'function') {
+          window.FuelFinder.openForRoute();
+        } else {
+          findBtn.style.display = 'none'; // went away between render and click
+        }
+      });
+      wrap.appendChild(findBtn);
+    }
 
     const dismissBtn = document.createElement('button');
     dismissBtn.type = 'button';

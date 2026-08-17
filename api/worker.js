@@ -81,6 +81,9 @@ router.delete('/api/trips/:tripId/waypoints/:id', requireAuth, WaypointsHandler.
 
 // Places search (protected to limit API key exposure)
 router.get('/api/places/search', requireAuth, PlacesHandler.search);
+// Fuel-station search along a route ("Find fuel along route" — see
+// public/js/fuel-finder.js). Same auth gate and quota bucket as search above.
+router.get('/api/places/fuel', requireAuth, PlacesHandler.searchFuel);
 
 // GraphHopper routing proxy ("windy" engine) — guests plan trips too, so this
 // is NOT behind requireAuth; IP rate-limited instead. See api/gh.js.

@@ -103,6 +103,7 @@ const STATIC_ASSETS = [
   '/js/ui.js',
   '/js/ui-renderers.js',
   '/js/ui-place-search.js',
+  '/js/fuel-finder.js',
   '/js/share.js',
   '/js/share-patch.js',
   '/js/export-import.js',

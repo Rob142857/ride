@@ -85,13 +85,25 @@ const FuelPlanner = {
    *              // to avoid a one-edge gap between adjacent segments.
    *   fills: Array<{coordIdx:number, waypointId?:*, offRouteKm?:number}>,
    *   dryPointIdx: number|null,  // first coordinate index where remaining <=0, or null
-   *   remainingAtEndKm: number   // remaining range at the last coordinate
+   *   remainingAtEndKm: number,  // remaining range at the last coordinate
+   *   tankRangeKm: number,       // echoes opts.tankRangeKm
+   *   startPercent: number,      // echoes opts.startPercent
+   *   startAtIdx: number         // the clamped startAtIdx actually used (== segments[0].from)
    * }}
+   *
+   * The last three fields exist so refuelSearchPoints() (below) can rebuild
+   * per-span remaining-range math from just {profile, coordinates} without
+   * this function having to also return a whole `remaining[]` array. No
+   * other caller needs them — map.js's overlay only reads the five fields
+   * documented above them.
    *
    * Guards: fewer than 2 coordinates, a missing/non-positive tankRangeKm, or
    * a startPercent outside 0-100 all return an inert
    * { totalKm:0, segments:[], fills:[], dryPointIdx:null, remainingAtEndKm:0 }
-   * shape. Never throws, never returns NaN anywhere in the result.
+   * shape (deliberately WITHOUT the three echoed fields — there is no valid
+   * value to put in them, and refuelSearchPoints treats their absence as
+   * "inert input", same as everything else here). Never throws, never
+   * returns NaN anywhere in the result.
    */
   computeProfile(opts) {
     const o = opts || {};
@@ -200,8 +212,128 @@ const FuelPlanner = {
       segments,
       fills,
       dryPointIdx,
-      remainingAtEndKm: Number.isFinite(endRemaining) ? Math.round(endRemaining * 100) / 100 : 0
+      remainingAtEndKm: Number.isFinite(endRemaining) ? Math.round(endRemaining * 100) / 100 : 0,
+      tankRangeKm,
+      startPercent,
+      startAtIdx
     };
+  },
+
+  /**
+   * Along-route points where a rider running this profile's tank should
+   * start looking for fuel — one per fill-to-fill span (including the
+   * implicit "start of profile" and "end of route" as span boundaries)
+   * whose remaining range dips below 20% of tankRangeKm before the next
+   * fill or the route ends. Contract §1 (cross-agent): consumed by
+   * public/js/fuel-finder.js's "Find fuel" flow.
+   *
+   * Takes computeProfile()'s OWN return value plus the same `coordinates`
+   * array that was passed to it — deliberately not raw options, so a caller
+   * that already has a profile on hand (map.js's refreshFuelOverlay) never
+   * has to recompute one just to get search points out of it. Distances are
+   * re-derived from `coordinates` here rather than threading computeProfile's
+   * internal per-coordinate `remaining[]` through, which is why
+   * computeProfile echoes tankRangeKm/startPercent/startAtIdx on its result
+   * (see the doc above) — those three plus `fills`/`dryPointIdx` are enough
+   * to rebuild every span's starting range exactly.
+   *
+   * For each qualifying span the point sits where ~80% of that span's
+   * starting range has been consumed (i.e. ~20% remaining) — clamped to
+   * strictly before the span's dry point, though that clamp is never
+   * actually reachable by construction (80% consumed always precedes the
+   * 100%-consumed dry point for any positive range).
+   *
+   * @param {object} profile      Return value of computeProfile().
+   * @param {Array}  coordinates  The SAME coordinates array passed to the
+   *                               computeProfile() call that produced `profile`.
+   * @returns {Array<{lat:number, lng:number, coordIdx:number,
+   *                   kmFromStart:number, remainingKmAtPoint:number}>}
+   *          Empty when nothing qualifies or the inputs are inert. Never
+   *          throws, never returns NaN in any entry.
+   */
+  refuelSearchPoints(profile, coordinates) {
+    if (!profile || !Array.isArray(profile.segments) || !profile.segments.length) return [];
+    if (!Array.isArray(profile.fills)) return [];
+    if (!Array.isArray(coordinates) || coordinates.length < 2) return [];
+
+    const tankRangeKm = profile.tankRangeKm;
+    if (typeof tankRangeKm !== 'number' || !Number.isFinite(tankRangeKm) || tankRangeKm <= 0) return [];
+
+    const n = coordinates.length;
+    const startAtIdx = Number.isFinite(profile.startAtIdx) ? profile.startAtIdx : profile.segments[0].from;
+    if (!Number.isFinite(startAtIdx) || startAtIdx < 0 || startAtIdx > n - 1) return [];
+    const startPercent = Number.isFinite(profile.startPercent) ? profile.startPercent : 100;
+
+    // Cumulative km from coordinates[0] — recomputed here (not shared with
+    // computeProfile's internal segKm, which isn't part of its return value
+    // by design) but the same sanitize-per-edge approach.
+    const cum = new Array(n).fill(0);
+    for (let i = 1; i < n; i++) {
+      const m = _haversineMeters(coordinates[i - 1], coordinates[i]);
+      cum[i] = cum[i - 1] + (Number.isFinite(m) ? m / 1000 : 0);
+    }
+
+    const startedFull = profile.fills.some((f) => f && f.coordIdx === startAtIdx);
+    const startRangeKm = startedFull ? tankRangeKm : tankRangeKm * (startPercent / 100);
+
+    const sortedFills = profile.fills
+      .filter((f) => f && Number.isFinite(f.coordIdx) && f.coordIdx >= startAtIdx && f.coordIdx <= n - 1)
+      .slice()
+      .sort((a, b) => a.coordIdx - b.coordIdx);
+
+    // Fill-to-fill spans: [startAtIdx→fill1], [fill1→fill2], …, [lastFill→end].
+    // Every fill resets the span's starting range to a full tank, mirroring
+    // computeProfile's own "refuel overrides any dip" rule.
+    const spans = [];
+    let spanStart = startAtIdx;
+    let rangeAvailable = startRangeKm;
+    for (const f of sortedFills) {
+      if (f.coordIdx > spanStart) spans.push({ start: spanStart, end: f.coordIdx, rangeAvailable });
+      spanStart = f.coordIdx;
+      rangeAvailable = tankRangeKm;
+    }
+    if (n - 1 > spanStart) spans.push({ start: spanStart, end: n - 1, rangeAvailable });
+
+    const threshold = 0.2 * tankRangeKm;
+    const points = [];
+
+    spans.forEach((span) => {
+      const spanStartKm = cum[span.start];
+      const remainingAt = (i) => span.rangeAvailable - (cum[i] - spanStartKm);
+
+      let qualifies = false;
+      for (let i = span.start; i <= span.end; i++) {
+        if (remainingAt(i) < threshold) { qualifies = true; break; }
+      }
+      if (!qualifies || !(span.rangeAvailable > 0)) return;
+
+      const targetConsumed = 0.8 * span.rangeAvailable;
+      // First coordinate at/after 80% of this span's range has been burned.
+      let foundIdx = span.end;
+      for (let i = span.start; i <= span.end; i++) {
+        if (cum[i] - spanStartKm >= targetConsumed) { foundIdx = i; break; }
+      }
+
+      // Clamp strictly before this span's dry point, if one exists inside it
+      // — structurally unreachable (80% consumed < 100% consumed = dry) but
+      // kept as the defensive guard the contract calls for.
+      const dryIdx = profile.dryPointIdx;
+      if (Number.isFinite(dryIdx) && dryIdx >= span.start && dryIdx <= span.end && foundIdx >= dryIdx) {
+        foundIdx = Math.max(span.start, dryIdx - 1);
+      }
+
+      const coord = _pt(coordinates[foundIdx]);
+      const remainingKmAtPoint = Math.round(remainingAt(foundIdx) * 100) / 100;
+      points.push({
+        lat: coord.lat,
+        lng: coord.lng,
+        coordIdx: foundIdx,
+        kmFromStart: Math.round(cum[foundIdx] * 100) / 100,
+        remainingKmAtPoint: Number.isFinite(remainingKmAtPoint) ? remainingKmAtPoint : 0
+      });
+    });
+
+    return points;
   },
 
   /**
