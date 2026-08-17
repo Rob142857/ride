@@ -59,7 +59,10 @@ const MapManager = {
   _routeErrorAt: 0,
 
   /* ── Fuel overlay state (public/js/fuel.js supplies the math) ─────── */
-  _fuelLayers: [],            // app-owned polylines + fill circleMarkers, mirrors _routeLayers
+  _activeCoreLayers: [],      // the SELECTED route's core line — gold (+ fuel
+                               // bands, single pass, never stacked) — see
+                               // _drawActiveRouteCore. Mirrors _routeLayers.
+  _fuelLayers: [],            // app-owned fill circleMarkers only (refill points)
   _fuelChipEl: null,          // the floating "runs dry" warning chip, if shown
   _fuelChipSignature: null,   // identifies the dry point currently being warned about
   _fuelChipDismissedFor: null, // signature the rider closed — suppressed until it changes
@@ -138,11 +141,9 @@ const MapManager = {
         const marker = this.waypointMarkers[id];
         if (marker?._wpType) marker.setIcon(this.createIcon(marker._wpType));
       });
+      // _restyleRoutes also restyles the active route's core (gold + any
+      // fuel bands) in place — setStyle only, never a profile recompute.
       if (this._routeLayers.length) this._restyleRoutes();
-      // Fuel overlay has no in-place restyle (§ refreshFuelOverlay doc) — a
-      // full recompute is cheap and only actually redraws when there is
-      // something to draw, so only bother when it already drew something.
-      if (this._fuelLayers.length || this._fuelChipEl) this.refreshFuelOverlay();
     });
 
     // Fuel planning is entirely event-driven from here — settings/markup and
@@ -482,6 +483,23 @@ const MapManager = {
     return 3;
   },
 
+  /**
+   * Zoom-adaptive style for the SELECTED route's rendering — its casing and
+   * its core line (gold, plus any fuel bands: they're the same line, see
+   * _drawActiveRouteCore). Bold at region zoom, where the route is the point
+   * of the screen; backed off at street zoom (>= 15) so the raster tile's
+   * own street-name label — baked into the tile image, nothing can render
+   * above it — reads through instead of disappearing under an opaque line.
+   * Restyled in place on 'zoomend' via _restyleRoutes; never used to decide
+   * whether to recompute anything.
+   */
+  _activeRouteStyle() {
+    const z = this.map?.getZoom() || 13;
+    const base = this._routeWeight();
+    if (z >= 15) return { opacity: 0.48, weight: Math.max(3, base - 2), casingOpacity: 0.55 };
+    return { opacity: 0.85, weight: base, casingOpacity: 1 };
+  },
+
   _clearRouteLayers() {
     (this._routeLayers || []).forEach((entry) => {
       entry.layers.forEach((layer) => {
@@ -489,12 +507,20 @@ const MapManager = {
       });
     });
     this._routeLayers = [];
+    // The selected route's core (gold + fuel bands) lives outside these
+    // per-route entries (see _drawActiveRouteCore) — every path that clears
+    // route layers (a fresh draw, or clearRoute()) must take it with them,
+    // or a stale gold/banded line is left on the map with nothing selected.
+    this._clearActiveCoreLayers();
   },
 
   /**
-   * Draw every route: alternatives underneath in quiet grey, the selected one
-   * on top in gold with a dark casing. Alternatives carry a wide invisible hit
-   * line so tapping one selects it (and stays in sync with the pill bar).
+   * Draw every route: alternatives underneath in quiet grey, the selected
+   * one's casing on top of them. The selected route's actual core line
+   * (gold, or gold-plus-fuel-bands) is drawn by the trailing
+   * refreshFuelOverlay() call, via _drawActiveRouteCore — see the comment on
+   * that call below. Alternatives carry a wide invisible hit line so tapping
+   * one selects it (and stays in sync with the pill bar).
    */
   _drawRoutes(routes) {
     this._clearRouteLayers();
@@ -518,25 +544,23 @@ const MapManager = {
       const entry = { index: idx, layers: [], isSelected };
 
       if (isSelected) {
+        const activeStyle = this._activeRouteStyle();
         entry.layers.push(L.polyline(latlngs, {
           color: palette.casing,
-          weight: weight + 5,
-          opacity: 1,
+          weight: activeStyle.weight + 5,
+          opacity: activeStyle.casingOpacity,
           lineCap: 'round',
           lineJoin: 'round',
           interactive: false,
           className: 'route-line-casing'
         }).addTo(this.map));
 
-        entry.layers.push(L.polyline(latlngs, {
-          color: palette.route,
-          weight,
-          opacity: 0.95,
-          lineCap: 'round',
-          lineJoin: 'round',
-          interactive: false,
-          className: 'route-line route-line--selected'
-        }).addTo(this.map));
+        // The core line itself (gold, or gold-plus-fuel-bands where the fuel
+        // profile says otherwise) is NOT drawn here. It is owned entirely by
+        // _drawActiveRouteCore, invoked from refreshFuelOverlay() below —
+        // this is what stops a band ever being painted over an already-drawn
+        // opaque gold line (that stacked-translucency compositing was the
+        // root cause of the route hiding the street-name label under it).
       } else {
         const select = (e) => {
           if (e?.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
@@ -596,18 +620,34 @@ const MapManager = {
     return parts.join(' · ');
   },
 
-  /** Re-apply widths/colors in place (zoom change) without rebuilding layers. */
+  /**
+   * Re-apply widths/colors/opacity in place (zoom change) without rebuilding
+   * layers or recomputing anything. Covers the per-route entries (casing,
+   * alternatives, hit lines) AND the active route's core (gold + fuel bands,
+   * held separately in _activeCoreLayers — see _drawActiveRouteCore) so the
+   * whole selected-route rendering fades together at street zoom.
+   */
   _restyleRoutes() {
     const palette = this._routePalette();
     const weight = this._routeWeight();
+    const activeStyle = this._activeRouteStyle();
     (this._routeLayers || []).forEach((entry) => {
       entry.layers.forEach((layer) => {
         const cls = layer.options.className || '';
-        if (cls.includes('route-line-casing')) layer.setStyle({ weight: weight + 5, color: palette.casing });
-        else if (cls.includes('route-line-hit')) layer.setStyle({ weight: Math.max(18, weight + 12) });
-        else if (entry.isSelected) layer.setStyle({ weight, color: palette.route });
-        else layer.setStyle({ weight: Math.max(3, weight - 2), color: palette.alt });
+        if (cls.includes('route-line-casing')) {
+          layer.setStyle({ weight: activeStyle.weight + 5, opacity: activeStyle.casingOpacity, color: palette.casing });
+        } else if (cls.includes('route-line-hit')) {
+          layer.setStyle({ weight: Math.max(18, weight + 12) });
+        } else {
+          // Alternatives only — the selected route's core line lives in
+          // _activeCoreLayers, restyled below, not in these per-route entries.
+          layer.setStyle({ weight: Math.max(3, weight - 2), color: palette.alt });
+        }
       });
+    });
+
+    (this._activeCoreLayers || []).forEach((layer) => {
+      layer.setStyle({ weight: activeStyle.weight, opacity: activeStyle.opacity });
     });
   },
 
@@ -652,6 +692,16 @@ const MapManager = {
      Fuel overlay (planning view) — pure rendering; all fuel math lives in
      window.FuelPlanner (public/js/fuel.js). This module never computes a
      range or a fill point itself, only draws what FuelPlanner returns.
+
+     The fuel profile's warning bands are painted as part of the SELECTED
+     route's own core line (_drawActiveRouteCore), not as a separate overlay
+     on top of it — a translucent band stacked over an already-opaque gold
+     line composites toward opaque no matter how faint the band itself is,
+     which is exactly what buried the street-name label baked into the
+     raster tile (nothing can render above that label — the tile IS the
+     label). Painting the route in one contiguous pass per stretch (gold
+     where the fuel level is 'ok', band colour otherwise) means every pixel
+     of road is painted exactly once.
      ══════════════════════════════════════════════════════════════════ */
 
   /** Read the fuel settings out of the shared settings blob (contract §1). */
@@ -681,46 +731,29 @@ const MapManager = {
     return this._normalizeCoords(window.App?.currentTrip?.route?.coordinates);
   },
 
-  /** Dedicated pane so fuel segments paint above the base route (400) but
-   *  below the route-editor's drag handles / via markers (450, route-editor.js:59). */
-  _ensureFuelPane() {
+  /** Dedicated pane so the active route's core (gold + fuel bands) always
+   *  paints above every alternative's line (default pane, z400) regardless
+   *  of DOM draw order, but below the route-editor's drag handles / via
+   *  markers (450, route-editor.js:59). Also hosts the fuel fill markers,
+   *  which have always lived here. */
+  _ensureActiveRoutePane() {
     if (!this.map) return undefined;
-    if (!this.map.getPane('fuelOverlayPane')) {
-      const pane = this.map.createPane('fuelOverlayPane');
+    if (!this.map.getPane('activeRoutePane')) {
+      const pane = this.map.createPane('activeRoutePane');
       if (pane) pane.style.zIndex = 420;
     }
-    return 'fuelOverlayPane';
+    return 'activeRoutePane';
   },
 
+  /** Colour for a non-'ok' fuel level. Returns null for 'ok' (and anything
+   *  unrecognized) — callers fall back to the route's own gold for that. */
   _fuelLevelColor(level) {
     if (level === 'warn') return this._cssVar('--fuel-warn', this.FUEL_COLORS.warn);
     if (level === 'low') return this._cssVar('--fuel-low', this.FUEL_COLORS.low);
     if (level === 'critical' || level === 'empty') {
       return this._cssVar('--fuel-critical', this._cssVar('--danger', this.FUEL_COLORS.critical));
     }
-    return null; // 'ok' — no overlay drawn for this stretch
-  },
-
-  /**
-   * Materially thinner than the route line — about half its weight, not
-   * just 2px less — so the gold route edges AND the street-name labels
-   * baked into the raster tiles both still read under the band at street
-   * zoom (user report: "route now orange, hides street names"). At the
-   * widest route weight (8, zoom>=16) this is 4px; at the narrowest (3,
-   * zoom<10) it floors at 2px so the band doesn't vanish at region zoom.
-   */
-  _fuelWeight() {
-    return Math.max(2, Math.round(this._routeWeight() * 0.5));
-  },
-
-  /**
-   * Translucent so both the gold route underneath and the map's own labels
-   * read through — target ~0.45-0.55 for the live warning bands. The empty
-   * ("runs dry") stretch stays the most visually assertive band, since it's
-   * the actual danger signal, but is still capped well short of opaque.
-   */
-  _fuelOpacity(level) {
-    return level === 'empty' ? 0.62 : 0.5;
+    return null;
   },
 
   _clearFuelLayers() {
@@ -730,41 +763,86 @@ const MapManager = {
     this._fuelLayers = [];
   },
 
-  /** One polyline per non-'ok' segment, drawn over the base route. */
-  _drawFuelSegments(coordinates, segments) {
-    if (!Array.isArray(segments) || !segments.length) return;
-    const pane = this._ensureFuelPane();
-    const weight = this._fuelWeight();
+  _clearActiveCoreLayers() {
+    (this._activeCoreLayers || []).forEach((layer) => {
+      try { this.map.removeLayer(layer); } catch (_) { /* already detached */ }
+    });
+    this._activeCoreLayers = [];
+  },
 
-    segments.forEach((seg) => {
-      const color = seg && this._fuelLevelColor(seg.level);
-      if (!color) return;
-      const from = Math.max(0, Number(seg.from) || 0);
-      const to = Math.min(coordinates.length - 1, Number(seg.to) || 0);
+  /**
+   * Paint the SELECTED route's core as one pass of contiguous, non-
+   * overlapping polylines — gold where the fuel level is 'ok' (or fuel
+   * planning is off/unavailable — `segments` is null/empty), band colours
+   * elsewhere. Never draws a band over a gold line already covering the
+   * same stretch — see the section header above for why that matters.
+   *
+   * Always clears its own previous layers first (called on every refresh —
+   * a settings toggle, a route recompute, or falling back to plain gold —
+   * so there both is never a leak and never a stale band left behind).
+   *
+   * @param {Array} coordinates    The active route's coordinates — same
+   *                                array FuelPlanner.computeProfile was
+   *                                given, so segment indices line up exactly.
+   * @param {Array|null} segments  Profile segments [{from,to,level}], a
+   *                                strict partition of
+   *                                [startAtIdx, coordinates.length-1] (see
+   *                                fuel.js computeProfile's doc comment).
+   *                                null/empty draws the whole route as a
+   *                                single 'ok' (gold) line.
+   * @param {number} [startAtIdx=0] First index `segments` covers. Indices
+   *                                before it (already ridden — mid-ride
+   *                                only) carry no fuel data and are always
+   *                                painted gold too, so the line never has
+   *                                a gap behind the rider.
+   */
+  _drawActiveRouteCore(coordinates, segments, startAtIdx = 0) {
+    this._clearActiveCoreLayers();
+    if (!this.map || !Array.isArray(coordinates) || coordinates.length < 2) return;
+
+    const pane = this._ensureActiveRoutePane();
+    const style = this._activeRouteStyle();
+    const gold = this._routePalette().route;
+    const start = Math.max(0, Math.min(coordinates.length - 1, Number(startAtIdx) || 0));
+
+    const parts = [];
+    if (start > 0) parts.push({ from: 0, to: start - 1, level: 'ok' });
+    if (Array.isArray(segments) && segments.length) {
+      parts.push(...segments);
+    } else {
+      parts.push({ from: start, to: coordinates.length - 1, level: 'ok' });
+    }
+
+    parts.forEach((seg) => {
+      const from = Math.max(0, Number(seg?.from) || 0);
+      const to = Math.min(coordinates.length - 1, Number(seg?.to) || 0);
       if (to < from) return;
       // FuelPlanner returns a STRICT partition (adjacent segments share no
-      // index) so 'empty' starts exactly at dryPointIdx. Drawn as-is that
-      // leaves a one-edge gap at every boundary, so extend each slice by the
-      // next coordinate — the overlap is one edge, painted by both colours,
-      // which is what makes the bands look continuous. This is also what lets
-      // a single-coordinate band (from === to) draw at all.
+      // index), so drawn as-is that leaves a one-edge gap at every boundary
+      // — extend each slice by the next coordinate. The overlap is one
+      // edge, painted by both colours, which is what makes the line look
+      // continuous rather than gapped. This is also what lets a
+      // single-coordinate segment (from === to) draw at all.
       const latlngs = coordinates.slice(from, Math.min(to + 2, coordinates.length)).map((c) => [c.lat, c.lng]);
       if (latlngs.length < 2) return;
+
+      const level = seg.level || 'ok';
+      const color = level === 'ok' ? gold : (this._fuelLevelColor(level) || gold);
 
       const layer = L.polyline(latlngs, {
         pane,
         color,
-        weight,
-        opacity: this._fuelOpacity(seg.level),
+        weight: style.weight,
+        opacity: style.opacity,
         lineCap: 'round',
         lineJoin: 'round',
         interactive: false,
         // The empty stretch is dashed on top of the (also critical-colored)
         // solid line so it reads as "gone", not just "still critical".
-        dashArray: seg.level === 'empty' ? '2 9' : null,
-        className: `fuel-line fuel-line--${seg.level}`
+        dashArray: level === 'empty' ? '2 9' : null,
+        className: `route-line route-line--core route-line--${level}`
       }).addTo(this.map);
-      this._fuelLayers.push(layer);
+      this._activeCoreLayers.push(layer);
     });
   },
 
@@ -782,7 +860,7 @@ const MapManager = {
    */
   _drawFuelFills(coordinates, waypoints, fills) {
     if (!Array.isArray(fills) || !fills.length) return;
-    const pane = this._ensureFuelPane();
+    const pane = this._ensureActiveRoutePane();
     const color = this._cssVar('--wp-fuel', this.waypointIcons.fuel.color);
     const ring = this._cssVar('--surface-0', '#0b0e1f');
     const SNAP_TOLERANCE_M = 250; // fills[].coordIdx is the nearest route vertex to the waypoint, not the waypoint itself
@@ -1048,23 +1126,24 @@ const MapManager = {
   /**
    * Public entry point (contract §5) — settings changes, fuel-stop toggles
    * and every route recompute all funnel through here via the window events
-   * wired in init(). Always clears its own layers/chip first: disabled,
-   * no route, or no tank range set all mean "remove the overlay and stop".
+   * wired in init(), AND it is the sole place that draws the selected
+   * route's core line (_drawActiveRouteCore) — every _drawRoutes() call ends
+   * by calling this (see the comment at the end of _drawRoutes). Always
+   * clears fill markers and redraws the core first: disabled, no route, or
+   * no tank range set all mean "plain gold core, no bands, no chip".
    */
   refreshFuelOverlay({ startAtIdx, percent } = {}) {
     this._clearFuelLayers();
 
     const app = window.App;
-    const settings = this._fuelSettings();
-    if (!this.map || !app?.currentTrip || !settings.enabled || !(settings.tankRangeKm > 0)) {
-      this._removeFuelChip();
-      this._fuelChipSignature = null;
-      return;
-    }
-
     const coordinates = this._activeRouteCoordinates();
-    const waypoints = Array.isArray(app.currentTrip.waypoints) ? app.currentTrip.waypoints : [];
-    if (coordinates.length < 2 || waypoints.length < 2 || typeof window.FuelPlanner?.computeProfile !== 'function') {
+    const settings = this._fuelSettings();
+    const waypoints = Array.isArray(app?.currentTrip?.waypoints) ? app.currentTrip.waypoints : [];
+
+    const unavailable = !this.map || !app?.currentTrip || !settings.enabled || !(settings.tankRangeKm > 0)
+      || coordinates.length < 2 || waypoints.length < 2 || typeof window.FuelPlanner?.computeProfile !== 'function';
+    if (unavailable) {
+      this._drawActiveRouteCore(coordinates, null);
       this._removeFuelChip();
       this._fuelChipSignature = null;
       return;
@@ -1083,13 +1162,14 @@ const MapManager = {
       startPercent,
       startAtIdx: startAt
     });
-    if (!profile) {
+    if (!profile || !Array.isArray(profile.segments) || !profile.segments.length) {
+      this._drawActiveRouteCore(coordinates, null);
       this._removeFuelChip();
       this._fuelChipSignature = null;
       return;
     }
 
-    this._drawFuelSegments(coordinates, profile.segments);
+    this._drawActiveRouteCore(coordinates, profile.segments, profile.startAtIdx);
     this._drawFuelFills(coordinates, waypoints, profile.fills);
     this._updateFuelChip(app.currentTrip, coordinates, profile);
   },
@@ -1685,7 +1765,9 @@ const MapManager = {
     if (this.routeEditor) this.routeEditor.clear();
     this._selectedRouteIndex = 0;
     this._cachedAlternatives = [];
-    // No route means nothing for the fuel overlay to draw either.
+    // No route means nothing for the fuel overlay to draw either. The core
+    // line (gold + bands) was already torn down by _clearRouteLayers() above
+    // — this only clears the fill markers, which live in their own array.
     this._clearFuelLayers();
     this._removeFuelChip();
     this._fuelChipSignature = null;

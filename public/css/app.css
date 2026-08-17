@@ -2141,6 +2141,13 @@ body.doc-page {
   font-size: 0.85rem;
 }
 
+/* Live "≈ N km" hint beside the fuel-percent settings input (#fuelPercentNow)
+   — text is only ever set once a tank range exists to convert against, same
+   idiom as .ride-maneuver-dist:empty in ride-mode.css. */
+.fuel-pct-km-hint:empty {
+  display: none;
+}
+
 .modal-content input::placeholder,
 .modal-content textarea::placeholder {
   color: var(--text-muted);

@@ -202,6 +202,9 @@
         <div class="ride-stat ride-stat-fuel hidden" id="rideFuelStat">
           <span id="rideFuelVal" class="ride-stat-value">—</span>
           <span class="ride-stat-label">fuel</span>
+          <div class="ride-fuel-gauge" id="rideFuelGauge" aria-hidden="true">
+            <div class="ride-fuel-gauge-fill" id="rideFuelGaugeFill"></div>
+          </div>
         </div>
       </div>
 
@@ -675,6 +678,7 @@
 
             <label class="field-label" for="fuelPercentNow">Fuel in the tank right now (%)</label>
             <input type="number" id="fuelPercentNow" min="0" max="100" step="1" placeholder="100" />
+            <p class="microcopy fuel-pct-km-hint" id="fuelPercentNowKmHint"></p>
             <div class="fuel-quickset-chips" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
               <button type="button" class="route-chip" data-fuel-pct="100">Full</button>
               <button type="button" class="route-chip" data-fuel-pct="75">¾ tank</button>

@@ -258,6 +258,7 @@ Object.assign(App, {
       this._resetFuelRideState();
       const startRemaining = this._fuelSettings.tankRangeKm * (this._fuelPercent / 100);
       this._setFuelValueHud(startRemaining, this._fuelLevel(startRemaining));
+      this._setFuelGaugeHud(startRemaining, this._fuelLevel(startRemaining));
     }
     // The map's fuel overlay is position-aware and drops the "runs dry" chip
     // while riding (it would sit on top of the turn-by-turn banner) — it needs
@@ -847,6 +848,26 @@ Object.assign(App, {
   },
 
   /**
+   * Fill the fuel gauge to remainingKm/tankRangeKm (clamped 0..1) and colour
+   * it from the same level bands as the numeric readout beside it. The bar
+   * is created once in index.html — this only ever touches style.width and
+   * a class, never innerHTML, so it's cheap enough to call every GPS tick.
+   */
+  _setFuelGaugeHud(remainingKm, level) {
+    const fillEl = document.getElementById('rideFuelGaugeFill');
+    if (!fillEl) return;
+    const tankRangeKm = this._fuelSettings?.tankRangeKm;
+    const fraction = tankRangeKm > 0 ? Math.max(0, Math.min(1, remainingKm / tankRangeKm)) : 0;
+    fillEl.style.width = `${(fraction * 100).toFixed(1)}%`;
+    fillEl.classList.remove('ride-fuel-warn', 'ride-fuel-low', 'ride-fuel-critical', 'ride-fuel-empty');
+    if (level === 'warn') fillEl.classList.add('ride-fuel-warn');
+    else if (level === 'low') fillEl.classList.add('ride-fuel-low');
+    else if (level === 'critical') fillEl.classList.add('ride-fuel-critical');
+    else if (level === 'empty') fillEl.classList.add('ride-fuel-critical', 'ride-fuel-empty');
+    // 'ok' → no class, default (--success) fill colour.
+  },
+
+  /**
    * Per-tick fuel update: accumulate km ridden since the last fill via the
    * delta between consecutive ticks' `along` (reroute-safe — a reroute
    * renumbers `along` from the rider's live position, so it resets the
@@ -867,6 +888,7 @@ Object.assign(App, {
     const remainingKm = Math.max(0, s.tankRangeKm * (percent / 100) - this._fuelKmRidden);
     const level = this._fuelLevel(remainingKm);
     this._setFuelValueHud(remainingKm, level);
+    this._setFuelGaugeHud(remainingKm, level);
     this._checkFuelAlert(remainingKm, s);
   },
 
@@ -885,7 +907,12 @@ Object.assign(App, {
   _checkFuelAlert(remainingKm, s) {
     const crossed = remainingKm <= this._fuelAlertThresholdKm(s);
     if (crossed) {
-      const msg = `⛽ Fuel low — ~${Math.round(remainingKm)} km left. Plan a fuel stop.`;
+      // Formatted through RideUtils, not hardcoded "km": it defaults to
+      // imperial on en-US/en-GB locales (utils.js), and the HUD readout +
+      // gauge already honour that. A banner claiming "90 km left" beside a
+      // readout showing "56 mi" is worse than either unit alone — this is a
+      // range-safety number, so the two must always agree.
+      const msg = `⛽ Fuel low — ~${RideUtils.formatDistance(Math.max(0, remainingKm) * 1000)} left. Plan a fuel stop.`;
       if (!this._fuelAlertActive) {
         this._fuelAlertActive = true;
         UI.showToast(msg, 'error');
@@ -946,9 +973,11 @@ Object.assign(App, {
     this._fuelAlertActive = false;
     this._clearFuelAlertLine();
     this._setFuelValueHud(s.tankRangeKm, this._fuelLevel(s.tankRangeKm));
+    this._setFuelGaugeHud(s.tankRangeKm, this._fuelLevel(s.tankRangeKm));
 
     MapManager.refreshFuelOverlay?.({ startAtIdx: this._rideNearIdx || 0, percent: 100 });
-    UI.showToast(`Tank filled — range ~${Math.round(s.tankRangeKm)} km`, 'success');
+    // Same unit-consistency rule as _checkFuelAlert — never hardcode "km".
+    UI.showToast(`Tank filled — range ~${RideUtils.formatDistance(s.tankRangeKm * 1000)}`, 'success');
     window.dispatchEvent(new CustomEvent('ride:fuelSettingsChanged'));
   },
 

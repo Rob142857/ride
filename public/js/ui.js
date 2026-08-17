@@ -846,6 +846,38 @@ const UI = {
       percentNowInput.value = (fuelState && typeof fuelState.percent === 'number') ? fuelState.percent : 100;
     }
 
+    // Percentage-based warnings should always show their km equivalent too.
+    // "30% of tank" is the one warn-mode option expressed as a percent (its
+    // siblings are already "100/50/20 km left") — recompute what that means
+    // in km from whatever tank range is currently in the input, live as the
+    // rider edits it, so the option itself never shows a bare percentage.
+    const percent30Option = warnModeSelect.querySelector('option[value="percent30"]');
+    const updateWarnModeKmLabel = () => {
+      if (!percent30Option) return;
+      const tankRangeKm = parseFloat(tankRangeInput.value);
+      percent30Option.textContent = (Number.isFinite(tankRangeKm) && tankRangeKm > 0)
+        ? `30% of tank (~${Math.round(tankRangeKm * 0.3)} km left)`
+        : '30% of tank';
+    };
+
+    // Live "≈ N km in the tank" readout beside the % input — the input
+    // itself is a pure number the rider typed, left alone, but the km it
+    // represents is the non-redundant thing worth surfacing next to it.
+    const percentNowKmHint = document.getElementById('fuelPercentNowKmHint');
+    const updatePercentNowKmHint = () => {
+      if (!percentNowKmHint) return;
+      const tankRangeKm = parseFloat(tankRangeInput.value);
+      const pct = parseFloat(percentNowInput.value);
+      percentNowKmHint.textContent = (Number.isFinite(tankRangeKm) && tankRangeKm > 0 && Number.isFinite(pct))
+        ? `≈ ${Math.round(Math.max(0, Math.min(100, pct)) / 100 * tankRangeKm)} km in the tank`
+        : '';
+    };
+
+    updateWarnModeKmLabel();
+    updatePercentNowKmHint();
+    tankRangeInput.oninput = () => { updateWarnModeKmLabel(); updatePercentNowKmHint(); };
+    percentNowInput.oninput = updatePercentNowKmHint;
+
     // Same treatment the fuel-cost section above gets: the sub-fields are
     // hidden outright while the feature is off (a dimmed-but-visible block
     // would be the only control in this modal that behaved differently), and
@@ -862,6 +894,7 @@ const UI = {
       chip.onclick = () => {
         if (chip.disabled) return;
         percentNowInput.value = chip.getAttribute('data-fuel-pct');
+        updatePercentNowKmHint();
       };
     });
 
@@ -870,12 +903,24 @@ const UI = {
       settings.fuelRate = rateInput.value;
       settings.fuelPrice = priceInput.value;
 
-      settings.fuelPlanningEnabled = planToggle.checked;
       // Stored as a real number (or '' for unset) — FuelPlanner.computeProfile
       // type-checks tankRangeKm and goes inert on a string, so the "e.g. 350"
       // the input hands back must be converted here, not by each consumer.
       const tankRangeKm = parseFloat(tankRangeInput.value);
-      settings.fuelTankRangeKm = Number.isFinite(tankRangeKm) && tankRangeKm > 0 ? tankRangeKm : '';
+      const hasValidRange = Number.isFinite(tankRangeKm) && tankRangeKm > 0;
+      // Every reader of these settings (fuel-finder.js, map.js,
+      // ride-controller.js) treats planning as truly on only when
+      // enabled && tankRangeKm > 0 — the microcopy below the tank-range
+      // field already promises "the feature stays off until you [set a
+      // range]". Persisting fuelPlanningEnabled:true with no valid range
+      // (e.g. the number input left empty, or invalidated by a stray
+      // character from a mobile keyboard) would break that promise: the
+      // toggle would look saved-on, "Settings saved" would fire, and the
+      // very next fuel-planning check would silently disagree with it.
+      // Enforce the same invariant here, at the one place that writes it.
+      const planningOn = planToggle.checked && hasValidRange;
+      settings.fuelPlanningEnabled = planningOn;
+      settings.fuelTankRangeKm = hasValidRange ? tankRangeKm : '';
       settings.fuelWarnMode = warnModeSelect.value || 'percent30';
       Storage.save(Storage.KEYS.SETTINGS, settings);
 
@@ -889,7 +934,15 @@ const UI = {
       window.dispatchEvent(new CustomEvent('ride:fuelSettingsChanged'));
 
       this.closeModal('settingsModal');
-      this.showToast('Settings saved', 'success');
+      if (planToggle.checked && !hasValidRange) {
+        // The toggle asked for planning but no usable range came with it —
+        // say so specifically instead of the generic success toast, which
+        // is exactly what made the "Find fuel" guard look like it couldn't
+        // see a save that, from the rider's side, had just gone through.
+        this.showToast('Enter a tank range in km to turn on fuel range planning.', 'error');
+      } else {
+        this.showToast('Settings saved', 'success');
+      }
       // Refresh stats if a trip is loaded
       if (typeof App !== 'undefined' && App.currentTrip) {
         this.updateTripStats(App.currentTrip);

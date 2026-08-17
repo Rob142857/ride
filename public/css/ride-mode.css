@@ -343,6 +343,48 @@ body.ride-mode .leaflet-control-attribution {
   50% { opacity: 0.5; }
 }
 
+/* Fuel gauge — a thin continuous fill bar under the numeric readout above
+   it. Chosen over an arc/dial: this column is ~70-90px wide on a phone, and
+   a dial's stroke would be unreadable at that size at a glance; a full-
+   width bar reads its fill level at arm's length instead. Created once in
+   index.html — ride-controller.js's _setFuelGaugeHud only ever touches its
+   width/class per GPS tick, never innerHTML (see the track+fill pattern
+   this mirrors: .offline-progress-track/-fill in app.css). Level classes
+   are the exact same ones #rideFuelVal uses above, so the two never disagree
+   — both are driven by the same FuelPlanner.levelForRemaining() call. */
+.ride-fuel-gauge {
+  width: 100%;
+  height: 5px;
+  margin-top: 4px;
+  background: var(--surface-3);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.ride-fuel-gauge-fill {
+  width: 0%;
+  height: 100%;
+  background: var(--success);  /* 'ok' band — no level class applied */
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base), background var(--transition-fast);
+}
+
+.ride-fuel-gauge-fill.ride-fuel-warn {
+  background: var(--fuel-warn);
+}
+
+.ride-fuel-gauge-fill.ride-fuel-low {
+  background: var(--fuel-low);
+}
+
+.ride-fuel-gauge-fill.ride-fuel-critical {
+  background: var(--fuel-critical);
+}
+
+.ride-fuel-gauge-fill.ride-fuel-empty {
+  animation: ride-fuel-empty-pulse 1.6s ease-in-out infinite;
+}
+
 /* ── FABs — stacked above the stat strip, thumb-side ──────── */
 
 .ride-fab-group {
@@ -617,6 +659,13 @@ body.ride-mode .leaflet-control-attribution {
 
   .ride-stat-speed .ride-stat-value {
     font-size: 30px;
+  }
+
+  /* Keep the fuel column no taller than the speed column (the tallest one
+     here) so the extra gauge row can never grow the whole strip. */
+  .ride-fuel-gauge {
+    height: 3px;
+    margin-top: 2px;
   }
 
   .ride-fab-group {
