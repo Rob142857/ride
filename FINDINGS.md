@@ -484,3 +484,40 @@ fuel chip's "Find fuel" button, `ride:fuelStopsChanged`), then integrated. Forma
   400/502/429 paths are code-reviewed, not exercised.
 - The two-toast (add, then reorder) sequence on a repositioned fuel-stop insert — confirm the UX
   reads fine in practice, not just "acceptable" on paper.
+
+## Ride Mode UX release — 2026-08-17 (later)
+
+Design-led pass on ride mode: wake lock, + menu restructure, live fuel picture.
+3 sonnet builders on disjoint files; integration verified personally in-browser.
+
+- **[fixed, was the real screen-sleep bug]** map-ride.js already held a screen wake
+  lock — but it only re-acquired on visibilitychange, so when the OS dropped the
+  lock with no visibility change (battery saver does exactly this) the screen slept
+  mid-ride, which is the behaviour Rob reported. Replaced by a single stronger
+  implementation in ride-controller.js (re-acquires on the sentinel's own release
+  event AND on visibilitychange, enter/exit owned by enterRideMode/exitRideMode);
+  map-ride.js's copy removed entirely — two competing sentinels made failures
+  impossible to reason about. Unsupported browsers (iOS < 16.4) silently no-op.
+- **+ menu**: Tank filled moved off its dedicated FAB into the existing +
+  (note/photo) sheet, joined by Find fuel — the finder was previously unreachable
+  mid-ride. FAB stack back to two. Both fuel items hidden when the feature is off
+  or FuelFinder is absent. Pre-existing action-sheet clipping bug at <=500px
+  height (align-items:flex-end vs overflow) found and fixed while the menu grew.
+- **Next-fuel-vs-range shortfall line**: each tick compares distance to the next
+  fuelStop waypoint ahead (route._wpAlong) — or the destination when none —
+  against live remaining range; a persistent banner line + once-per-occurrence
+  toast fires ONLY on shortfall ("Next fuel ~X ahead — beyond your ~Y range"),
+  takes precedence over the generic low-fuel threshold line, clears on refuel or
+  when a closer stop is inserted. Fuel stops are now suggestions, not
+  obligations: refuelling early requires zero waypoint edits.
+- **Live fuel picture**: overlay re-derives from the rider's actual position
+  every ~2 km ridden (throttled, no per-tick recompute; verified 22 refreshes
+  over a 44 km simulation, zero layer leak over 30 repeated calls); a single
+  range-limit marker (12px, --fuel-critical dot with --surface-0 ring,
+  interactive:false so it can never swallow route-editor taps — tooltip
+  deliberately dropped for that reason) sits at the exact coordinate the tank
+  hits empty, jumps forward on Tank filled, disappears when the remaining route
+  fits the range. mid-ride Find Fuel verified to search ahead of the bike.
+- Unverified on a real device: actual wake-lock behaviour on Rob's phone
+  (Android Chrome expected fine), gauge/menu ergonomics with gloves, and the
+  shortfall line's real-world timing feel. All logic browser-verified.

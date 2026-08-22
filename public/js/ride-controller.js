@@ -49,7 +49,16 @@ Object.assign(App, {
       MapManager.recenterRide();
     });
     document.getElementById('rideBannerExitBtn')?.addEventListener('click', () => this.exitRideMode());
-    document.getElementById('tankFilledBtn')?.addEventListener('click', () => this._onTankFilled());
+    // Tank Filled and Find Fuel live in the + menu now (declutters the
+    // permanent HUD) — both close the sheet like Note/Photo do.
+    document.getElementById('tankFilledBtn')?.addEventListener('click', () => {
+      document.getElementById('rideAddSheet')?.classList.add('hidden');
+      this._onTankFilled();
+    });
+    document.getElementById('findFuelBtn')?.addEventListener('click', () => {
+      document.getElementById('rideAddSheet')?.classList.add('hidden');
+      window.FuelFinder?.openForRoute();
+    });
 
     // Sync locally-queued ride logs whenever connectivity returns, and rescue
     // any checkpointed track left behind by a ride that never exited cleanly
@@ -61,6 +70,12 @@ Object.assign(App, {
     // tap of Tank Filled) — resync visibility and, if mid-ride, the HUD's
     // cached percent whenever that happens.
     window.addEventListener('ride:fuelSettingsChanged', () => this._onFuelSettingsChanged());
+    // A fuel stop inserted mid-ride (Find Fuel) or toggled from the waypoint
+    // detail panel isn't in route._wpAlong until it's rebuilt — cheapest
+    // correct fix is to just rebuild it, same as a reroute does.
+    window.addEventListener('ride:fuelStopsChanged', () => {
+      if (this.isRiding) this.precomputeRouteMetrics();
+    });
   },
 
   /**
@@ -238,6 +253,16 @@ Object.assign(App, {
     // Leaflet must re-measure or the newly exposed band stays blank.
     setTimeout(() => MapManager.map?.invalidateSize(), 60);
 
+    // Keep the screen on for the duration of the ride — a phone that sleeps
+    // mid-navigation defeats the point. Best-effort only: unsupported
+    // browsers no-op silently (never a toast), and the OS still releases the
+    // lock on tab-hide, so a visibilitychange listener re-acquires it.
+    this._acquireWakeLock();
+    this._rideVisibilityHandler = () => {
+      if (document.visibilityState === 'visible' && this.isRiding) this._acquireWakeLock();
+    };
+    document.addEventListener('visibilitychange', this._rideVisibilityHandler);
+
     const stops = (this.currentTrip.waypoints || []).filter(wp => !['via', 'leg-break'].includes(wp.type || ''));
     this._setHudText('rideTripName', this.currentTrip.name || 'Ride');
     this._setHudText('rideStops', stops.length.toString());
@@ -292,6 +317,12 @@ Object.assign(App, {
     setTimeout(() => MapManager.map?.invalidateSize(), 60);
     MapManager.stopRide();
 
+    if (this._rideVisibilityHandler) {
+      document.removeEventListener('visibilitychange', this._rideVisibilityHandler);
+      this._rideVisibilityHandler = null;
+    }
+    this._releaseWakeLock();
+
     // Save GPS track as a private journal entry + ride log (async, non-blocking)
     const track = this._rideTrack || [];
     const startTime = this._rideStartTime;
@@ -317,6 +348,40 @@ Object.assign(App, {
 
     // Tell the shell the ride is over (deferred build updates apply now)
     window.dispatchEvent(new CustomEvent('ride:ended'));
+  },
+
+  /* --- Screen wake lock: keep the display on for the ride --- */
+
+  /**
+   * Request a screen wake lock. No-op (silent, never a toast) when the API
+   * doesn't exist, permission is denied, or the tab is hidden at request
+   * time — any of those are unsupported/transient conditions, not errors
+   * worth interrupting a rider over. Safe to call when a lock is already
+   * held (e.g. a visibilitychange firing twice in a row).
+   */
+  async _acquireWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    if (this._wakeLockSentinel && !this._wakeLockSentinel.released) return;
+    try {
+      const sentinel = await navigator.wakeLock.request('screen');
+      this._wakeLockSentinel = sentinel;
+      // The OS can release the lock for reasons other than tab-hide (e.g.
+      // power saving) without a visibilitychange ever firing — listen to
+      // the sentinel itself so those cases still get re-acquired.
+      sentinel.addEventListener('release', () => {
+        if (this._wakeLockSentinel !== sentinel) return; // superseded already
+        this._wakeLockSentinel = null;
+        if (this.isRiding && document.visibilityState === 'visible') this._acquireWakeLock();
+      });
+    } catch (_) { /* unsupported, denied, or backgrounded — silent no-op */ }
+  },
+
+  /** Double-exit safe: a null/already-released sentinel is a normal no-op. */
+  _releaseWakeLock() {
+    const sentinel = this._wakeLockSentinel;
+    this._wakeLockSentinel = null;
+    if (!sentinel) return;
+    try { sentinel.release().catch(() => {}); } catch (_) { /* already released */ }
   },
 
   /**
@@ -777,9 +842,10 @@ Object.assign(App, {
   },
 
   /**
-   * Show/hide the fuel stat + Tank Filled FAB and widen the stat strip to
-   * a 5th column while active. Called on ride start and whenever fuel
-   * settings change. Returns whether the feature is active.
+   * Show/hide the fuel stat + the + menu's Tank Filled / Find Fuel items,
+   * and widen the stat strip to a 5th column while active. Called on ride
+   * start and whenever fuel settings change. Returns whether the feature
+   * is active.
    */
   _updateFuelVisibility() {
     const s = this._fuelSettings || this._loadFuelSettings();
@@ -787,6 +853,10 @@ Object.assign(App, {
     this._fuelActive = active;
     document.getElementById('rideFuelVal')?.closest('.ride-stat')?.classList.toggle('hidden', !active);
     document.getElementById('tankFilledBtn')?.classList.toggle('hidden', !active);
+    // Find Fuel additionally needs the module actually loaded — an app build
+    // without fuel-finder.js just never shows the item.
+    const findFuelAvailable = active && typeof window.FuelFinder?.openForRoute === 'function';
+    document.getElementById('findFuelBtn')?.classList.toggle('hidden', !findFuelAvailable);
     document.querySelector('.ride-statbar')?.classList.toggle('has-fuel', active);
     if (!active) this._clearFuelAlertLine();
     return active;
@@ -797,6 +867,8 @@ Object.assign(App, {
     this._fuelKmRidden = 0;
     this._fuelLastAlongM = null;
     this._fuelAlertActive = false;
+    this._fuelShortfallActive = false;
+    this._fuelLastOverlayBucket = 0;
     this._clearFuelAlertLine();
     const state = (typeof FuelPlanner !== 'undefined' && typeof FuelPlanner.getState === 'function')
       ? FuelPlanner.getState() : null;
@@ -889,7 +961,78 @@ Object.assign(App, {
     const level = this._fuelLevel(remainingKm);
     this._setFuelValueHud(remainingKm, level);
     this._setFuelGaugeHud(remainingKm, level);
-    this._checkFuelAlert(remainingKm, s);
+
+    // "Next fuel vs range" is the sharper, glanceable question — only the
+    // generic threshold line shows when there's no actual shortfall against
+    // the next stop (or destination) ahead. Never both at once.
+    if (!this._checkFuelShortfall(along, remainingKm)) {
+      this._checkFuelAlert(remainingKm, s);
+    }
+
+    // Bands ahead on the map should reflect reality, but recomputing them
+    // every GPS tick would be wasted work — refresh once per ~2 km ridden.
+    const overlayBucket = Math.floor(this._fuelKmRidden / 2);
+    if (overlayBucket !== this._fuelLastOverlayBucket) {
+      this._fuelLastOverlayBucket = overlayBucket;
+      MapManager.refreshFuelOverlay?.();
+    }
+  },
+
+  /**
+   * Where the rider's fuel needs to reach: the next waypoint ahead flagged
+   * fuelStop, or — once there are none left — the destination itself
+   * (flagged noFuelAhead so the copy can say so honestly). Relies on
+   * route._wpAlong (precomputeRouteMetrics), which is rebuilt on ride start,
+   * reroute, and ride:fuelStopsChanged, so a stop inserted mid-ride via Find
+   * Fuel is picked up without any extra plumbing here.
+   */
+  _nextFuelTarget(along) {
+    const route = this.currentTrip?.route;
+    const wpAlong = route?._wpAlong;
+    if (!wpAlong) return null;
+    let bestAlong = Infinity;
+    for (const wp of (this.currentTrip.waypoints || [])) {
+      if (!wp.fuelStop) continue;
+      const a = wpAlong[wp.id];
+      if (!Number.isFinite(a) || a <= along) continue; // behind us, or not on this route
+      if (a < bestAlong) bestAlong = a;
+    }
+    if (bestAlong !== Infinity) return { distM: Math.max(0, bestAlong - along), noFuelAhead: false };
+    const total = route._total || 0;
+    return { distM: Math.max(0, total - along), noFuelAhead: true };
+  },
+
+  /**
+   * The fuel picture only needs to speak up when there's an actual
+   * shortfall — plenty of range to the next fuel stop (or the destination)
+   * is exactly the boring, expected case. Same once-per-crossing toast
+   * discipline as _checkFuelAlert; re-armed when the shortfall clears
+   * (refuel, or a closer stop inserted via Find Fuel). Returns whether a
+   * shortfall line is showing, so the caller can skip the generic threshold
+   * line — the two must never stack.
+   */
+  _checkFuelShortfall(along, remainingKm) {
+    const target = this._nextFuelTarget(along);
+    if (!target) return false;
+    const shortfall = target.distM > remainingKm * 1000;
+    if (!shortfall) {
+      if (this._fuelShortfallActive) {
+        this._fuelShortfallActive = false;
+        this._clearFuelAlertLine();
+      }
+      return false;
+    }
+    const distStr = RideUtils.formatDistance(target.distM);
+    const rangeStr = RideUtils.formatDistance(Math.max(0, remainingKm) * 1000);
+    const msg = target.noFuelAhead
+      ? `⛽ No fuel stop ahead — ~${distStr} to go, range ~${rangeStr}`
+      : `⛽ Next fuel ~${distStr} ahead — beyond your ~${rangeStr} range`;
+    if (!this._fuelShortfallActive) {
+      this._fuelShortfallActive = true;
+      UI.showToast(msg, 'error');
+    }
+    this._setFuelAlertLine(msg);
+    return true;
   },
 
   /** fuelWarnMode is an alert threshold only — the colour bands are fixed regardless. */
@@ -949,11 +1092,16 @@ Object.assign(App, {
     el.textContent = msg;
     el.classList.remove('hidden');
     document.getElementById('tankFilledBtn')?.classList.add('ride-fab-fuel-alert');
+    // Tank Filled now lives inside the + sheet, invisible until opened — glow
+    // the + FAB itself too, or the alert line becomes the only cue that
+    // something needs attention with no pointer to where to act on it.
+    document.getElementById('rideAddBtn')?.classList.add('ride-fab-fuel-alert');
   },
 
   _clearFuelAlertLine() {
     document.getElementById('rideFuelAlertLine')?.classList.add('hidden');
     document.getElementById('tankFilledBtn')?.classList.remove('ride-fab-fuel-alert');
+    document.getElementById('rideAddBtn')?.classList.remove('ride-fab-fuel-alert');
   },
 
   /**
@@ -970,7 +1118,9 @@ Object.assign(App, {
     FuelPlanner.tankFilled();
     this._fuelPercent = 100;
     this._fuelKmRidden = 0;
+    this._fuelLastOverlayBucket = 0;
     this._fuelAlertActive = false;
+    this._fuelShortfallActive = false;
     this._clearFuelAlertLine();
     this._setFuelValueHud(s.tankRangeKm, this._fuelLevel(s.tankRangeKm));
     this._setFuelGaugeHud(s.tankRangeKm, this._fuelLevel(s.tankRangeKm));
@@ -993,7 +1143,9 @@ Object.assign(App, {
     if (state && Number.isFinite(state.percent) && state.percent !== this._fuelPercent) {
       this._fuelPercent = state.percent;
       this._fuelKmRidden = 0;
+      this._fuelLastOverlayBucket = 0;
       this._fuelAlertActive = false;
+      this._fuelShortfallActive = false;
       this._clearFuelAlertLine();
     }
   },

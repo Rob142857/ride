@@ -13,34 +13,14 @@ Object.assign(MapManager, {
     }
   },
 
-  /**
-   * Acquire screen wake lock to prevent display from sleeping during ride
-   */
-  async _acquireWakeLock() {
-    if (!('wakeLock' in navigator)) return;
-    try {
-      this._wakeLock = await navigator.wakeLock.request('screen');
-      this._wakeLock.addEventListener('release', () => { this._wakeLock = null; });
-      // Re-acquire on visibility change (system may release on tab switch)
-      document.addEventListener('visibilitychange', this._onVisibilityChange);
-    } catch (e) {
-      console.warn('Wake lock failed:', e);
-    }
-  },
-
-  _onVisibilityChange() {
-    if (document.visibilityState === 'visible' && MapManager.rideWatchId && !MapManager._wakeLock) {
-      MapManager._acquireWakeLock();
-    }
-  },
-
-  async _releaseWakeLock() {
-    document.removeEventListener('visibilitychange', this._onVisibilityChange);
-    if (this._wakeLock) {
-      try { await this._wakeLock.release(); } catch (e) { /* ignore */ }
-      this._wakeLock = null;
-    }
-  },
+  /* Wake lock note: this module used to hold its own screen wake lock, but it
+     only re-acquired on visibilitychange — when the OS dropped the lock with
+     no visibility change (battery saver does exactly this), the screen slept
+     mid-ride. The single, stronger implementation now lives in
+     ride-controller.js (_acquireWakeLock: re-acquires on the sentinel's own
+     release event too), owned by enterRideMode/exitRideMode. Keep exactly one
+     implementation — two competing sentinels made failures impossible to
+     reason about. */
 
   /**
    * Start riding mode: show live position and follow
@@ -54,8 +34,7 @@ Object.assign(MapManager, {
     // Ensure map is ready
     if (!this.map) return;
 
-    // Acquire wake lock to keep screen on
-    this._acquireWakeLock();
+    // Wake lock is ride-controller.js's job (see note above) — not acquired here.
 
     // Create rider marker
     if (!this.rideMarker) {
@@ -250,7 +229,7 @@ Object.assign(MapManager, {
       this._onRideMoveStart = null;
     }
 
-    this._releaseWakeLock();
+    // Wake lock release is ride-controller.js's job (see note at top of file).
     if (this.rideMarker) {
       this.map.removeLayer(this.rideMarker);
       this.rideMarker = null;

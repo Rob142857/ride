@@ -891,6 +891,50 @@ const MapManager = {
   },
 
   /**
+   * The single "range limit" marker — one dot at profile.dryPointIdx, the
+   * FIRST coordinate where the tank actually reaches empty. This is the
+   * point answer to "where does my fuel run out?"; the dashed 'empty'
+   * segment _drawActiveRouteCore paints from here to the route's end (or
+   * next fill) says the same thing as a stretch, this says it as a place.
+   *
+   * Lives in _fuelLayers — same array/lifecycle as _drawFuelFills' refill
+   * dots, so it is cleared by the _clearFuelLayers() call at the top of
+   * every refreshFuelOverlay() and by clearRoute(), and redrawn fresh on
+   * every profile recompute (settings change, tank fill, route edit).
+   *
+   * interactive: false, matching _drawFuelFills exactly: this dot sits ON
+   * the route line, exactly where the route editor's insert-waypoint hit
+   * area is. A hover tooltip needs interactive: true to fire (pointer
+   * events are disabled on a non-interactive SVG path), and that would let
+   * this one small marker swallow route-editor taps at the one spot a rider
+   * is most likely to want to tap (to add a fuel stop right there). Visual-
+   * only wins: no tooltip, just an unmistakable critical-red dot with a
+   * contrasting ring, in the same family _drawFuelFills already uses.
+   */
+  _drawRangeLimitMarker(coordinates, dryPointIdx) {
+    if (!Number.isFinite(dryPointIdx)) return;
+    const coord = coordinates[dryPointIdx];
+    if (!coord) return;
+
+    const pane = this._ensureActiveRoutePane();
+    const color = this._cssVar('--fuel-critical', this._cssVar('--danger', this.FUEL_COLORS.critical));
+    const ring = this._cssVar('--surface-0', '#0b0e1f');
+
+    const marker = L.circleMarker([coord.lat, coord.lng], {
+      pane,
+      radius: 6,
+      weight: 2,
+      color: ring,
+      fillColor: color,
+      fillOpacity: 1,
+      opacity: 1,
+      interactive: false,
+      className: 'fuel-range-limit-marker'
+    }).addTo(this.map);
+    this._fuelLayers.push(marker);
+  },
+
+  /**
    * Where a NEW scenic-suggest chip (js/scenic-suggest.js) would currently
    * sit, plus clearance for its own height — so the fuel chip can never end
    * up under it, whichever chip appears first. Prefers measuring the real
@@ -1171,6 +1215,7 @@ const MapManager = {
 
     this._drawActiveRouteCore(coordinates, profile.segments, profile.startAtIdx);
     this._drawFuelFills(coordinates, waypoints, profile.fills);
+    this._drawRangeLimitMarker(coordinates, profile.dryPointIdx);
     this._updateFuelChip(app.currentTrip, coordinates, profile);
   },
 

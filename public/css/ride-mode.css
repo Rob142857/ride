@@ -441,8 +441,11 @@ body.ride-mode .leaflet-control-attribution {
   background: var(--accent-hover);
 }
 
-/* Tank Filled FAB glows once a fuel alert is active — draws the eye without
-   interrupting navigation with a modal. Cleared on refuel. */
+/* Glows once a fuel alert is active — draws the eye without interrupting
+   navigation with a modal. Applied to the + FAB (always visible — it's the
+   only cue while the sheet is closed) and, redundantly but harmlessly, to
+   the Tank Filled item inside the sheet for when it's open. Cleared on
+   refuel or once the shortfall clears (see _clearFuelAlertLine). */
 .ride-fab-fuel-alert {
   border-color: color-mix(in srgb, var(--fuel-warn) 60%, transparent);
   box-shadow: 0 6px 20px color-mix(in srgb, var(--fuel-warn) 35%, transparent),
@@ -512,8 +515,16 @@ body.ride-mode .leaflet-control-attribution {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
-  align-items: flex-end;
+  /* Anchored to the top, not flex-end: the menu grew (Tank Filled + Find
+     Fuel joined Note/Photo), and on a short landscape screen the stacked
+     buttons can now exceed the viewport height. flex-end/center alignment
+     clips an overflowing child above the container's top edge — outside
+     scrollable range in every browser — so the bottom-sheet look instead
+     comes from margin-top:auto below, which cleanly degrades to top-aligned
+     + scrollable once content no longer fits. */
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
   padding: var(--space-4);
   padding-bottom: calc(var(--safe-area-bottom) + var(--space-4));
   opacity: 0;
@@ -534,6 +545,9 @@ body.ride-mode .leaflet-control-attribution {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* Bottom-anchors when it fits; collapses to 0 and scrolls from the top
+     when it doesn't (see the alignment note on .ride-action-sheet above). */
+  margin-top: auto;
   animation: actionSheetSlideUp 0.35s var(--ease-smooth) forwards;
 }
 

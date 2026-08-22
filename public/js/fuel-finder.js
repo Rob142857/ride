@@ -174,24 +174,28 @@ const FuelFinder = {
     }
 
     statusEl.textContent = `Found ${total} fuel station${total === 1 ? '' : 's'} near your route.`;
+    // Read at arm's length, one-handed, often gloved: every tap target below
+    // is pinned to at least --touch-target (44px) via inline style, since
+    // this module can't touch app.css to widen the shared .secondary-btn/
+    // .link-btn classes without affecting every other caller of them.
     resultsEl.innerHTML = groups.map((group, gi) => {
       if (!group.stations.length) return '';
       const km = Math.round(group.point.kmFromStart || 0);
-      const header = `<div class="microcopy" style="margin-top:10px;font-weight:600;">~${km} km into your ride</div>`;
+      const header = `<div class="microcopy" style="margin-top:10px;font-weight:600;font-size:0.95rem;color:var(--text-secondary);">~${km} km into your ride</div>`;
       const items = group.stations.map((station, si) => {
         const offRouteKm = this._distanceKm(group.point, station.location);
         const context = offRouteKm != null ? `~${offRouteKm} km off-route · ~${km} km into your ride` : `~${km} km into your ride`;
         return `
-          <div class="place-result">
+          <div class="place-result" style="padding:16px;">
             <div class="place-result-main">
-              <div class="place-name">${UI.escapeHtml(station.name || 'Fuel station')}</div>
+              <div class="place-name" style="font-size:1.05rem;">${UI.escapeHtml(station.name || 'Fuel station')}</div>
               ${station.rating ? `<div class="place-rating">★ ${Number(station.rating).toFixed(1)}</div>` : ''}
             </div>
             <div class="place-address">${UI.escapeHtml(station.address || '')}</div>
-            <div class="microcopy">${UI.escapeHtml(context)}</div>
-            <div class="place-actions">
-              <button type="button" class="secondary-btn" data-fuel-group="${gi}" data-fuel-station="${si}">Use this stop</button>
-              <button type="button" class="link-btn" data-fuel-preview-group="${gi}" data-fuel-preview-station="${si}">Show on map</button>
+            <div class="microcopy" style="font-size:0.95rem;color:var(--text-secondary);">${UI.escapeHtml(context)}</div>
+            <div class="place-actions" style="gap:12px;margin-top:4px;">
+              <button type="button" class="secondary-btn" style="min-height:var(--touch-target);padding:12px 22px;font-size:0.95rem;display:inline-flex;align-items:center;justify-content:center;" data-fuel-group="${gi}" data-fuel-station="${si}">Use this stop</button>
+              <button type="button" class="link-btn" style="min-height:var(--touch-target);padding:12px 16px;display:inline-flex;align-items:center;justify-content:center;" data-fuel-preview-group="${gi}" data-fuel-preview-station="${si}">Show on map</button>
             </div>
           </div>`;
       }).join('');
