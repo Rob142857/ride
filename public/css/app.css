@@ -3348,6 +3348,68 @@ body.doc-page {
   background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
+/* ─── Rides (Trip Details → Rides) ───────────────────────────
+   Read-only list of recorded ride-log tracks. The dot echoes --trail-log,
+   the emerald used for these tracks on the map — never the gold --route.
+   See public/js/trip-details.js. */
+.ride-log-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ride-log-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.ride-log-row:hover {
+  background: var(--surface-3);
+  border-color: color-mix(in srgb, var(--trail-log) 40%, var(--border));
+}
+
+.ride-log-row:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+.ride-log-row-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--trail-log);
+  border-radius: var(--radius-full);
+}
+
+.ride-log-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ride-log-row-date {
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.ride-log-row-meta {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 /* (Floating Button styling is consolidated with .floating-btn near the map controls) */
 
 /* Toast — Glassmorphic */

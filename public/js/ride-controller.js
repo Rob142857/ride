@@ -229,6 +229,7 @@ Object.assign(App, {
     }
     this.isRiding = true;
     this.rideVisitedWaypoints = new Set();
+    this._rideVisitedSeeded = false; // see _seedVisitedWaypointsBehind — one-shot per ride
     this.rideRerouting = false;
     this.rideInitialRouted = false;
     this.offRouteCounter = 0;
@@ -263,9 +264,8 @@ Object.assign(App, {
     };
     document.addEventListener('visibilitychange', this._rideVisibilityHandler);
 
-    const stops = (this.currentTrip.waypoints || []).filter(wp => !['via', 'leg-break'].includes(wp.type || ''));
     this._setHudText('rideTripName', this.currentTrip.name || 'Ride');
-    this._setHudText('rideStops', stops.length.toString());
+    this._setHudText('rideNextStopEta', '—'); // needs a GPS fix + route metrics — set on first tick
     this._setHudText('rideDistanceRemaining', this.currentTrip.route?.distance ? RideUtils.formatDistance(this.currentTrip.route.distance) : '—');
     this._setHudText('rideEta', this.currentTrip.route?.duration ? this._formatEtaClock(this.currentTrip.route.duration) : '—');
     this._setHudText('rideSpeedVal', '—');
@@ -528,6 +528,33 @@ Object.assign(App, {
   },
 
   /**
+   * One-shot per ride: mark every real stop already behind the rider's
+   * along-route position as visited. rideVisitedWaypoints is in-memory only
+   * and is wiped on every exitRideMode/enterRideMode boundary (see
+   * enterRideMode), so pausing to edit waypoints mid-journey and resuming
+   * would otherwise leave an already-reached stop stuck "remaining" forever:
+   * getRemainingWaypoints() would keep offering it as a reroute target
+   * (dragging the rider backward to it) and the final-arrival check
+   * (remainingWaypoints.length === 0) would never fire again. Only called
+   * once we trust `along` (see the routeDist gate at the call site) — a
+   * bad position estimate must never mis-seed this. Silent by design, same
+   * reasoning as the 30 s start-line window in markVisitedWaypoints: these
+   * stops were reached before this ride session even began.
+   */
+  _seedVisitedWaypointsBehind(along) {
+    if (this._rideVisitedSeeded) return;
+    this._rideVisitedSeeded = true;
+    const wpAlong = this.currentTrip.route?._wpAlong;
+    if (!wpAlong || !Number.isFinite(along)) return;
+    if (!this.rideVisitedWaypoints) this.rideVisitedWaypoints = new Set();
+    (this.currentTrip.waypoints || []).forEach(wp => {
+      if (['via', 'leg-break'].includes(wp.type || '')) return; // shaping points and leg dividers are not stops
+      const a = wpAlong[wp.id];
+      if (Number.isFinite(a) && a <= along) this.rideVisitedWaypoints.add(wp.id);
+    });
+  },
+
+  /**
    * Find nearest route coordinate using sliding window from last known position.
    * Falls back to full scan if the window doesn't find a close match.
    */
@@ -614,7 +641,26 @@ Object.assign(App, {
         UI.showToast('Routing from your location…', 'info');
         this.rideRerouting = true;
         this.lastRerouteAt = now;
-        MapManager.rerouteFromPosition(pos, this.getRemainingWaypoints());
+        // A resumed ride starts rideVisitedWaypoints empty (enterRideMode),
+        // so getRemainingWaypoints() alone would hand every real stop —
+        // including ones already reached in an earlier session — to the
+        // router as a required target, sending the rider BACKWARD to them.
+        // We can't trust a >200 m-off position enough to permanently mark
+        // rideVisitedWaypoints (that also drives final-arrival detection —
+        // a bad guess there could silently drop a real stop), but its
+        // route-projected `along` is still a reasonable "how far into the
+        // trip" signal for filtering just this one reroute's target list.
+        const startCumulative = this.currentTrip.route._cumulative;
+        const wpAlong = this.currentTrip.route._wpAlong;
+        let targets = this.getRemainingWaypoints();
+        if (wpAlong && startCumulative) {
+          const { along: startAlong } = this._locateOnRoute(startCoords, startCumulative, pos);
+          targets = targets.filter(wp => {
+            const a = wpAlong[wp.id];
+            return !(Number.isFinite(a) && a <= startAlong);
+          });
+        }
+        MapManager.rerouteFromPosition(pos, targets);
         return;
       }
     }
@@ -626,6 +672,11 @@ Object.assign(App, {
 
     // Locate the rider on the route (segment-projected)
     const { idx: nearestIdx, dist: routeDist, along } = this._locateOnRoute(coords, cumulative, pos);
+    // One-shot, only once we trust `along` (rider plausibly on the route —
+    // same 200 m bar as the initial far-from-route check above): mark every
+    // real stop already behind this position as visited. See the function
+    // doc for why this matters on a resumed ride.
+    if (routeDist <= 200) this._seedVisitedWaypointsBehind(along);
 
     // Off-route detection with dynamic threshold
     const dynamicThreshold = Math.max(50, (pos.accuracy || 30) * 1.6);
@@ -639,7 +690,6 @@ Object.assign(App, {
     }
 
     const remainingWaypoints = this.getRemainingWaypoints();
-    this._setHudText('rideStops', remainingWaypoints.length.toString());
 
     const canReroute = routeDist > dynamicThreshold && this.offRouteCounter >= 4
       && !this.rideRerouting && (now - (this.lastRerouteAt || 0) > 45000);
@@ -658,6 +708,10 @@ Object.assign(App, {
     // excluded); falls back to route duration scaled by the remaining fraction.
     const etaSeconds = this._estimateEtaSeconds(remaining, total);
     if (etaSeconds != null) this._setHudText('rideEta', this._formatEtaClock(etaSeconds));
+
+    // Next stop — same pace model as ETA, aimed at the next unvisited stop
+    // instead of the destination. Ticks alongside it for the same reason.
+    this._updateNextStopHud(along, total);
 
     // Live fuel range HUD — a no-op (feature checked internally) unless fuel
     // planning is enabled and a tank range is configured.
@@ -720,6 +774,17 @@ Object.assign(App, {
     while (this._speedHist.length && this._speedHist[0].t < cutoff) this._speedHist.shift();
   },
 
+  /**
+   * Works for any remaining distance, not just the full route — callers pass
+   * either "distance to destination" (ETA) or "distance to the next stop"
+   * (next-stop stat). _speedHist only holds MOVING samples (see
+   * _recordSpeedSample) and ages out after 60 s of no movement, so a rider
+   * stopped at a light or a long fuel break drops back to the route-duration
+   * fallback rather than freezing at the pace they had before stopping. Combined
+   * with _formatEtaClock anchoring to Date.now(), this is what makes the ETA
+   * honest during a stop — it visibly slides later as time passes instead of
+   * staying put. Do not "fix" this by holding the last known pace.
+   */
   _estimateEtaSeconds(remaining, total) {
     let d = 0;
     let t = 0;
@@ -733,7 +798,46 @@ Object.assign(App, {
   /** ETA rendered as arrival clock time ("3:45 pm") — glanceable, unlike a countdown. */
   _formatEtaClock(etaSeconds) {
     const d = new Date(Date.now() + Math.max(0, etaSeconds) * 1000);
-    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    // "11:41 PM" -> "11:41pm": the spaced uppercase meridiem is the widest
+    // string this stat can render (~111px) and bled into neighbouring grid
+    // cells at narrow widths; 24-hour locales ("23:41") pass through as-is.
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      .replace(/\s+/g, '').toLowerCase();
+  },
+
+  /**
+   * Distance (meters) to the next stop ahead, or null once none remain.
+   * Mirrors _nextFuelTarget's scan (route._wpAlong, ahead-of-`along` filter)
+   * but over every real stop rather than just fuelStop-flagged ones, and
+   * additionally skips anything in rideVisitedWaypoints — the same set
+   * markVisitedWaypoints() maintains, so "next" here never drifts from what
+   * the rider has actually reached.
+   */
+  _nextStopAheadDistance(along) {
+    const wpAlong = this.currentTrip?.route?._wpAlong;
+    if (!wpAlong) return null;
+    let bestAlong = Infinity;
+    for (const wp of (this.currentTrip.waypoints || [])) {
+      if (['via', 'leg-break'].includes(wp.type || '')) continue; // shaping points and leg dividers are not stops
+      if (this.rideVisitedWaypoints?.has(wp.id)) continue;
+      const a = wpAlong[wp.id];
+      if (!Number.isFinite(a) || a <= along) continue; // behind us, or not on this route
+      if (a < bestAlong) bestAlong = a;
+    }
+    return bestAlong === Infinity ? null : Math.max(0, bestAlong - along);
+  },
+
+  /**
+   * Next-stop HUD stat: same rolling-pace model as the ETA cell
+   * (_estimateEtaSeconds), aimed at the next unvisited stop instead of the
+   * destination — so a rider glances at one number for "next turn area" and
+   * another for "how long until I can get off the bike". '—' when no stop
+   * remains ahead (last stop visited, or route metrics not built yet).
+   */
+  _updateNextStopHud(along, total) {
+    const dist = this._nextStopAheadDistance(along);
+    const etaSeconds = dist == null ? null : this._estimateEtaSeconds(dist, total);
+    this._setHudText('rideNextStopEta', etaSeconds == null ? '—' : RideUtils.formatDuration(etaSeconds));
   },
 
   /** Distance-to-turn with nav-style rounding: 1.2 km → 850 m → 40 m → Now. */

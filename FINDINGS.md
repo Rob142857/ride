@@ -521,3 +521,29 @@ Design-led pass on ride mode: wake lock, + menu restructure, live fuel picture.
 - Unverified on a real device: actual wake-lock behaviour on Rob's phone
   (Android Chrome expected fine), gauge/menu ergonomics with gloves, and the
   shortfall line's real-world timing feel. All logic browser-verified.
+
+## HUD refinement + Rides history — 2026-08-22
+
+- **Statbar**: stops count removed (a bare count earns nothing at a glance); replaced by
+  "next stop" — minutes to the next UNVISITED real stop ahead, paced by the same rolling
+  moving-speed model as ETA. Speed stays the largest element. ETA confirmed already honest
+  (clock-anchored per tick + moving-sample window; property now documented in code so
+  nobody "fixes" it away) and verified to keep ticking while stationary. ETA string
+  tightened ("11:41 PM" -> "11:41pm") — the spaced form bled ~15px into neighbour cells.
+  Statbar grid rebalanced (.has-fuel) after measurement showed the new label overlapping.
+- **[fixed, real safety bug] Off-route ride resume rerouted through passed stops**: on the
+  first fix after re-entering ride mode >200 m off-route (parked at a cafe), the
+  far-from-route reroute fired before visited-behind seeding, so the reroute targeted
+  already-visited stops. Now projects onto the route and filters the reroute target list
+  (without corrupting arrival detection). Found by the pause-to-edit continuity audit.
+- **Pause-to-edit continuity audited end-to-end** (exit -> edit -> re-enter): log saved +
+  fuel banked on exit; on-route resume seeds visited-behind silently (no arrival spam);
+  fuel percent + alert re-arming survive the round trip; a fresh log per re-entry. All
+  verified by browser simulation. One extra journal entry appeared once during testing and
+  could not be traced to any code path — flagged inconclusive/environmental, watch for it.
+- **Rides section (trip details)**: read-only list of recorded rides (date, distance,
+  duration, avg speed via RideUtils formatters), shown only when logs exist; tap focuses
+  that emerald track (others dimmed) and fits the map to it. New MapManager.focusRideLog,
+  leak-safe. Confirmed absent for read-only/shared views (renderRideLogsSection
+  short-circuits before any fetch) and absent from the public share payload (api/ untouched;
+  journey.js has zero track references). Guest parity verified live.

@@ -1968,6 +1968,9 @@ const MapManager = {
       }).addTo(this.map);
       const label = [date, dist, dur].filter(Boolean).join(' · ');
       if (label) layer.bindTooltip(label, { sticky: true, className: 'ride-log-tooltip' });
+      // Tagged so focusRideLog can find this exact layer again rather than
+      // redrawing — matched against the log's own id, never the array index.
+      layer._rideLogId = log.id;
       (this._rideLogLayers = this._rideLogLayers || []).push(layer);
     });
   },
@@ -1978,6 +1981,42 @@ const MapManager = {
   clearRideLogs() {
     (this._rideLogLayers || []).forEach(l => { try { this.map.removeLayer(l); } catch (_) {} });
     this._rideLogLayers = [];
+  },
+
+  /**
+   * Focus one ride-log track: the Trip Details "Rides" section calls this
+   * after tapping a row. Highlights that track (full opacity, heavier
+   * weight, brought to front) and dims every other drawn ride-log track,
+   * then fits the map to it. Never removes or re-adds layers beyond drawing
+   * the target track if it isn't on the map yet, so repeated calls — for
+   * another log, or after a full drawRideLogs() redraw — never leak layers.
+   * @param {Object} log — {id, track: [{lat,lng,t}], ...}
+   */
+  focusRideLog(log) {
+    const pts = Array.isArray(log?.track) ? log.track : [];
+    if (pts.length < 2) return;
+
+    let layer = (this._rideLogLayers || []).find(l => l._rideLogId === log.id);
+    if (!layer) {
+      // Not drawn yet (e.g. drawRideLogs() hasn't run for this trip) — add
+      // just this one track using the same styling drawRideLogs uses.
+      layer = L.polyline(pts.map(p => [p.lat, p.lng]), {
+        color: this._cssVar('--trail-log', '#10b981'),
+        weight: 3,
+        opacity: 0.55,
+        dashArray: '6 4',
+        className: 'ride-log-track'
+      }).addTo(this.map);
+      layer._rideLogId = log.id;
+      (this._rideLogLayers = this._rideLogLayers || []).push(layer);
+    }
+
+    (this._rideLogLayers || []).forEach(l => {
+      const isTarget = l === layer;
+      l.setStyle({ weight: isTarget ? 5 : 3, opacity: isTarget ? 0.95 : 0.25 });
+    });
+    layer.bringToFront();
+    this.map.fitBounds(layer.getBounds(), { padding: [50, 50] });
   }
 };
 

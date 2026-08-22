@@ -14,13 +14,15 @@ Object.assign(App, {
       this._ensureReturnTripButton();
       this._ensureAppendLegButton();
       this._ensureOfflineSection();
+      this._ensureRideLogsSection();
       const returnTripSection = document.getElementById('tripDetailReturnTripSection');
       if (returnTripSection) returnTripSection.classList.toggle('hidden', UI.isReadOnlyTrip());
       const appendSection = document.getElementById('tripDetailAppendLegSection');
       if (appendSection) appendSection.classList.toggle('hidden', UI.isReadOnlyTrip());
       UI.openModal('tripDetailsModal');
-      // Not awaited: the modal opens now, the offline state fills in behind it.
+      // Neither awaited: the modal opens now, both fill in behind it.
       this.renderOfflineSection(trip);
+      this.renderRideLogsSection(trip);
     } catch (err) {
       if (err?.code === 'LOGIN_REQUIRED') { UI.suggestLogin('open this trip'); return; }
       console.error('Open trip details failed:', err);
@@ -954,5 +956,95 @@ Object.assign(App, {
     }
     // 'done', 'cancelled' or 'error' — re-read the manifest and show the truth.
     this.renderOfflineSection(this._offlineTrip);
+  },
+
+  /* --- Rides ---
+   * The actual GPS tracks recorded in Ride Mode are already saved and drawn
+   * on the map when a trip opens (trip-controller.js) — this section is the
+   * only way to see them as a list, or jump the map to one. Read-only: no
+   * delete/edit here. Injected into the Trip Details modal on first open,
+   * same pattern as the append-leg/offline sections above. Hidden whenever
+   * the trip has no logs, so a trip with none never shows an empty section. */
+
+  _ensureRideLogsSection() {
+    if (document.getElementById('tripDetailRidesSection')) return;
+    const modalActions = document.querySelector('#tripDetailsModal .modal-actions');
+    if (!modalActions) return;
+    modalActions.insertAdjacentHTML('beforebegin', `
+      <div class="form-section hidden" id="tripDetailRidesSection">
+        <label class="field-label">Rides</label>
+        <div class="ride-log-rows" id="tripDetailRidesBody" role="list"></div>
+      </div>
+    `);
+  },
+
+  /** Load this trip's ride logs and fill the section, or hide it if there are none. */
+  async renderRideLogsSection(trip) {
+    const section = document.getElementById('tripDetailRidesSection');
+    const body = document.getElementById('tripDetailRidesBody');
+    if (!section || !body) return;
+    this._ridesTrip = trip;
+    this._ridesLogs = [];
+
+    // Ride logs are private and never fetched for a shared-link viewer —
+    // same guard trip-controller.js uses before drawing them on the map.
+    if (UI.isReadOnlyTrip()) { section.classList.add('hidden'); return; }
+
+    let logs;
+    try {
+      logs = await API.rideLogs.list(trip.id);
+    } catch (err) {
+      console.error('Rides: failed to load ride logs', err);
+      section.classList.add('hidden');
+      return;
+    }
+    // The modal may have moved on to another trip while this was in flight.
+    if (this._ridesTrip?.id !== trip.id) return;
+
+    if (!Array.isArray(logs) || !logs.length) { section.classList.add('hidden'); return; }
+    this._ridesLogs = logs;
+    section.classList.remove('hidden');
+    body.innerHTML = logs.map((log, i) => this._rideLogRowHtml(log, i)).join('');
+    body.querySelectorAll('.ride-log-row').forEach(row => {
+      row.addEventListener('click', () => this._focusRideLogRow(row.dataset.rideLogIndex));
+    });
+  },
+
+  /** One row: date, distance, duration, and average moving speed where derivable. */
+  _rideLogRowHtml(log, index) {
+    const when = log.started_at ? new Date(log.started_at) : null;
+    // Built by hand rather than one toLocaleDateString call: locale ordering
+    // varies ("Aug 17" vs "17 Aug", with or without a comma) and "Sun 17 Aug"
+    // is the one order that reads at a glance regardless of locale.
+    const dateText = when && !isNaN(when)
+      ? `${when.toLocaleDateString(undefined, { weekday: 'short' })} ${when.getDate()} ${when.toLocaleDateString(undefined, { month: 'short' })}`
+      : 'Unknown date';
+    const distText = RideUtils.formatDistance(log.distance_meters);
+    const durText = RideUtils.formatDuration(log.duration_seconds);
+    const hasSpeed = log.distance_meters > 0 && log.duration_seconds > 0;
+    const avgText = hasSpeed
+      ? `${Math.round(RideUtils.speedFromMps(log.distance_meters / log.duration_seconds))} ${RideUtils.speedUnitLabel()} avg`
+      : '—';
+    return `<button type="button" class="ride-log-row" role="listitem" data-ride-log-index="${index}">
+        <span class="ride-log-row-dot" aria-hidden="true"></span>
+        <span class="ride-log-row-text">
+          <span class="ride-log-row-date">${UI.escapeHtml(dateText)}</span>
+          <span class="ride-log-row-meta">${UI.escapeHtml(distText)} · ${UI.escapeHtml(durText)} · ${UI.escapeHtml(avgText)}</span>
+        </span>
+      </button>`;
+  },
+
+  /**
+   * Tap a row: close the modal so the map is visible, make sure this trip's
+   * tracks are actually on it (drawRideLogs is idempotent — safe even if
+   * trip-controller.js already drew them), then highlight and fit to the one
+   * tapped.
+   */
+  _focusRideLogRow(indexStr) {
+    const log = this._ridesLogs?.[Number(indexStr)];
+    if (!log) return;
+    UI.closeModal('tripDetailsModal');
+    if (typeof MapManager.drawRideLogs === 'function') MapManager.drawRideLogs(this._ridesLogs);
+    if (typeof MapManager.focusRideLog === 'function') MapManager.focusRideLog(log);
   },
 });

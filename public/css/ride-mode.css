@@ -249,7 +249,7 @@ body.ride-mode .leaflet-control-attribution {
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
-/* ── Bottom stat strip: speed / to-go / stops / ETA ───────── */
+/* ── Bottom stat strip: speed / to-go / next stop / ETA ───── */
 
 .ride-statbar {
   position: fixed;
@@ -315,9 +315,14 @@ body.ride-mode .leaflet-control-attribution {
 
 /* 5th column for the fuel stat — added only while fuel planning is active
    (toggled by ride-controller.js via _updateFuelVisibility), so the plain
-   4-stat layout is untouched when the feature is off or unconfigured. */
+   4-stat layout is untouched when the feature is off or unconfigured.
+   Column 3 (next stop) gets more of the share than the plain 4-up layout
+   affords — "next stop" + a duration ("10 min") is wider than the single
+   short number "stops" used to be, and 5 narrow columns leave little slack;
+   borrowed from column 1 (speed), which has room to spare since its value
+   is only 1-3 digits despite the biggest font on the strip. */
 .ride-statbar.has-fuel {
-  grid-template-columns: 1.15fr 0.95fr 0.75fr 0.95fr 0.95fr;
+  grid-template-columns: 0.85fr 0.95fr 1.05fr 0.95fr 0.95fr;
 }
 
 /* Fixed colour bands by remaining range (mirrors FuelPlanner.levelForRemaining).
@@ -717,9 +722,12 @@ body.ride-mode .leaflet-control-attribution {
 
   /* One extra column needs a further squeeze to stay on one line. Targets
      #rideFuelVal specifically (not the .ride-stat-value class) so it doesn't
-     out-specificity .ride-stat-speed's own override just above. */
+     out-specificity .ride-stat-speed's own override just above. Column 3
+     (next stop) keeps the same borrowed-from-speed share as the base
+     .has-fuel rule, for the same reason — it's the widest label+value pair
+     of the narrow columns. */
   .ride-statbar.has-fuel {
-    grid-template-columns: 1.05fr 0.85fr 0.65fr 0.85fr 0.85fr;
+    grid-template-columns: 0.85fr 0.85fr 0.85fr 0.85fr 0.85fr;
   }
 
   .ride-statbar.has-fuel #rideFuelVal {
