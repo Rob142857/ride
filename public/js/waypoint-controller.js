@@ -102,6 +102,7 @@ Object.assign(App, {
       UI.renderWaypoints(this.currentTrip.waypoints);
       MapManager.updateWaypoints(this.currentTrip.waypoints);
       UI.showToast('Waypoint saved', 'success');
+      window.RideInsights?.track('waypoint_edit');
       await this.refreshTripsList();
     } catch (error) {
       console.error('Failed to update waypoint details:', error);
@@ -122,6 +123,7 @@ Object.assign(App, {
         this.currentTrip.attachments.unshift(attachment);
       }
       UI.showToast('Attachment uploaded', 'success');
+      window.RideInsights?.track('attachment_add');
       this.renderWaypointAttachments(waypointId);
     } catch (err) {
       console.error('Waypoint attachment upload failed', err);
@@ -206,7 +208,8 @@ Object.assign(App, {
 
      UI.renderWaypoints(this.currentTrip.waypoints);
      MapManager.updateWaypoints(this.currentTrip.waypoints);
-     UI.showToast(reordered ? 'Waypoint inserted and reordered' : 'Waypoint inserted', 'success');
+      UI.showToast(reordered ? 'Waypoint inserted and reordered' : 'Waypoint inserted', 'success');
+      window.RideInsights?.track('waypoint_add');
      await this.refreshTripsList();
      return serverWaypoint;
    },
@@ -263,6 +266,7 @@ Object.assign(App, {
     if (now - (this.waypointSaveToastAt || 0) > 2500) {
       this.waypointSaveToastAt = now;
       UI.showToast('Waypoint saved', 'success');
+      window.RideInsights?.track('waypoint_edit');
     }
     if (this.currentTrip.waypoints.length >= 2) MapManager.updateRoute(this.currentTrip.waypoints);
     UI.renderWaypoints(this.currentTrip.waypoints);
@@ -287,7 +291,8 @@ Object.assign(App, {
     UI.renderWaypoints(this.currentTrip.waypoints);
     if (this.currentTrip.waypoints.length >= 2) MapManager.updateRoute(this.currentTrip.waypoints);
     else MapManager.clearRoute();
-    UI.showToast('Waypoint deleted', 'success');
+      UI.showToast('Waypoint deleted', 'success');
+      window.RideInsights?.track('waypoint_delete');
     await this.refreshTripsList();
   },
 
@@ -308,6 +313,7 @@ Object.assign(App, {
       MapManager.updateWaypoints(this.currentTrip.waypoints);
       await this.refreshTripsList();
       UI.showToast('Waypoint order saved', 'success');
+      window.RideInsights?.track('waypoint_reorder');
     } catch (error) {
       console.error('Failed to reorder waypoints:', error);
       if (error.status === 409 || error.status === 428) { await this.handleTripConflict(error); return; }

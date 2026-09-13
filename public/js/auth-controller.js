@@ -24,6 +24,7 @@ Object.assign(App, {
         break;
 
       case 'AUTHENTICATED':
+        window.RideInsights?.track('oauth_result');
         this.updateUserUI();
         UI.hideAuthGate();
         UI.closeModal('loginModal');
@@ -42,6 +43,7 @@ Object.assign(App, {
         if (!this.isSharedView && !UI.isLandingGateVisible()) {
           UI.closeModal('loginModal');
           UI.showAuthGate(reason || 'Sign in to save & share');
+          window.RideInsights?.track('auth_gate_shown');
         }
         break;
 
@@ -104,6 +106,7 @@ Object.assign(App, {
   },
 
   handleAuthErrorFromUrl(code, description) {
+    window.RideInsights?.track('oauth_result');
     let message = 'Login failed. Please try again.';
     if (code === 'invalid_state') {
       message = 'Login expired. Please try again.';
@@ -122,6 +125,7 @@ Object.assign(App, {
     const returnTo = window.location.href;
     document.querySelectorAll('[data-login-provider]').forEach((el) => {
       const provider = el.dataset.loginProvider;
+      el.addEventListener('click', () => window.RideInsights?.track('oauth_start'), { once: true });
       el.href = API.auth.loginUrl(provider, returnTo);
     });
   },

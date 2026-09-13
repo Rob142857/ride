@@ -94,6 +94,7 @@ Object.assign(App, {
       return null;
     }
     UI.renderJournal(this.currentTrip.journal);
+    window.RideInsights?.track('journal_save');
     return entry;
   },
 
@@ -118,6 +119,7 @@ Object.assign(App, {
       }
     }
     UI.renderJournal(this.currentTrip.journal);
+    window.RideInsights?.track('journal_save');
     return updated;
   },
 
@@ -133,6 +135,7 @@ Object.assign(App, {
     this.saveCurrentTrip();
     UI.renderJournal(this.currentTrip.journal);
     UI.showToast('Note deleted', 'success');
+    window.RideInsights?.track('journal_save');
   },
 
   async uploadJournalAttachment(entryId, file) {
@@ -143,6 +146,7 @@ Object.assign(App, {
       const attachment = await API.attachments.upload(this.currentTrip.id, file, { journal_entry_id: entryId });
       this.addAttachmentToEntry(entryId, attachment, true);
       UI.showToast('Attachment uploaded', 'success');
+      window.RideInsights?.track('attachment_add');
     } catch (err) {
       console.error('Attachment upload failed', err);
       UI.showToast('Attachment upload failed', 'error');

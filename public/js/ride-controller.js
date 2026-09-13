@@ -165,6 +165,7 @@ Object.assign(App, {
       this._primaryRouteBackup = null;
     }
     this.isRiding = true;
+    window.RideInsights?.track('ride_start');
     this.rideVisitedWaypoints = new Set();
     this.rideRerouting = false;
     this.rideInitialRouted = false;
@@ -193,6 +194,7 @@ Object.assign(App, {
   },
 
   exitRideMode() {
+    window.RideInsights?.track('ride_exit');
     this.isRiding = false;
     this.rideVisitedWaypoints = null;
     this.rideRerouting = false;

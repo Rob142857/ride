@@ -451,6 +451,7 @@ const MapManager = {
    * Update route between waypoints — now with alternatives
    */
   updateRoute(waypoints) {
+    window.RideInsights?.track('route_calculate');
     this.clearRoute();
     this._hideRouteSelector();
     this._selectedRouteIndex = 0;
@@ -482,6 +483,7 @@ const MapManager = {
     this.routingControl.on('routesfound', (e) => {
       const routes = e.routes;
       if (!routes || !routes.length) return;
+      window.RideInsights?.track('route_result');
 
       this._cachedAlternatives = routes;
       this._renderRouteSelector(routes);

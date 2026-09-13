@@ -80,6 +80,7 @@ Object.assign(UI, {
 
     try {
       const results = await API.places.search(query, options);
+      window.RideInsights?.track('place_search');
       this.placeSearchResults = results;
       if (!results || results.length === 0) {
         statusEl.textContent = 'No results found. Try another term.';

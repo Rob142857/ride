@@ -164,6 +164,7 @@ const App = {
     const authError = urlParams.get('error');
     const authErrorDesc = urlParams.get('error_description');
     this.isSharedView = !!sharedTripId;
+    window.RideInsights?.track(sharedTripId ? 'share_page_view' : 'view_change');
 
     const landingSeen = (() => {
       try { return localStorage.getItem('ride_landing_seen') === '1'; } catch (_) { return true; }

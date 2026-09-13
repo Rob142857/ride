@@ -112,7 +112,8 @@ Object.assign(App, {
     }
   },
 
-   loadTripData(trip) {
+  loadTripData(trip) {
+    window.RideInsights?.track('trip_open');
     if (trip.waypoints) trip.waypoints = Trip.normalizeWaypointOrder(trip.waypoints);
     trip = this.normalizeTrip(trip);
     if (!Number.isFinite(Number(trip.version))) trip.version = 0;
@@ -314,6 +315,7 @@ Object.assign(App, {
         this.bumpTripToTop(fullTrip.id);
         this.refreshTripsList();
         UI.showToast('New trip created', 'success');
+        window.RideInsights?.track('trip_create');
         return;
       } catch (error) {
         console.error('Failed to create cloud trip:', error);

@@ -226,7 +226,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://server.arcgisonline.com https://ride.incitat.io https://lh3.googleusercontent.com https://*.microsoft.com",
-  "connect-src 'self' https://ride.incitat.io https://maps.incitat.io https://unpkg.com",
+  "connect-src 'self' https://ride.incitat.io https://maps.incitat.io https://unpkg.com https://events.rmesolutions.com.au",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self' https://accounts.google.com https://login.microsoftonline.com"

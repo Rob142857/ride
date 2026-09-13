@@ -110,6 +110,7 @@ const Share = {
         App.currentTrip.short_code = result.shortCode;
         App.currentTrip.shortUrl = result.shareUrl || `${window.location.origin.replace(/\/$/, '')}/${result.shortCode}`;
         App.currentTrip.short_url = App.currentTrip.shortUrl;
+        window.RideInsights?.track('share_create');
       }
       App.currentTrip.isPublic = true;
       App.currentTrip.is_public = 1;
@@ -218,6 +219,7 @@ const Share = {
     try {
       await navigator.clipboard.writeText(text);
       UI.showToast('Link copied to clipboard', 'success');
+      window.RideInsights?.track('share_copy');
     } catch (err) {
       // Fallback for older browsers
       const input = document.createElement('input');
@@ -227,6 +229,7 @@ const Share = {
       document.execCommand('copy');
       document.body.removeChild(input);
       UI.showToast('Link copied to clipboard', 'success');
+      window.RideInsights?.track('share_copy');
     }
   },
 
