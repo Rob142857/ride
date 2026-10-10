@@ -4,6 +4,7 @@
  *
  * Usage:  node scripts/deploy.js
  *    or:  npm run deploy
+ *         node scripts/deploy.js --stamp-only
  *
  * Generates a BUILD_ID like "2026-02-15T02" (date + two-digit counter).
  * If today already has a deploy, the counter increments.
@@ -14,7 +15,10 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const WORKER_PATH = path.resolve(__dirname, '..', 'api', 'worker.js');
-const INDEX_PATH = path.resolve(__dirname, '..', 'public', 'index.html');
+const ASSET_PAGES = ['index.html', 'trip.html'].map(file =>
+  path.resolve(__dirname, '..', 'public', file)
+);
+const stampOnly = process.argv.includes('--stamp-only');
 
 // Read current worker source
 let src = fs.readFileSync(WORKER_PATH, 'utf8');
@@ -43,7 +47,7 @@ fs.writeFileSync(WORKER_PATH, src, 'utf8');
 
 console.log(`\n  BUILD_ID: ${oldId || '(none)'} → ${newId}\n`);
 
-// Update CSS/JS cache-busting query params in public/index.html
+// Update CSS/JS cache-busting query params in both map pages.
 function bustAssetUrls(html, buildId) {
   // Add/replace ?v=BUILD_ID on local css/*.css and js/*.js assets
   return html.replace(
@@ -52,17 +56,23 @@ function bustAssetUrls(html, buildId) {
   );
 }
 
-if (fs.existsSync(INDEX_PATH)) {
-  let html = fs.readFileSync(INDEX_PATH, 'utf8');
+for (const page of ASSET_PAGES) {
+  if (!fs.existsSync(page)) continue;
+  let html = fs.readFileSync(page, 'utf8');
   html = bustAssetUrls(html, newId);
-  fs.writeFileSync(INDEX_PATH, html, 'utf8');
+  fs.writeFileSync(page, html, 'utf8');
   const count = (html.match(/(css|js)\/[^"']+\.(css|js)\?v=/g) || []).length;
-  console.log(`  Updated cache-bust in public/index.html: ${count} assets tagged with v=${newId}\n`);
+  console.log(`  Updated cache-bust in public/${path.basename(page)}: ${count} assets tagged with v=${newId}\n`);
+}
+
+if (stampOnly) {
+  console.log('  Release stamped; deployment skipped.\n');
+  process.exit(0);
 }
 
 // Run wrangler deploy (vanilla JS served from public/ — no build step)
 try {
-  execSync('npx wrangler deploy', { stdio: 'inherit', cwd: path.resolve(__dirname, '..') });
+  execSync('npx wrangler deploy --keep-vars', { stdio: 'inherit', cwd: path.resolve(__dirname, '..') });
 } catch (err) {
   process.exit(err.status || 1);
 }

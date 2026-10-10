@@ -49,12 +49,10 @@ const MapManager = {
       attributionControl: true
     }).setView([-34.5386, 146.5933], 12);
 
-    // Add tile layer (OpenStreetMap default renderer — strong road / topology detail)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      subdomains: 'abc',
-      maxZoom: 19,
-      crossOrigin: true
+    // Australia is served by our Ubuntu tile server; normal online OSM viewing
+    // remains available if that server is temporarily unavailable.
+    RideBasemaps.streets({
+      onFallback: () => UI.showToast('Using the online backup map', 'info')
     }).addTo(this.map);
 
     // Disable heading-up when user manually drags/pans the map

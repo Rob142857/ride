@@ -4,7 +4,8 @@
  * Strategy:
  *   App shell (HTML/CSS/JS/icons) → Network-first, cache fallback
  *   API requests                  → Network-only (never cached)
- *   Map tiles                     → Stale-while-revalidate (separate cache)
+ *   Owned Australia map tiles     → Stale-while-revalidate (bounded cache)
+ *   External map tiles            → Browser HTTP cache (provider rules)
  *   Routing                       → Network-only
  *
  * On activate and every 2 minutes, polls /api/_build.
@@ -12,8 +13,9 @@
  * and post a 'ride:update' message to all clients so they can reload.
  */
 
-const CACHE_NAME = 'ride-v8';
-const TILES_CACHE = 'ride-tiles';
+const CACHE_NAME = 'ride-v9';
+const TILES_CACHE = 'ride-owned-tiles-v1';
+const MAX_CACHED_TILES = 800;
 
 const STATIC_ASSETS = [
   '/',
@@ -37,6 +39,7 @@ const STATIC_ASSETS = [
   '/js/trip.js',
   '/js/itinerary.js',
   '/js/itinerary-ui.js',
+  '/js/basemaps.js',
   '/js/map.js',
   '/js/ui.js',
   '/js/share.js',
@@ -61,7 +64,7 @@ async function fetchBuildId() {
     if (!res.ok) return null;
     const data = await res.json();
     return data.build || null;
-  } catch (_) {
+  } catch {
     return null;
   }
 }
@@ -73,7 +76,7 @@ async function checkForUpdate() {
   if (knownBuildId && remoteBuild !== knownBuildId) {
     knownBuildId = remoteBuild;
 
-    // Purge app-shell cache (keep tiles — they're content-addressed)
+    // Purge app-shell cache, retaining the bounded cache of viewed owned tiles.
     const keys = await caches.keys();
     await Promise.all(keys.filter(k => k !== TILES_CACHE).map(k => caches.delete(k)));
 
@@ -158,26 +161,47 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then(c => c.put(request, copy));
         }
         return response;
-      }).catch(() => caches.match(request))
+      }).catch(async () => {
+        const cache = await caches.open(CACHE_NAME);
+        // Deploy stamps script/style URLs with a build query. The precached
+        // unversioned shell must also work on the first offline reload.
+        return cache.match(request, { ignoreSearch: true });
+      })
     );
     return;
   }
 
-  // ── Map tiles: stale-while-revalidate ──
-  if (url.hostname.includes('basemaps.cartocdn.com') ||
-      url.hostname.includes('tile.openstreetmap.org') ||
-      url.hostname.includes('arcgisonline.com')) {
-    event.respondWith(
-      caches.open(TILES_CACHE).then((cache) =>
-        cache.match(request).then((cached) => {
-          const network = fetch(request).then((res) => {
-            if (res && res.status === 200) cache.put(request, res.clone());
-            return res;
-          }).catch(() => cached);
-          return cached || network;
-        })
-      )
-    );
+  // ── Owned raster tiles: stale-while-revalidate, never cache error/login HTML ──
+  if (url.origin === 'https://maps.incitat.io' &&
+      /^\/styles\/ride-australia\/\d+\/\d+\/\d+\.png$/.test(url.pathname)) {
+    const result = caches.open(TILES_CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      const network = fetch(request).then(async (res) => {
+        if (res.ok && !res.redirected && /^image\/png(?:;|$)/i.test(res.headers.get('Content-Type') || '')) {
+          try {
+            await cache.put(request, res.clone());
+            const keys = await cache.keys();
+            await Promise.all(keys.slice(0, Math.max(0, keys.length - MAX_CACHED_TILES)).map(key => cache.delete(key)));
+          } catch {
+            // Quota or cache failures must not hide a successful live tile.
+          }
+        }
+        return res;
+      }).catch(() => cached || Response.error());
+      return { cached, network };
+    });
+    event.waitUntil(result.then(({ network }) => network).then(() => undefined));
+    event.respondWith(result.then(({ cached, network }) => cached || network));
+    return;
+  }
+
+  // Public OSM allows normal interactive viewing and browser HTTP caching,
+  // not application-managed offline downloads. Do not intercept these hosts.
+  if (url.hostname === 'tile.openstreetmap.org' ||
+      url.hostname.endsWith('.tile.openstreetmap.org') ||
+      url.hostname === 'basemaps.cartocdn.com' ||
+      url.hostname.endsWith('.basemaps.cartocdn.com') ||
+      url.hostname.endsWith('.arcgisonline.com')) {
     return;
   }
 

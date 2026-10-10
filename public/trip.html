@@ -38,11 +38,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="css/global.css">
-  <link rel="stylesheet" href="css/trip.css">
+  <link rel="stylesheet" href="css/global.css?v=2026-10-10T04">
+  <link rel="stylesheet" href="css/trip.css?v=2026-10-10T04">
 <script src="/insights.js" data-app="ride" data-component="planner" data-endpoint="https://events.rmesolutions.com.au/collect" defer></script>
-<script src="js/insights-hook.js"></script>
-<script src="js/trip-share-hero.js" defer></script>
+<script src="js/insights-hook.js?v=2026-10-10T04"></script>
+<script src="js/trip-share-hero.js?v=2026-10-10T04" defer></script>
 
   <!-- Capture PWA install prompt as early as possible -->
   <script>
@@ -1532,7 +1532,8 @@
   
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/api.js"></script>
+  <script src="/js/api.js?v=2026-10-10T04"></script>
+  <script src="/js/basemaps.js?v=2026-10-10T04"></script>
   
   <script>
     let map = null;
@@ -1830,11 +1831,7 @@
 
       // Basemaps: default Streets + optional Satellite
       basemapLayers = {
-        streets: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-          attribution: '© OpenStreetMap © CARTO',
-          subdomains: 'abcd',
-          maxZoom: 19
-        }),
+        streets: RideBasemaps.streets(),
         satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
           attribution: 'Tiles © Esri',
           maxZoom: 19
@@ -2435,6 +2432,6 @@
       showError();
     }
   </script>
-  <script src="js/share-patch.js"></script>
+  <script src="js/share-patch.js?v=2026-10-10T04"></script>
 </body>
 </html>

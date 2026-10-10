@@ -1,0 +1,17 @@
+services:
+  ride-tiles:
+    image: maptiler/tileserver-gl:v5.6.0@sha256:3a9ccdb24820b6814c8119bcc8a4376c39867cb0ffe69d62919ef898b90c2427
+    container_name: ride-australia-tiles
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8080"
+    volumes:
+      - /srv/ride-tiles:/data:ro
+    command: ["--config", "/data/config.json", "--public_url", "https://maps.incitat.io"]
+    cpus: 1.0
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
