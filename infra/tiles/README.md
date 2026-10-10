@@ -130,7 +130,7 @@ after verifying the live release.
 | Self-contained glyphs and sprites; public HTTPS PNG and CORS | Public PNG, glyph, sprite and data endpoints returned HTTP `200` with `Access-Control-Allow-Origin: *`; runtime asset URLs all use `maps.incitat.io`. Independent query-busted visual QA fetched 91 PNGs, all 256×256, CORS `*`, and CDN `MISS` |
 | Tunnel candidate validation, rule matching and permission-preserving backup location | Candidate ingress valid; tile rule 3 precedes unchanged OSRM rule 4; backup `/etc/cloudflared/config.yml.ride-tiles-20261010T104704Z.bak` |
 | OSRM nearest/route checks before and after tunnel activation | Local routing, post-activation public route and public nearest checks returned `Ok` |
-| CPU/RAM, Docker OOM state and bounded renderer logs after map loading | Initial renderer memory `181.7 MiB`; margin-32 restart memory `177.3 MiB`; `OOMKilled=false`; final public-load resource/log check pending |
+| Final VM resource and isolation check | 1 CPU/2 GiB cap; current memory `219.8 MiB`, peak `468.9 MiB` (`491,724,800` bytes); `OOMKilled=false`, restart count `0`; durable disk `86 GiB` free. Loopback port `8082` and read-only `/data` confirmed; tunnel active and public OSRM `Ok` |
 | Private planner and existing public trip; route/waypoints, attribution, source transition, outage fallback, offline viewed tiles | Awaiting final verification |
 | Application build, Git revision, Cloudflare Worker version and live screenshots | Awaiting final verification |
 

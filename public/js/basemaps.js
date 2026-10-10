@@ -41,24 +41,39 @@ const RideBasemaps = (() => {
     let sourceGeneration = 0;
     let unavailableUntil = 0;
     const updateSource = () => {
-      if (!map) return;
+      if (!map) return false;
       const offline = navigator.onLine === false;
-      const inAustralia = coverage.contains(map.getCenter());
+      let zoom, center, viewport;
+      try {
+        zoom = map.getZoom();
+        const size = map.getSize();
+        // Hidden containers and an unfinished initial fit have no usable
+        // viewport yet. Re-evaluate on moveend after layout/view recovery.
+        if (!Number.isFinite(zoom) || !Number.isFinite(size.x) || !Number.isFinite(size.y) ||
+            size.x <= 0 || size.y <= 0) return false;
+        center = map.getCenter();
+        if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng)) return false;
+        if (!offline) viewport = map.getBounds();
+      } catch {
+        return false;
+      }
+      const inAustralia = coverage.contains(center);
       // A wide view needs global context. Offline, keep showing any viewed
       // owned tiles for Australia even after an earlier online server failure.
-      const useOwned = inAustralia && (offline || (map.getZoom() >= 4 &&
-        dataCoverage.contains(map.getBounds()) && Date.now() >= unavailableUntil));
+      const useOwned = inAustralia && (offline || (zoom >= 4 &&
+        dataCoverage.contains(viewport) && Date.now() >= unavailableUntil));
       const next = useOwned ? ownedLayer : fallbackLayer;
-      if (activeLayer === next) return;
+      if (activeLayer === next) return true;
       sourceGeneration++;
       layer.clearLayers();
       activeLayer = next;
       layer.addLayer(next);
+      return true;
     };
     const connectionChanged = () => {
       const previous = activeLayer;
       if (navigator.onLine !== false) unavailableUntil = 0;
-      updateSource();
+      if (!updateSource()) return;
       // Reload tiles that failed while offline when connectivity returns.
       if (navigator.onLine !== false && previous === ownedLayer && activeLayer === ownedLayer) {
         ownedLayer.redraw();

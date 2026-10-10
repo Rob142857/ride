@@ -38,11 +38,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="css/global.css?v=2026-10-10T04">
-  <link rel="stylesheet" href="css/trip.css?v=2026-10-10T04">
+  <link rel="stylesheet" href="css/global.css?v=2026-10-10T05">
+  <link rel="stylesheet" href="css/trip.css?v=2026-10-10T05">
 <script src="/insights.js" data-app="ride" data-component="planner" data-endpoint="https://events.rmesolutions.com.au/collect" defer></script>
-<script src="js/insights-hook.js?v=2026-10-10T04"></script>
-<script src="js/trip-share-hero.js?v=2026-10-10T04" defer></script>
+<script src="js/insights-hook.js?v=2026-10-10T05"></script>
+<script src="js/trip-share-hero.js?v=2026-10-10T05" defer></script>
 
   <!-- Capture PWA install prompt as early as possible -->
   <script>
@@ -1532,8 +1532,8 @@
   
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/api.js?v=2026-10-10T04"></script>
-  <script src="/js/basemaps.js?v=2026-10-10T04"></script>
+  <script src="/js/api.js?v=2026-10-10T05"></script>
+  <script src="/js/basemaps.js?v=2026-10-10T05"></script>
   
   <script>
     let map = null;
@@ -1700,6 +1700,9 @@
       const mapControls = document.getElementById('mapExpandBtn')?.closest('.action-group');
       if (mapContainer) mapContainer.style.display = hasMapData ? '' : 'none';
       if (mapControls) mapControls.style.display = hasMapData ? '' : 'none';
+      // Leaflet must measure a visible container before fitting the journey.
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
       if (hasMapData) initMap(trip);
       
       // Description
@@ -1800,10 +1803,6 @@
         document.getElementById('contact-section').style.display = 'block';
       }
       
-      // Show content
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('content').style.display = 'block';
-
       // Render share-card hero banner if alternatives exist
       if (typeof TripShareHero !== 'undefined') {
         TripShareHero.renderHeroBanner(trip, 'banner-style');
@@ -1826,7 +1825,10 @@
       map = L.map('trip-map', {
         zoomControl: true,
         scrollWheelZoom: false,
-        dragging: true
+        dragging: true,
+        // The basemap group adds its child after view initialization. Cap a
+        // single-point fit before the child can contribute its zoom limits.
+        maxZoom: 19
       });
 
       // Basemaps: default Streets + optional Satellite
@@ -2432,6 +2434,6 @@
       showError();
     }
   </script>
-  <script src="js/share-patch.js?v=2026-10-10T04"></script>
+  <script src="js/share-patch.js?v=2026-10-10T05"></script>
 </body>
 </html>

@@ -13,7 +13,7 @@
  * and post a 'ride:update' message to all clients so they can reload.
  */
 
-const CACHE_NAME = 'ride-v9';
+const CACHE_NAME = 'ride-v10';
 const TILES_CACHE = 'ride-owned-tiles-v1';
 const MAX_CACHED_TILES = 800;
 
@@ -153,19 +153,21 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/icons/')
   );
 
-  if (isAppShell) {
+  const isNavigation = url.origin === self.location.origin && request.mode === 'navigate';
+  if (isAppShell || isNavigation) {
     event.respondWith(
       fetch(request).then((response) => {
         if (response && response.status === 200) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(c => c.put(request, copy));
+          event.waitUntil(caches.open(CACHE_NAME).then(c => c.put(request, copy)).catch(() => undefined));
         }
         return response;
       }).catch(async () => {
         const cache = await caches.open(CACHE_NAME);
         // Deploy stamps script/style URLs with a build query. The precached
         // unversioned shell must also work on the first offline reload.
-        return cache.match(request, { ignoreSearch: true });
+        const cached = await cache.match(request, { ignoreSearch: !isNavigation });
+        return cached || (isNavigation ? cache.match('/index.html') : undefined);
       })
     );
     return;

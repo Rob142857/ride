@@ -12,9 +12,10 @@ function basemapFixture({ center = { lat: -33.86, lng: 151.2 }, zoom = 12 } = {}
   const layers = [];
   const attributions = new Map();
   const map = {
-    center, zoom, bounds: [[-34, 151], [-33, 152]],
+    center, zoom, bounds: [[-34, 151], [-33, 152]], size: { x: 1024, y: 768 },
     getCenter() { return this.center; }, getZoom() { return this.zoom; },
-    getBounds() { return this.bounds; },
+    getSize() { return this.size; },
+    getBounds() { if (this.boundsError) throw new Error('Invalid LatLng object: (NaN, NaN)'); return this.bounds; },
     on(name, fn) { mapEvents[name] = fn; }, off(name) { delete mapEvents[name]; },
     addLayer(layer) {
       layer._map = this;
@@ -72,12 +73,41 @@ function basemapFixture({ center = { lat: -33.86, lng: 151.2 }, zoom = 12 } = {}
   };
 }
 
+function sharedTripInitializationTest() {
+  const html = fs.readFileSync(path.join(root, 'public/trip.html'), 'utf8');
+  const render = html.slice(html.indexOf('    function renderTrip(trip) {'), html.indexOf('    function initMap(trip) {'));
+  const init = html.slice(html.indexOf('    function initMap(trip) {'), html.indexOf('    function drawRouteForIndex'));
+  const nodes = new Map();
+  const node = id => {
+    if (!nodes.has(id)) nodes.set(id, { style: {}, closest: () => ({ style: {} }) });
+    return nodes.get(id);
+  };
+  node('content').style.display = 'none';
+  const context = vm.createContext({
+    document: { getElementById: node, querySelector: () => ({ style: {} }), querySelectorAll: () => [] },
+    window: { location: { href: 'https://ride.incitat.io/s/fixture' } },
+    setTimeout() {}, escapeHtml: value => value, updateMeta() {}, setHeroPlaceholder() {},
+    drawRouteForIndex() {}, setBasemap() {}, wireBasemapButtons() {},
+    RideBasemaps: { streets: () => ({}) },
+    L: {
+      map(_id, options) {
+        assert.equal(node('content').style.display, 'block', 'Shared content must be visible before Leaflet measures it');
+        assert.equal(options.maxZoom, 19, 'A single-point fit must be finite before child tile-layer zoom limits exist');
+        return { fitBounds() {}, setView() {} };
+      },
+      tileLayer: () => ({}), latLngBounds: points => points,
+      circleMarker: () => ({ addTo() { return this; }, bindPopup() {} })
+    }
+  });
+  vm.runInContext(`${render}\n${init}\nrenderTrip({ title: 'Fixture journey', waypoints: [{ lat: -33.86, lng: 151.2, name: 'Fixture stop' }] });`, context);
+}
+
 async function tileFixture(options = {}) {
   const handlers = {};
   const storage = new Map();
   const cache = {
     async match(request, matchOptions = {}) {
-      const key = typeof request === 'string' ? request : request.url;
+      const key = new URL(typeof request === 'string' ? request : request.url, 'https://ride.incitat.io').href;
       if (!matchOptions.ignoreSearch) return storage.get(key)?.clone();
       const withoutSearch = value => { const url = new URL(value); url.search = ''; return url.href; };
       for (const [url, response] of storage) {
@@ -97,7 +127,7 @@ async function tileFixture(options = {}) {
     setInterval() {},
     fetch: async () => {
       if (options.offline) throw new Error('offline');
-      const response = new Response('tile', {
+      const response = new Response(options.body || 'tile', {
         status: options.status || 200, headers: { 'Content-Type': options.type || 'image/png' }
       });
       Object.defineProperty(response, 'redirected', { value: options.redirected || false });
@@ -105,10 +135,14 @@ async function tileFixture(options = {}) {
     }
   });
   vm.runInContext(fs.readFileSync(path.join(root, 'public/sw.js'), 'utf8'), context);
-  async function request(url) {
+  async function request(url, requestOptions = {}) {
     let response;
     const pending = [];
-    handlers.fetch({ request: new Request(url), respondWith(result) { response = result; }, waitUntil(result) { pending.push(result); } });
+    const incoming = new Request(url);
+    // Navigation mode is assigned by the browser and cannot be set through
+    // Request's constructor; simulate its observed value on the real object.
+    if (requestOptions.navigate) Object.defineProperty(incoming, 'mode', { value: 'navigate' });
+    handlers.fetch({ request: incoming, respondWith(result) { response = result; }, waitUntil(result) { pending.push(result); } });
     const answer = await response;
     await Promise.all(pending);
     return answer;
@@ -117,6 +151,7 @@ async function tileFixture(options = {}) {
 }
 
 (async () => {
+  sharedTripInitializationTest();
   let b = basemapFixture();
   b.layer.addTo();
   assert.equal(b.active(), b.owned);
@@ -170,6 +205,17 @@ async function tileFixture(options = {}) {
   b = basemapFixture({ center: { lat: -12.15, lng: 96.82 } });
   b.map.bounds = [[-12.3, 96.6], [-12, 97]]; b.layer.addTo();
   assert.equal(b.active(), b.fallback); // A center outside mainland/Tasmania stays global even inside the archive.
+  for (const geometry of [
+    { zoom: Infinity }, { zoom: NaN }, { size: { x: 0, y: 0 } }, { center: { lat: NaN, lng: 151 } }, { boundsError: true }
+  ]) {
+    b = basemapFixture(); Object.assign(b.map, geometry);
+    assert.doesNotThrow(() => b.layer.addTo());
+    assert.equal(b.active(), undefined); // Initial hidden or unfinished maps defer source creation.
+    Object.assign(b.map, { zoom: 12, size: { x: 1024, y: 768 }, center: { lat: -33.86, lng: 151.2 }, boundsError: false });
+    b.mapEvents.moveend(); assert.equal(b.active(), b.owned); // The next valid view completes initialization.
+  }
+  b.map.size = { x: 0, y: 0 }; b.windowEvents.online();
+  assert.equal(b.owned.redraws, 0); // Reconnection must not redraw an unusable viewport.
 
   const owned = b.owned.url.replace('{z}', '12').replace('{x}', '3769').replace('{y}', '2457');
   assert.ok(new URL(owned).searchParams.get('v')); // App requests carry a stable rendering revision.
@@ -191,6 +237,14 @@ async function tileFixture(options = {}) {
   assert.equal(await (await t.request('https://ride.incitat.io/js/basemaps.js?v=new-build')).text(), 'precached script');
   t.storage.set('https://ride.incitat.io/css/app.css', new Response('precached style'));
   assert.equal(await (await t.request('https://ride.incitat.io/css/app.css?v=new-build')).text(), 'precached style');
+  const publicPage = 'https://ride.incitat.io/s/fixture';
+  t = await tileFixture({ body: 'fresh trip HTML', type: 'text/html' });
+  t.storage.set(publicPage, new Response('previous trip HTML'));
+  assert.equal(await (await t.request(publicPage, { navigate: true })).text(), 'fresh trip HTML');
+  t.options.offline = true;
+  assert.equal(await (await t.request(publicPage, { navigate: true })).text(), 'fresh trip HTML');
+  t.storage.set('https://ride.incitat.io/index.html', new Response('offline shell'));
+  assert.equal(await (await t.request('https://ride.incitat.io/s/uncached-fixture', { navigate: true })).text(), 'offline shell');
   t = await tileFixture();
   await Promise.all(Array.from({ length: 805 }, (_, x) => t.request(`https://maps.incitat.io/styles/ride-australia/12/${x}/2457.png`)));
   assert.equal(t.storage.size, 800);
