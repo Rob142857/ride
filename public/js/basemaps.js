@@ -2,7 +2,10 @@
 /* exported RideBasemaps */
 const RideBasemaps = (() => {
   // Bump this revision when data, style, glyphs or rendering settings change.
-  const OWNED_URL = 'https://maps.incitat.io/styles/ride-australia/{z}/{x}/{y}.png?v=2026-10-10-1';
+  const TILE_REVISION = '2026-10-10-2';
+  const OWNED_URL = `https://maps.incitat.io/styles/ride-australia/{z}/{x}/{y}.png?v=${TILE_REVISION}`;
+  const LABELS_URL = `https://maps.incitat.io/styles/ride-australia-labels/{z}/{x}/{y}.png?v=${TILE_REVISION}`;
+  const LABEL_PANE = 'rideLabels';
   const FALLBACK_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
   // Mainland Australia and Tasmania. Other countries/territories use normal
   // interactive OSM viewing; there is no country-sized OSM download feature.
@@ -20,6 +23,17 @@ const RideBasemaps = (() => {
     const ownedLayer = L.tileLayer(OWNED_URL, {
       attribution: OWNED_ATTRIBUTION,
       // TileServer GL renders fresh rasters from the z14 vectors through z19.
+      maxNativeZoom: 19,
+      maxZoom: 19,
+      bounds: DATA_BOUNDS,
+      crossOrigin: true,
+      updateWhenIdle: true
+    });
+    // Same raster coordinates/settings as the full base, with transparent
+    // ground. Its labels remain readable above routes; the full base still
+    // supplies labels if this additional layer cannot load.
+    const labelsLayer = L.tileLayer(LABELS_URL, {
+      pane: LABEL_PANE,
       maxNativeZoom: 19,
       maxZoom: 19,
       bounds: DATA_BOUNDS,
@@ -68,6 +82,7 @@ const RideBasemaps = (() => {
       layer.clearLayers();
       activeLayer = next;
       layer.addLayer(next);
+      if (useOwned) layer.addLayer(labelsLayer);
       return true;
     };
     const connectionChanged = () => {
@@ -77,10 +92,15 @@ const RideBasemaps = (() => {
       // Reload tiles that failed while offline when connectivity returns.
       if (navigator.onLine !== false && previous === ownedLayer && activeLayer === ownedLayer) {
         ownedLayer.redraw();
+        labelsLayer.redraw();
       }
     };
     layer.on('add', () => {
       map = layer._map;
+      const labelsPane = map.getPane(LABEL_PANE) || map.createPane(LABEL_PANE);
+      // Leaflet paths are at 400, markers at 600 and popups at 700.
+      labelsPane.style.zIndex = '450';
+      labelsPane.style.pointerEvents = 'none';
       map.on('moveend', updateSource);
       window.addEventListener('online', connectionChanged);
       window.addEventListener('offline', connectionChanged);
@@ -109,5 +129,12 @@ const RideBasemaps = (() => {
     return layer;
   }
 
-  return { streets, OWNED_URL };
+  // Shared route appearance for the planner, saved routes and public trips.
+  // Keep the underlying road texture visible even at street zoom levels.
+  function routeStyle(zoom, { color = '#e94560', selected = true } = {}) {
+    const weight = zoom >= 16 ? 3 : zoom >= 13 ? 2.5 : 3;
+    return { color, weight, opacity: selected ? 0.65 : 0.35, pane: 'overlayPane' };
+  }
+
+  return { streets, routeStyle, OWNED_URL, LABELS_URL };
 })();

@@ -9,10 +9,10 @@ import sqlite3
 import sys
 import tarfile
 import urllib.request
+from adapt_style import TILE_REVISION, style_bundle, write_bundle
 
 STYLE_VERSION = "v6.1.1"
 FONT_VERSION = "v3.0.0"
-TILE_REVISION = "2026-10-10-1"
 RENDERED_MAX_ZOOM = 19
 TILE_MARGIN = 32
 MAX_RENDER_SIZE = 256 + 2 * TILE_MARGIN
@@ -83,8 +83,6 @@ source["maxzoom"] = int(metadata["maxzoom"])
 style["glyphs"] = "{fontstack}/{range}.pbf"
 style["sprite"] = [{"id": "base", "url": "base"}]
 style["name"] = "Ride Australia"
-(BASE / "styles").mkdir(exist_ok=True)
-(BASE / "styles/ride-australia.json").write_text(json.dumps(style, ensure_ascii=False), encoding="utf-8")
 
 config = {
     "options": {
@@ -111,7 +109,6 @@ config = {
     },
     "data": {"australia": {"mbtiles": "australia.mbtiles"}},
 }
-(BASE / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
 receipt = {
     "source": "https://download.geofabrik.de/australia-oceania/australia-shortbread-1.0.mbtiles",
     "license": "ODbL-1.0 (OpenStreetMap); MIT (VersaTiles style); OFL-1.1 (Noto Sans)",
@@ -125,7 +122,8 @@ receipt = {
     "metadata": metadata,
     "assetsSha256": {"styles": hashlib.sha256(styles_raw).hexdigest(), "sprites": hashlib.sha256(sprites_raw).hexdigest(), "fonts": hashlib.sha256(fonts_raw).hexdigest()},
 }
-(BASE / "source-receipt.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")
+bundle = style_bundle(style, config, receipt)
+write_bundle(BASE, bundle)
 
 # Include upstream license notices with the self-hosted distribution.
 for name, url in {
@@ -133,4 +131,4 @@ for name, url in {
     "FONT-LICENSE.txt": "https://raw.githubusercontent.com/notofonts/latin-greek-cyrillic/main/OFL.txt",
 }.items():
     (BASE / name).write_bytes(download(url))
-print(json.dumps({"prepared": str(BASE), "bounds": source["bounds"], "maxzoom": source["maxzoom"], "renderedMaxZoom": RENDERED_MAX_ZOOM, "tileMargin": TILE_MARGIN, "archiveBytes": ARCHIVE.stat().st_size}))
+print(json.dumps({"prepared": str(BASE), "bounds": source["bounds"], "maxzoom": source["maxzoom"], "renderedMaxZoom": RENDERED_MAX_ZOOM, "tileMargin": TILE_MARGIN, "tileRevision": TILE_REVISION, "labelsLayerCount": len(bundle[1]["layers"]), "archiveBytes": ARCHIVE.stat().st_size}))

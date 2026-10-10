@@ -94,6 +94,7 @@ const MapManager = {
       if (this.routingControl) {
         this._updateRouteLineStyles();
       }
+      this.savedRouteLayer?.setStyle(RideBasemaps.routeStyle(this.map.getZoom()));
     });
 
     return this;
@@ -275,6 +276,14 @@ const MapManager = {
       this.routeSelector.selectRoute(index);
     }
 
+    // Keep LRM's selected route in sync so its geometry-detail refresh follows
+    // the chosen card rather than reverting to the initial route.
+    if (this.routingControl && this.routingControl._selectedRoute !== routes[index]) {
+      this.routingControl.fire('routeselected', {
+        route: routes[index], alternatives: routes.filter((_, i) => i !== index)
+      });
+    }
+
     // Update polyline styles on map
     this._updateRouteLineStyles();
 
@@ -317,36 +326,31 @@ const MapManager = {
     if (rc._line) lines.push(rc._line);
     if (rc._alternatives) lines.push(...rc._alternatives);
 
-    lines.forEach((line, idx) => {
-      if (!line || !line.setStyle) return;
-      const isSel = idx === this._selectedRouteIndex;
-      line.setStyle({
-        opacity: isSel ? 0.9 : 0.45,
-        weight: isSel ? this._routeWeight() : Math.max(2, this._routeWeight() - 2)
+    lines.forEach(line => {
+      if (!line?.eachLayer) return;
+      const isSel = line._route.routesIndex === this._selectedRouteIndex;
+      const styles = this._routeStyles(isSel);
+      // LRM lines are LayerGroups, not paths. Update only our styled route
+      // children, retaining the invisible hit area and waypoint connectors.
+      line.eachLayer(path => {
+        const role = path.options?._rideRouteRole;
+        if (role === 'hit') path.setStyle(styles[0]);
+        if (role === 'line') path.setStyle(styles[1]);
+        if (isSel && role && path.bringToFront) path.bringToFront();
       });
-      if (isSel && line.bringToFront) line.bringToFront();
     });
-  },
-
-  /**
-   * Route line weight based on zoom
-   */
-  _routeWeight() {
-    const z = this.map?.getZoom() || 13;
-    if (z >= 16) return 8;
-    if (z >= 13) return 6;
-    if (z >= 10) return 5;
-    return 3;
   },
 
   /**
    * Get route line styles based on current zoom level
    */
-  _routeStyles() {
-    const w = this._routeWeight();
+  _routeStyles(selected = true) {
+    const style = RideBasemaps.routeStyle(this.map?.getZoom(), {
+      selected, color: selected ? '#e94560' : '#6B8E8E'
+    });
     return [
-      { color: '#e94560', opacity: 0.9, weight: w },
-      { color: '#ff6b6b', opacity: 0.3, weight: w + 3 }
+      { ...style, opacity: 0, weight: 12, _rideRouteRole: 'hit' },
+      { ...style, _rideRouteRole: 'line' }
     ];
   },
 
@@ -471,15 +475,36 @@ const MapManager = {
       showAlternatives: true,
       addWaypoints: false,
       fitSelectedRoutes: false,
+      // A new route line can be created after routesfound, or when LRM fetches
+      // more detail. Apply the current zoom/selection at creation as well.
+      routeLine: (route, options) => L.Routing.line(route, {
+        ...options, styles: this._routeStyles(route.routesIndex === this._selectedRouteIndex)
+      }),
       lineOptions: {
         styles: this._routeStyles()
       },
       altLineOptions: {
-        styles: [{ color: '#6B8E8E', opacity:0.45, weight: 4 }]
+        styles: this._routeStyles(false)
       },
       createMarker: () => null,
       show: false
-    }).addTo(this.map);
+    });
+
+    const router = this.routingControl.getRouter();
+    const requestRoute = router.route;
+    router.route = function(waypoints, callback, context, options) {
+      return requestRoute.call(this, waypoints, (error, routes) => {
+        // LRM assigns response-order indices on its normal path, but skips
+        // that step for geometry-detail callbacks. Both paths select from the
+        // same response order; restore indices before either handles it.
+        if (!error && routes) routes.forEach((route, index) => { route.routesIndex = index; });
+        callback.call(context || callback, error, routes);
+      }, context, options);
+    };
+    this.routingControl.addTo(this.map);
+    this.routingControl.on('routeselected', event => {
+      this._selectRoute(event.route.routesIndex);
+    });
 
     this.routingControl.on('routesfound', (e) => {
       const routes = e.routes;
@@ -530,7 +555,7 @@ const MapManager = {
   drawRoute(coordinates) {
     if (this.savedRouteLayer) this.map.removeLayer(this.savedRouteLayer);
     const latlngs = coordinates.map(point => [point.lat ?? point[1], point.lng ?? point[0]]);
-    this.savedRouteLayer = L.polyline(latlngs, { color: '#e94560', opacity: 0.85, weight: 4 }).addTo(this.map);
+    this.savedRouteLayer = L.polyline(latlngs, RideBasemaps.routeStyle(this.map.getZoom())).addTo(this.map);
   },
 
   clearRoute() {

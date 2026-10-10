@@ -109,6 +109,25 @@ settings change, and use that revision during public verification. Both CDN
 requests and service-worker cache keys retain the query, so draft or previous
 rendering output is not reused for the new release.
 
+The next prepared revision, `2026-10-10-2`, registers a second raster style,
+`ride-australia-labels`, for labels above the route. It contains the exact same
+48 symbol layers in the same order, with identical sources, glyphs, sprites,
+filters, collision settings and text halos. All non-symbol layers and root
+sky/fog are removed for transparent PNG output. The base style retains its
+symbols, so its labels remain if the overlay is unavailable. Use PNG, because
+JPEG cannot preserve the transparent backdrop. The labels endpoint uses the
+same tile coordinates and revision query as the base endpoint:
+
+```text
+https://maps.incitat.io/styles/ride-australia-labels/{z}/{x}/{y}.png?v=2026-10-10-2
+```
+
+This revision also makes the existing motorway/trunk/primary face and casing
+layers visible at their first available style zoom (5/6/8), instead of fading
+from zero for another full zoom. For 256-pixel TileServer GL rasters these are
+display zooms 6/7/9. Road data and symbol minimum zooms are unchanged; this does
+not create country-overview roads or names absent from the archive.
+
 External OSM and satellite requests use normal browser HTTP caching without
 application-managed offline storage or prefetching. Routing remains network
 only. Keep the [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/)
@@ -124,6 +143,9 @@ uses shell cache `ride-v10` while retaining the viewed owned-tile cache.
 ## Verification record
 
 The hosting and application checks below were completed for the live release.
+These records describe revision `2026-10-10-1` / build T05. The labels revision
+requires fresh transparent-PNG, route-label, offline and resource verification
+before its activation can be recorded as complete.
 
 | Evidence | Result |
 | --- | --- |
@@ -154,6 +176,11 @@ The verified margin resolves the observed label clipping at internal tile
 seams; scale remains limited to 1. Recheck seams, high-zoom label sizes and
 resource use when changing renderer settings. The prior zero-margin config is
 retained at `/srv/ride-tiles/config.json.before-margin-20261010T105054Z.bak`.
+Pools are allocated per style: enabling the labels style adds another tile and
+static pool and a second render request for each viewed tile. Keep the existing
+CPU/memory cap and measure warm memory, peak memory, restarts and render latency
+after exercising both styles. The prior single-style memory receipt does not
+verify this two-style configuration.
 
 Useful host checks:
 
@@ -168,6 +195,27 @@ docker logs --tail 50 ride-australia-tiles
 
 There is no scheduled or automatic tile refresh. Archive or renderer updates
 are deliberate maintenance releases.
+
+For the labels/style change alone, keep the installed MBTiles, fonts, sprites
+and license files. Copy the reviewed `adapt_style.py` beside `prepare.py`, then
+generate a separate candidate using the existing deployment as read-only input:
+
+```bash
+python3 /srv/ride-tiles/adapt_style.py /srv/ride-tiles --output /srv/ride-tiles-labels-candidate
+```
+
+The candidate contains only two style JSON files, `config.json` and the updated
+`source-receipt.json`. It preserves the existing data mapping, service options,
+render margin, attribution and rendered zoom range. Test these files with the
+existing read-only assets in a temporary renderer before activation. Verify
+that a label-rich PNG contains both zero-alpha pixels and visible labels, that
+base/overlay symbols align, and that names remain legible on a route at zooms
+13/14/19. Check revision queries, low-zoom highways and the added renderer load.
+Keep timestamped copies of the replaced style/config/receipt files, install
+only the reviewed candidate files in a brief maintenance window, and recreate
+only `ride-tiles`. Roll back those files and recreate it if any required check
+fails. No archive/font download or tunnel change is needed. Run fresh
+`prepare.py` with `adapt_style.py` beside it for future full data releases.
 
 1. Keep the active deployment intact. Check disk and memory capacity, then
    prepare a separate timestamped directory on durable storage, such as

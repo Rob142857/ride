@@ -13,7 +13,7 @@
  * and post a 'ride:update' message to all clients so they can reload.
  */
 
-const CACHE_NAME = 'ride-v10';
+const CACHE_NAME = 'ride-v11';
 const TILES_CACHE = 'ride-owned-tiles-v1';
 const MAX_CACHED_TILES = 800;
 
@@ -175,7 +175,7 @@ self.addEventListener('fetch', (event) => {
 
   // ── Owned raster tiles: stale-while-revalidate, never cache error/login HTML ──
   if (url.origin === 'https://maps.incitat.io' &&
-      /^\/styles\/ride-australia\/\d+\/\d+\/\d+\.png$/.test(url.pathname)) {
+      /^\/styles\/ride-australia(?:-labels)?\/\d+\/\d+\/\d+\.png$/.test(url.pathname)) {
     const result = caches.open(TILES_CACHE).then(async (cache) => {
       const cached = await cache.match(request);
       const network = fetch(request).then(async (res) => {

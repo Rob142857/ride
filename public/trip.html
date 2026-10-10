@@ -38,11 +38,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="css/global.css?v=2026-10-10T05">
-  <link rel="stylesheet" href="css/trip.css?v=2026-10-10T05">
+  <link rel="stylesheet" href="css/global.css?v=2026-10-10T06">
+  <link rel="stylesheet" href="css/trip.css?v=2026-10-10T06">
 <script src="/insights.js" data-app="ride" data-component="planner" data-endpoint="https://events.rmesolutions.com.au/collect" defer></script>
-<script src="js/insights-hook.js?v=2026-10-10T05"></script>
-<script src="js/trip-share-hero.js?v=2026-10-10T05" defer></script>
+<script src="js/insights-hook.js?v=2026-10-10T06"></script>
+<script src="js/trip-share-hero.js?v=2026-10-10T06" defer></script>
 
   <!-- Capture PWA install prompt as early as possible -->
   <script>
@@ -1532,8 +1532,8 @@
   
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/api.js?v=2026-10-10T05"></script>
-  <script src="/js/basemaps.js?v=2026-10-10T05"></script>
+  <script src="/js/api.js?v=2026-10-10T06"></script>
+  <script src="/js/basemaps.js?v=2026-10-10T06"></script>
   
   <script>
     let map = null;
@@ -1850,6 +1850,7 @@
       if (trip.waypoints?.length) {
         trip.waypoints.forEach((wp, i) => {
           const marker = L.circleMarker([wp.lat, wp.lng], {
+            pane: 'markerPane',
             radius: 10,
             fillColor: '#3b82f6',
             color: '#fff',
@@ -1866,6 +1867,9 @@
       // Draw the saved/active route only
       routePolylines = [];
       drawRouteForIndex(trip, activeRouteIndex, bounds);
+      map.on('zoomend', () => {
+        routePolylines.forEach(line => line.setStyle(RideBasemaps.routeStyle(map.getZoom(), { color: '#3b82f6' })));
+      });
       
       // Fit bounds
       if (bounds.length) {
@@ -1890,11 +1894,8 @@
       const opt = allOptions[index] || allOptions[0];
       if (!opt?.coordinates?.length) return;
       const coords = opt.coordinates.map(c => Array.isArray(c) ? [c[0], c[1]] : [c.lat, c.lng]);
-      const routeLine = L.polyline(coords, {
-        color: '#3b82f6',
-        weight: 5,
-        opacity: 0.9
-      }).addTo(map);
+      const routeLine = L.polyline(coords,
+        RideBasemaps.routeStyle(map.getZoom(), { color: '#3b82f6' })).addTo(map);
       routePolylines.push(routeLine);
       if (boundsAccumulator) {
         coords.forEach(c => boundsAccumulator.push(c));
@@ -2434,6 +2435,6 @@
       showError();
     }
   </script>
-  <script src="js/share-patch.js?v=2026-10-10T05"></script>
+  <script src="js/share-patch.js?v=2026-10-10T06"></script>
 </body>
 </html>
