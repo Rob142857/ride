@@ -2,6 +2,18 @@
  * Trip module - handles trip data structure and operations
  */
 const Trip = {
+  uniqueRouteChoices(routes = [], selectedIndex = 0) {
+    const seen = new Map();
+    const unique = [];
+    let activeIndex = 0;
+    routes.forEach((route, index) => {
+      if (!route) return;
+      const key = route.coordinates?.length ? JSON.stringify(route.coordinates.map(point => [point.lng ?? point[0], point.lat ?? point[1]])) : JSON.stringify([route.name, route.distance, route.duration]);
+      if (!seen.has(key)) { seen.set(key, unique.length); unique.push(route); }
+      if (index === selectedIndex) activeIndex = seen.get(key);
+    });
+    return { routes: unique, activeIndex };
+  },
   /**
    * Create a new trip object
    */
@@ -192,6 +204,20 @@ const Trip = {
         attachmentCount: attachments.length,
       }
     };
+  },
+
+  /** Owner backup includes private notes and planner settings; never use for public sharing. */
+  getOwnerBackupData(trip) {
+    const data = JSON.parse(JSON.stringify(trip));
+    delete data._importFingerprint;
+    delete data._importSource;
+    data.format = 'ride-owner-backup';
+    data.formatVersion = 1;
+    data.isPublic = false;
+    data.is_public = 0;
+    // Media binaries are held in the account; this backup carries metadata only.
+    data.mediaMetadataOnly = true;
+    return data;
   },
 
   /**

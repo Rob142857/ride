@@ -272,7 +272,8 @@ Object.assign(App, {
     }
 
     UI.updateTripStats(this.currentTrip);
-    const allRoutes = [this.currentTrip.route, ...(this.currentTrip.route?._allAlternatives || [])].filter(Boolean);
+    const calculatedRoutes = this.currentTrip.route?._allAlternatives || [];
+    const allRoutes = calculatedRoutes.length ? calculatedRoutes : [this.currentTrip.route];
     const selectedIdx = this.currentTrip.route?._selectedIndex ?? 0;
     if (allRoutes.length > 1 || this.currentTrip.route?._allAlternatives?.length) {
       await this.saveAlternativeRoutes(allRoutes, selectedIdx);

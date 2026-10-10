@@ -44,10 +44,11 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
   
-   <link rel="stylesheet" href="css/global.css?v=2026-09-13T02">
-    <link rel="stylesheet" href="css/app.css?v=2026-09-13T02">
-    <link rel="stylesheet" href="css/ride-mode.css?v=2026-09-13T02">
-    <link rel="stylesheet" href="css/route-components.css?v=2026-09-13T02">
+   <link rel="stylesheet" href="css/global.css?v=2026-10-10T02">
+    <link rel="stylesheet" href="css/app.css?v=2026-10-10T02">
+    <link rel="stylesheet" href="css/ride-mode.css?v=2026-10-10T02">
+    <link rel="stylesheet" href="css/route-components.css?v=2026-10-10T02">
+    <link rel="stylesheet" href="css/itinerary.css?v=2026-10-10T02">
   </head>
 <body class="geistsans_47a3c9f1-module__2HyNMa__variable geistmono_cfbefb1d-module__tUxLBG__variable antialiased">
   <div id="app">
@@ -133,6 +134,10 @@
         <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
         <span>Journal</span>
       </button>
+      <button class="nav-btn" data-view="itinerary" aria-label="Trip itinerary">
+        <svg viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v2H7zm0 4h9v2H7z"/></svg>
+        <span>Itinerary</span>
+      </button>
       <button class="nav-btn" data-view="trips">
         <svg viewBox="0 0 24 24"><path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/></svg>
         <span>Trips</span>
@@ -151,6 +156,7 @@
         <li><button id="newTripBtn">New Trip</button></li>
         <li><button id="importBtn">Import Trip</button></li>
         <li><button id="exportBtn">Export Current Trip</button></li>
+        <li><button id="itineraryMenuBtn">Trip Itinerary</button></li>
         <li><button id="settingsBtn">Settings</button></li>
         <li class="menu-divider"></li>
         <li><button id="aboutBtn">About</button></li>
@@ -163,6 +169,43 @@
       </div>
     </aside>
     <div id="menuOverlay" class="hidden"></div>
+
+    <section id="itineraryPanel" class="panel hidden" aria-labelledby="itineraryHeading">
+      <div class="panel-header">
+        <div class="panel-title"><h2 id="itineraryHeading">Trip itinerary</h2><span id="itineraryPrivacy" class="itinerary-badge">Private planning</span></div>
+        <button id="closeItineraryBtn" class="icon-btn" aria-label="Close itinerary">✕</button>
+      </div>
+      <div class="panel-content itinerary-content">
+        <div id="itinerarySummary" aria-live="polite"></div>
+        <details id="itinerarySettings" class="itinerary-settings">
+          <summary>Dates and fuel settings</summary>
+          <form id="itinerarySettingsForm" class="itinerary-settings-grid">
+            <label>First date<input id="itineraryStartDate" type="date" required></label>
+            <label>Consumption (L / 100 km)<input id="itineraryConsumption" type="number" min="0.1" step="0.1" required></label>
+            <label>Diesel ($ / litre)<input id="itineraryFuelPrice" type="number" min="0.01" step="0.01" required></label>
+            <button type="submit" class="primary-btn">Preview changes</button>
+          </form>
+          <p class="itinerary-muted">Saved with this trip. Local driving and quoted camp prices need an allowance.</p>
+        </details>
+        <div id="itineraryStatus" role="status" class="itinerary-status"></div>
+        <div id="itineraryStops" class="itinerary-stops"></div>
+        <div class="itinerary-tools">
+          <button id="itineraryImportBtn" class="cancel-btn">Import trip</button>
+          <button id="itineraryBackupBtn" class="cancel-btn">Download private backup</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="itineraryPreviewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="itineraryPreviewTitle">
+      <div class="modal-content itinerary-preview">
+        <h2 id="itineraryPreviewTitle">Review itinerary change</h2>
+        <div id="itineraryPreviewBody" class="itinerary-preview-body"></div>
+        <div class="modal-actions">
+          <button id="itineraryPreviewCancel" type="button" class="cancel-btn">Cancel</button>
+          <button id="itineraryPreviewApply" type="button" class="primary-btn">Save changes</button>
+        </div>
+      </div>
+    </div>
 
     <!-- PWA Install Banner -->
     <div id="installBanner" class="install-banner hidden">
@@ -661,30 +704,32 @@
   
   <!-- Scripts -->
 <script src="/insights.js" data-app="ride" data-component="planner" data-endpoint="https://events.rmesolutions.com.au/collect" defer></script>
-<script src="js/insights-hook.js?v=2026-09-13T02"></script>
+<script src="js/insights-hook.js?v=2026-10-10T02"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-  <script src="js/route-editor.js?v=2026-09-13T02"></script>
-  <script src="js/route-selector.js?v=2026-09-13T02"></script>
-  <script src="js/api.js?v=2026-09-13T02"></script>
-  <script src="js/storage.js?v=2026-09-13T02"></script>
-  <script src="js/utils.js?v=2026-09-13T02"></script>
-  <script src="js/trip.js?v=2026-09-13T02"></script>
-    <script src="js/map.js?v=2026-09-13T02"></script>
-  <script src="js/map-ride.js?v=2026-09-13T02"></script>
-  <script src="js/route-alternatives.js?v=2026-09-13T02"></script>
-  <script src="js/ui.js?v=2026-09-13T02"></script>
-  <script src="js/ui-renderers.js?v=2026-09-13T02"></script>
-  <script src="js/ui-place-search.js?v=2026-09-13T02"></script>
-  <script src="js/share.js?v=2026-09-13T02"></script>
-  <script src="js/export-import.js?v=2026-09-13T02"></script>
-  <script src="js/app-core.js?v=2026-09-13T02"></script>
-  <script src="js/auth-controller.js?v=2026-09-13T02"></script>
-  <script src="js/trip-controller.js?v=2026-09-13T02"></script>
-  <script src="js/trip-details.js?v=2026-09-13T02"></script>
-  <script src="js/waypoint-controller.js?v=2026-09-13T02"></script>
-  <script src="js/journal-controller.js?v=2026-09-13T02"></script>
-  <script src="js/ride-controller.js?v=2026-09-13T02"></script>
+  <script src="js/route-editor.js?v=2026-10-10T02"></script>
+  <script src="js/route-selector.js?v=2026-10-10T02"></script>
+  <script src="js/api.js?v=2026-10-10T02"></script>
+  <script src="js/storage.js?v=2026-10-10T02"></script>
+  <script src="js/utils.js?v=2026-10-10T02"></script>
+  <script src="js/trip.js?v=2026-10-10T02"></script>
+  <script src="js/itinerary.js?v=2026-10-10T02"></script>
+    <script src="js/map.js?v=2026-10-10T02"></script>
+  <script src="js/map-ride.js?v=2026-10-10T02"></script>
+  <script src="js/route-alternatives.js?v=2026-10-10T02"></script>
+  <script src="js/ui.js?v=2026-10-10T02"></script>
+  <script src="js/ui-renderers.js?v=2026-10-10T02"></script>
+  <script src="js/ui-place-search.js?v=2026-10-10T02"></script>
+  <script src="js/share.js?v=2026-10-10T02"></script>
+  <script src="js/export-import.js?v=2026-10-10T02"></script>
+  <script src="js/app-core.js?v=2026-10-10T02"></script>
+  <script src="js/auth-controller.js?v=2026-10-10T02"></script>
+  <script src="js/trip-controller.js?v=2026-10-10T02"></script>
+  <script src="js/trip-details.js?v=2026-10-10T02"></script>
+  <script src="js/waypoint-controller.js?v=2026-10-10T02"></script>
+  <script src="js/journal-controller.js?v=2026-10-10T02"></script>
+  <script src="js/ride-controller.js?v=2026-10-10T02"></script>
+  <script src="js/itinerary-ui.js?v=2026-10-10T02"></script>
   
   <!-- Service Worker Registration, Live Update & PWA Install -->
   <script>
@@ -742,6 +787,6 @@
       installBanner?.classList.add('hidden');
     }
   </script>
-  <script src="js/share-patch.js?v=2026-09-13T02"></script>
+  <script src="js/share-patch.js?v=2026-10-10T02"></script>
 </body>
 </html>

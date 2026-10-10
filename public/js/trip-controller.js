@@ -130,7 +130,7 @@ Object.assign(App, {
     UI.renderWaypoints(trip.waypoints || []);
     UI.renderJournal(trip.journal || []);
     MapManager.clear();
-    MapManager.updateWaypoints(trip.waypoints || []);
+    MapManager.updateWaypoints(trip.waypoints || [], { route: trip.route });
     this.restoreAlternativesToMap(trip);
     if (trip.waypoints?.length > 0) MapManager.fitToWaypoints(trip.waypoints);
 
@@ -156,14 +156,15 @@ Object.assign(App, {
           window.addEventListener('ride:routeSelected', (ev) => {
             const { routeIndex } = ev.detail || {};
             if (routeIndex == null || !this.currentTrip) return;
-            const allOptions = [this.currentTrip.route, ...(this.currentTrip.alternativeRoutes || this.currentTrip.alternative_routes || [])];
+            const alternatives = this.currentTrip.alternativeRoutes || this.currentTrip.alternative_routes || [];
+            const allOptions = alternatives.length ? alternatives : [this.currentTrip.route];
             const selected = allOptions[routeIndex];
             if (!selected?.coordinates?.length) return;
             this.currentTrip.activeRouteIndex = routeIndex;
             this.currentTrip.active_route_index = routeIndex;
+            this.currentTrip.route = { ...selected, time: selected.duration ?? selected.time };
             if (typeof MapManager.clear === 'function') MapManager.clear();
-            if (typeof MapManager.updateWaypoints === 'function') MapManager.updateWaypoints(this.currentTrip.waypoints || []);
-            if (typeof MapManager.drawRoute === 'function') MapManager.drawRoute(selected.coordinates);
+            if (typeof MapManager.updateWaypoints === 'function') MapManager.updateWaypoints(this.currentTrip.waypoints || [], { route: selected });
             this.currentTrip.distance = selected.distance;
             this.currentTrip.duration = selected.duration;
             UI.updateTripStats(this.currentTrip);
@@ -172,6 +173,7 @@ Object.assign(App, {
         }
       }
     }
+    window.dispatchEvent(new CustomEvent('ride:tripLoaded', { detail: { tripId: trip.id } }));
   },
 
   /* --- Alternative routes persistence --- */
@@ -190,6 +192,9 @@ Object.assign(App, {
       activeIdx = alternatives.activeId ?? activeIdx;
     }
     if (!Array.isArray(routesArray)) return;
+    const choices = Trip.uniqueRouteChoices(routesArray, activeIdx);
+    routesArray = choices.routes;
+    activeIdx = choices.activeIndex;
     const backendRoutes = routesArray.map((r, i) => ({
       name: r.name || r.label || `Route ${i + 1}`,
       summary: r.summary || '',
@@ -203,16 +208,19 @@ Object.assign(App, {
     }));
     this.currentTrip.activeRouteIndex = activeIdx;
     this.currentTrip.active_route_index = activeIdx;
-    this.currentTrip.alternativeRoutes = routesArray.slice(1);
+    this.currentTrip.alternativeRoutes = routesArray;
+    this.currentTrip.alternative_routes = routesArray;
     this.currentTrip.alternatives = routesArray;
     this.currentTrip._allAlternatives = routesArray;
     if (this.useCloud && this.currentUser) {
+      const savedTrip = this.currentTrip;
       clearTimeout(this._altSaveTimer);
       this._pendingAltSave = true;
       this._altSaveTimer = setTimeout(async () => {
         try {
-          await API.trips.saveAlternativeRoutes(this.currentTrip.id, backendRoutes);
-          await API.trips.update(this.currentTrip.id, { active_route_index: activeIdx });
+          await API.trips.saveAlternativeRoutes(savedTrip.id, backendRoutes);
+          const updated = await API.trips.update(savedTrip.id, { active_route_index: activeIdx, route: routesArray[activeIdx] });
+          savedTrip.version = Number(updated.version);
         } catch (err) {
           console.error('Failed to save alternative routes:', err);
         }
@@ -224,7 +232,7 @@ Object.assign(App, {
   restoreAlternativesToMap(trip) {
     const altRoutes = trip?.alternativeRoutes || trip?.alternative_routes || trip?.alternatives?.roots;
     if (!Array.isArray(altRoutes) || !altRoutes.length) return;
-    const allRoutes = [trip?.route, ...altRoutes].filter(Boolean);
+    const allRoutes = altRoutes;
     if (!allRoutes.length) return;
     if (typeof MapManager.setAlternativeRoots === 'function') {
       MapManager.setAlternativeRoots(allRoutes.map((r, i) => ({ id: i, ...r })));

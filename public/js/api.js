@@ -295,10 +295,11 @@ const API = {
       return data;
     },
 
-    async saveAlternativeRoutes(id, routes) {
+    async saveAlternativeRoutes(id, routes, options = {}) {
       const data = await API.request(`/trips/${id}/alternatives`, {
         method: 'PUT',
         body: { routes },
+        ...(options || {}),
       });
       return data;
     },

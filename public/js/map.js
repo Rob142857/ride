@@ -424,7 +424,7 @@ const MapManager = {
   /**
    * Update all waypoint markers from trip
    */
-  updateWaypoints(waypoints) {
+  updateWaypoints(waypoints, options = {}) {
     // Clear existing markers
     Object.keys(this.waypointMarkers).forEach(id => {
       this.map.removeLayer(this.waypointMarkers[id]);
@@ -435,7 +435,10 @@ const MapManager = {
     waypoints.forEach(wp => this.addWaypointMarker(wp));
 
     // Update routing if we have 2+ waypoints
-    if (waypoints.length >= 2) {
+    if (options.route?.coordinates?.length) {
+      this.clearRoute();
+      this.drawRoute(options.route.coordinates);
+    } else if (waypoints.length >= 2) {
       this.updateRoute(waypoints);
     } else {
       this.clearRoute();
@@ -443,7 +446,7 @@ const MapManager = {
 
     // Keep midpoint handles in sync while editing.
     if (this.routeEditor && waypoints.length >= 2) {
-      this.routeEditor.update(waypoints, null);
+      this.routeEditor.update(waypoints, options.route?.coordinates || null);
     }
   },
 
@@ -526,7 +529,14 @@ const MapManager = {
   /**
    * Clear route from map
    */
+  drawRoute(coordinates) {
+    if (this.savedRouteLayer) this.map.removeLayer(this.savedRouteLayer);
+    const latlngs = coordinates.map(point => [point.lat ?? point[1], point.lng ?? point[0]]);
+    this.savedRouteLayer = L.polyline(latlngs, { color: '#e94560', opacity: 0.85, weight: 4 }).addTo(this.map);
+  },
+
   clearRoute() {
+    if (this.savedRouteLayer) { this.map.removeLayer(this.savedRouteLayer); this.savedRouteLayer = null; }
     if (this.routingControl) {
       this.map.removeControl(this.routingControl);
       this.routingControl = null;

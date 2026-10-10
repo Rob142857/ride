@@ -8,6 +8,7 @@
 
 import { BASE_URL } from './utils.js';
 import { safeJsonParse } from './handler-utils.js';
+import { expandCoordinates, uniqueRouteChoices } from './route-codec.js';
 
 const DEFAULT_SHARE_SETTINGS = Object.freeze({
   includeWaypoints: true,
@@ -35,7 +36,7 @@ export function getShareSettings(settings) {
 export function parseRouteData(routeData) {
   if (!routeData) return null;
   return {
-    coordinates: safeJsonParse(routeData.coordinates || '[]', []),
+    coordinates: expandCoordinates(safeJsonParse(routeData.coordinates || '[]', [])),
     steps: safeJsonParse(routeData.steps || '[]', []),
     distance: routeData.distance,
     duration: routeData.duration,
@@ -59,7 +60,7 @@ export function parseAlternativeRoute(ar) {
     duration_seconds: ar.duration_seconds ?? ar.duration ?? 0,
     is_selected: !!ar.is_selected,
     is_visible: ar.is_visible !== undefined ? !!ar.is_visible : true,
-    coordinates: safeJsonParse(ar.coordinates || '[]', []),
+    coordinates: expandCoordinates(safeJsonParse(ar.coordinates || '[]', [])),
     steps: safeJsonParse(ar.steps || '[]', []),
   };
 }
@@ -72,6 +73,9 @@ export function withAttachmentUrl(attachment) {
 }
 
 export function serializeOwnedJourney({ trip, waypoints, journal, attachments, routeData, alternativeRoutes }) {
+  const parsedAlternatives = (alternativeRoutes || []).map(parseAlternativeRoute);
+  const selected = parsedAlternatives.findIndex(route => route.is_selected);
+  const choices = uniqueRouteChoices(parsedAlternatives, selected >= 0 ? selected : (trip.active_route_index ?? 0));
   return {
     ...trip,
     settings: getJourneySettings(trip.settings),
@@ -85,8 +89,9 @@ export function serializeOwnedJourney({ trip, waypoints, journal, attachments, r
     })),
     attachments: (attachments || []).map(withAttachmentUrl),
     route: parseRouteData(routeData),
-    alternativeRoutes: (alternativeRoutes || []).map(parseAlternativeRoute),
-    activeRouteIndex: trip.active_route_index ?? 0,
+    alternativeRoutes: choices.routes,
+    active_route_index: choices.activeIndex,
+    activeRouteIndex: choices.activeIndex,
   };
 }
 
@@ -150,7 +155,7 @@ export function serializePublicJourney({ trip, waypoints, journal, attachments, 
       duration: ar.duration_seconds ?? ar.duration ?? 0,
       saved: ar.is_selected ? true : (ar.saved ?? false),
       visible: ar.is_visible !== undefined ? !!ar.is_visible : true,
-      coordinates: safeJsonParse(ar.coordinates || '[]', []),
+      coordinates: expandCoordinates(safeJsonParse(ar.coordinates || '[]', [])),
     })) : [],
     activeRouteIndex: trip.active_route_index ?? 0,
   };

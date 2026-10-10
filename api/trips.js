@@ -4,8 +4,10 @@
  */
 
 import { jsonResponse, errorResponse, generateId, generateShortCodeForId, parseBody, BASE_URL } from './utils.js';
-import { safeJsonParse, orderWaypointsWithTripSettings, parseIfMatchVersion, conflictResponse } from './handler-utils.js';
+import { safeJsonParse, orderWaypointsWithTripSettings, parseIfMatchVersion, conflictResponse, preconditionRequiredResponse } from './handler-utils.js';
 import { serializeOwnedJourney } from './journey.js';
+import { expandCoordinates, encodeRoute, assertRowSize } from './route-codec.js';
+import { validateTripSettings } from './itinerary-validation.js';
 
 export const TripsHandler = {
   /**
@@ -43,8 +45,13 @@ export const TripsHandler = {
       return errorResponse('Trip name is required');
     }
 
+    if (typeof body.name !== 'string' || (body.description !== undefined && typeof body.description !== 'string')) return errorResponse('Trip name and description must be text');
+    const settingsError = validateTripSettings(body.settings || {});
+    if (settingsError) return errorResponse(settingsError);
+
     const id = generateId();
     const settings = JSON.stringify(body.settings || {});
+    try { assertRowSize([settings, body.name, body.description], 'Trip settings and description'); } catch (error) { return errorResponse(error.message, 413); }
 
     let shortCode = generateShortCodeForId(id);
     let attempts = 0;
@@ -125,14 +132,29 @@ export const TripsHandler = {
   async updateTrip(context) {
     const { env, user, params, request } = context;
     const body = await parseBody(request);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return errorResponse('A JSON object is required');
+    if (body.settings !== undefined) {
+      const settingsError = validateTripSettings(body.settings);
+      if (settingsError) return errorResponse(settingsError);
+    }
+    if (body.name !== undefined && (typeof body.name !== 'string' || !body.name)) return errorResponse('Trip name must be non-empty text');
+    for (const key of ['description', 'public_title', 'public_description', 'public_contact', 'cover_image_url']) if (body[key] !== undefined && body[key] !== null && typeof body[key] !== 'string') return errorResponse(`${key} must be text`);
+    let encodedRoute = null;
+    if (body.route) {
+      try { encodedRoute = encodeRoute(body.route); } catch (error) { return errorResponse(error.message, error.message.includes('row size') ? 413 : 400); }
+    }
 
     const existing = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT id, version, updated_at, settings FROM trips WHERE id = ? AND user_id = ?'
+      'SELECT * FROM trips WHERE id = ? AND user_id = ?'
     ).bind(params.id, user.id).first();
 
     if (!existing) return errorResponse('Trip not found', 404);
 
+    const projected = { ...existing, ...body, settings: body.settings === undefined ? existing.settings : JSON.stringify({ ...safeJsonParse(existing.settings || '{}', {}), ...body.settings }) };
+    try { assertRowSize(['settings', 'name', 'description', 'public_title', 'public_description', 'public_contact', 'cover_image_url'].map(key => projected[key]), 'Trip settings and description'); } catch (error) { return errorResponse(error.message, 413); }
+
     const ifMatch = parseIfMatchVersion(request);
+    if (body.settings?.itinerary && ifMatch === null) return preconditionRequiredResponse();
     if (ifMatch !== null && Number(existing.version ?? 0) !== ifMatch) {
       return conflictResponse(existing);
     }
@@ -164,10 +186,17 @@ export const TripsHandler = {
     if (body.active_route_index !== undefined) { updates.push('active_route_index = ?'); values.push(Math.floor(Number(body.active_route_index))); }
 
     if (updates.length > 0) {
-      values.push(params.id);
-      await env.RIDE_TRIP_PLANNER_DB.prepare(
-        `UPDATE trips SET ${updates.join(', ')} WHERE id = ?`
+      // The version predicate belongs in the write itself, so another tab cannot
+      // change the itinerary between the preflight read and this UPDATE.
+      values.push(params.id, user.id);
+      if (ifMatch !== null) values.push(ifMatch);
+      const result = await env.RIDE_TRIP_PLANNER_DB.prepare(
+        `UPDATE trips SET ${updates.join(', ')} WHERE id = ? AND user_id = ?${ifMatch !== null ? ' AND version = ?' : ''}`
       ).bind(...values).run();
+      if (ifMatch !== null && result.meta?.changes === 0) {
+        const current = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT id, version, updated_at FROM trips WHERE id = ? AND user_id = ?').bind(params.id, user.id).first();
+        return current ? conflictResponse(current) : errorResponse('Trip not found', 404);
+      }
     }
 
     // Update route data if provided (triggers auto-bump trip version)
@@ -177,10 +206,10 @@ export const TripsHandler = {
          VALUES (?, ?, ?, ?, ?, ?)`
       ).bind(
         generateId(), params.id,
-        JSON.stringify(body.route.coordinates || []),
-        JSON.stringify(body.route.steps || []),
-        body.route.distance || null,
-        body.route.duration || null
+        encodedRoute.coordinates,
+        encodedRoute.steps,
+        encodedRoute.distance,
+        encodedRoute.duration
       ).run();
     }
 
@@ -235,7 +264,7 @@ export const TripsHandler = {
         duration_seconds: r.duration_seconds,
         is_selected: !!r.is_selected,
         is_visible: !!r.is_visible,
-        coordinates: safeJsonParse(r.coordinates, []),
+        coordinates: expandCoordinates(safeJsonParse(r.coordinates, [])),
         steps: safeJsonParse(r.steps, []),
         created_at: r.created_at,
       })),
@@ -249,21 +278,27 @@ export const TripsHandler = {
   async saveAlternativeRoutes(context) {
     const { env, user, params, request } = context;
     const body = await parseBody(request);
+    if (!body || !Array.isArray(body.routes)) return errorResponse('Routes must be an array');
+    let encodedRoutes;
+    try { encodedRoutes = body.routes.map(encodeRoute); } catch (error) { return errorResponse(error.message, error.message.includes('row size') ? 413 : 400); }
 
     const trip = await env.RIDE_TRIP_PLANNER_DB.prepare(
-      'SELECT id FROM trips WHERE id = ? AND user_id = ?'
+      'SELECT id, version, updated_at FROM trips WHERE id = ? AND user_id = ?'
     ).bind(params.id, user.id).first();
     if (!trip) return errorResponse('Trip not found', 404);
 
+    const ifMatch = parseIfMatchVersion(request);
+    if (ifMatch !== null && Number(trip.version ?? 0) !== ifMatch) return conflictResponse(trip);
+
     const routes = Array.isArray(body.routes) ? body.routes : [];
 
-    await env.RIDE_TRIP_PLANNER_DB.prepare(
+    const statements = [env.RIDE_TRIP_PLANNER_DB.prepare(
       'DELETE FROM alternative_routes WHERE trip_id = ?'
-    ).bind(params.id).run();
+    ).bind(params.id)];
 
     for (let i = 0; i < routes.length; i++) {
       const r = routes[i];
-      await env.RIDE_TRIP_PLANNER_DB.prepare(
+      statements.push(env.RIDE_TRIP_PLANNER_DB.prepare(
         `INSERT INTO alternative_routes (id, trip_id, route_index, name, summary, color, distance_meters, duration_seconds, is_selected, is_visible, coordinates, steps)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
@@ -273,14 +308,17 @@ export const TripsHandler = {
         r.name || r.label || `Route ${i + 1}`,
         r.summary || '',
         r.color || null,
-        typeof r.distance_meters === 'number' ? r.distance_meters : (typeof r.distance === 'number' ? r.distance : null),
-        typeof r.duration_seconds === 'number' ? r.duration_seconds : (typeof r.duration === 'number' ? r.duration : null),
+        encodedRoutes[i].distance,
+        encodedRoutes[i].duration,
         r.is_selected ? 1 : 0,
         r.is_visible !== false ? 1 : 0,
-        JSON.stringify(r.coordinates || []),
-        JSON.stringify(r.steps || [])
-      ).run();
+        encodedRoutes[i].coordinates,
+        encodedRoutes[i].steps
+      ));
     }
+
+    // Replace alternatives together; a failed row must not erase the saved set.
+    await env.RIDE_TRIP_PLANNER_DB.batch(statements);
 
     return jsonResponse({ success: true, count: routes.length });
   },

@@ -1,0 +1,53 @@
+/* Dated trip planning shares the map's compact panel navigation. */
+#itineraryPanel { background: rgba(18, 20, 34, .97); }
+.itinerary-content { padding: 18px; }
+.itinerary-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.itinerary-stat { border: 1px solid var(--border-elegant); padding: 12px; border-radius: 6px; background: rgba(255, 255, 255, .025); }
+.itinerary-stat strong { display: block; font-size: 1.2rem; color: var(--text-primary); }
+.itinerary-stat span, .itinerary-muted { color: #b2b7c8; font-size: .8rem; }
+.itinerary-dates { font-size: .95rem; color: #e3e5ee; }
+.itinerary-badge { font-size: .65rem; border: 1px solid #4f6979; border-radius: 4px; padding: 3px 6px; white-space: nowrap; color: #b9dded; }
+.itinerary-settings { margin: 14px 0; border: 1px solid var(--border-elegant); border-radius: 6px; padding: 12px; }
+.itinerary-settings summary { cursor: pointer; font-size: .9rem; font-weight: 600; }
+.itinerary-settings-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; align-items: end; }
+.itinerary-settings-grid label { font-size: .78rem; color: #c5c9d7; display: grid; gap: 5px; }
+.itinerary-settings-grid input { width: 100%; color-scheme: dark; min-height: 38px; padding: 8px; background: var(--bg-primary); border: 1px solid var(--border-elegant); border-radius: 4px; color: white; }
+.itinerary-settings-grid button { grid-column: 1 / -1; justify-self: start; }
+.itinerary-status:empty { display: none; }
+.itinerary-status { margin: 10px 0 14px; }
+.itinerary-warning, .itinerary-conflict { padding: 9px 12px; border-left: 3px solid var(--warning); background: rgba(251, 191, 36, .07); margin: 7px 0; font-size: .82rem; color: #ead8a0; }
+.itinerary-conflict { border-color: var(--danger); background: rgba(239, 68, 68, .07); color: #f3b5b5; }
+.itinerary-stops { display: grid; gap: 12px; }
+.itinerary-stop { padding: 14px; border: 1px solid var(--border-elegant); border-radius: 7px; background: rgba(255, 255, 255, .025); }
+.itinerary-stop-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.itinerary-stop h3 { font-size: 1rem; margin: 0 0 3px; }
+.itinerary-stop .itinerary-extend { padding: 7px 10px; font-size: .75rem; white-space: nowrap; min-height: 36px; flex-shrink: 0; }
+.itinerary-stop-metrics { display: flex; flex-wrap: wrap; gap: 5px 16px; font-size: .8rem; color: #c8ccda; margin-top: 9px; }
+.itinerary-stop details { margin-top: 11px; font-size: .82rem; }
+.itinerary-stop details summary { color: #bacce4; cursor: pointer; }
+.itinerary-stop-detail { margin-top: 8px; line-height: 1.6; overflow-wrap: anywhere; }
+.itinerary-stop-detail p { margin: 4px 0; }
+.itinerary-stop-detail a, .itinerary-preview a { color: #a1d9f7; }
+.itinerary-stop-note { color: #b2b7c8; font-size: .8rem; margin-top: 6px; }
+.itinerary-map-link { font-size: .75rem; padding: 6px 9px; margin-top: 12px; }
+.itinerary-tools { display: flex; gap: 10px; flex-wrap: wrap; padding: 18px 0 8px; }
+.itinerary-tools button { font-size: .8rem; padding: 9px 12px; }
+.itinerary-preview { max-width: 620px; }
+.itinerary-preview-body { margin-top: 14px; max-height: 55vh; overflow-y: auto; font-size: .9rem; }
+.itinerary-change-list { margin: 12px 0; list-style: none; }
+.itinerary-change-list li { padding: 8px 0; border-bottom: 1px solid var(--border-subtle); font-size: .82rem; }
+.itinerary-empty { padding: 24px 0; color: #c5c9d7; }
+.itinerary-empty button { margin-top: 14px; }
+.itinerary-capacity { font-size: .82rem; color: #c5c9d7; margin: 10px 0; line-height: 1.65; }
+.itinerary-stop button:disabled, #itineraryPreviewApply:disabled { opacity: .45; cursor: not-allowed; }
+@media (min-width: 768px) {
+  #itineraryPanel { left: var(--sidebar-width); max-width: 1000px; }
+  body.sidebar-collapsed #itineraryPanel { left: 0; }
+}
+@media (max-width: 550px) {
+  .itinerary-content { padding: 12px; }
+  .itinerary-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .itinerary-settings-grid { grid-template-columns: 1fr; }
+  .itinerary-badge { display: none; }
+  #bottomNav .nav-btn span { font-size: .65rem; }
+}

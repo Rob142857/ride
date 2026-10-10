@@ -160,6 +160,8 @@ const App = {
 
     const urlParams = new URLSearchParams(window.location.search);
     const sharedTripId = urlParams.get('trip');
+    const ownerTripId = urlParams.get('openTrip');
+    const selectedStopId = urlParams.get('stop');
     const isEmbed = urlParams.get('embed') === 'true';
     const authError = urlParams.get('error');
     const authErrorDesc = urlParams.get('error_description');
@@ -197,6 +199,18 @@ const App = {
 
     if (sharedTripId) {
       await this.loadSharedTrip(sharedTripId, isEmbed);
+    } else if (ownerTripId && this.useCloud && this.currentUser) {
+      try {
+        const trip = await API.trips.get(ownerTripId);
+        this.loadTripData(trip);
+        UI.switchView('map');
+        const selected = trip.waypoints?.find(waypoint => waypoint.id === selectedStopId);
+        if (selected) MapManager.map?.setView([selected.lat, selected.lng], 12);
+      } catch (error) {
+        UI.showToast(error.status === 403 || error.status === 404 ? 'This trip is not available in your account.' : 'Could not open this trip. Try again online.', 'error');
+        await this.loadInitialTrip();
+        UI.switchView('trips');
+      }
     } else {
       await this.loadInitialTrip();
       UI.switchView('trips');
@@ -389,23 +403,26 @@ const App = {
   /* --- Import & share --- */
 
   async importTrip() {
+    if (this._importInProgress) return;
+    if (!this.useCloud || !this.currentUser) {
+      UI.showToast('Login to import trips to your account.', 'error');
+      return;
+    }
+    this._importInProgress = true;
     try {
       const trip = await Share.importFromFile();
-      if (this.useCloud && this.currentUser) {
-        const cloudTrip = await API.trips.create({ name: trip.name });
-        for (const wp of trip.waypoints) await API.waypoints.add(cloudTrip.id, wp);
-        for (const entry of trip.journal) await API.journal.add(cloudTrip.id, entry);
-        const fullTrip = await API.trips.get(cloudTrip.id);
-        this.loadTripData(fullTrip);
-      } else {
-        UI.showToast('Login to import trips to your account.', 'error');
-        return;
-      }
-      this.refreshTripsList();
+      const fullTrip = await Share.importToCloud(trip);
+      this.loadTripData(fullTrip);
+      this.bumpTripToTop(fullTrip.id);
+      await this.refreshTripsList();
       UI.showToast(`Imported: ${trip.name}`, 'success');
     } catch (err) {
-      console.error('Import error:', err);
-      UI.showToast('Failed to import trip', 'error');
+      if (err.partialTripId) {
+        try { this.loadTripData(await API.trips.get(err.partialTripId)); await this.refreshTripsList(); } catch {}
+      }
+      UI.showToast(err.message || 'Failed to import trip', 'error');
+    } finally {
+      this._importInProgress = false;
     }
   },
 

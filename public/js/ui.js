@@ -597,7 +597,7 @@ const UI = {
     if (typeof distance === 'number') parts.push(this.formatDistance(distance));
     if (typeof time === 'number') parts.push(this.formatDuration(time));
 
-    const fuelCost = this.calcFuelCost(distance);
+    const fuelCost = this.calcFuelCost(distance, trip);
     if (fuelCost !== null) parts.push(`$${fuelCost}`);
 
     el.innerHTML = parts.length
@@ -605,8 +605,16 @@ const UI = {
       : '';
   },
 
-  calcFuelCost(distanceMeters) {
+  calcFuelCost(distanceMeters, trip = App.currentTrip) {
     if (typeof distanceMeters !== 'number' || distanceMeters <= 0) return null;
+    const fuel = trip?.settings?.itinerary?.fuel;
+    if (fuel) {
+      const rate = Number(fuel.litresPer100Km);
+      const price = Number(fuel.pricePerLitre);
+      if (Number.isFinite(rate) && Number.isFinite(price) && rate > 0 && price > 0) {
+        return (distanceMeters / 1000 / 100 * rate * price).toFixed(2);
+      }
+    }
     const settings = Storage.load(Storage.KEYS.SETTINGS, {});
     if (!settings.fuelEnabled) return null;
     const rate = parseFloat(settings.fuelRate);
