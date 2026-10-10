@@ -115,10 +115,15 @@ only. Keep the [OSM tile usage policy](https://operations.osmfoundation.org/poli
 requirements when changing fallback behavior; do not bulk-download public OSM
 or CARTO raster endpoints. Attribution follows the active basemap.
 
+The shared viewer exposes its content before Leaflet measures the map and caps
+initial zoom at 19. Source selection waits for valid geometry, then recovers on
+map movement. Same-origin page navigation uses fresh network HTML with an exact
+cached-page fallback offline, followed by the application shell. The release
+uses shell cache `ride-v10` while retaining the viewed owned-tile cache.
+
 ## Verification record
 
-The initial hosting checks are recorded below. Complete the application rows
-after verifying the live release.
+The hosting and application checks below were completed for the live release.
 
 | Evidence | Result |
 | --- | --- |
@@ -130,9 +135,14 @@ after verifying the live release.
 | Self-contained glyphs and sprites; public HTTPS PNG and CORS | Public PNG, glyph, sprite and data endpoints returned HTTP `200` with `Access-Control-Allow-Origin: *`; runtime asset URLs all use `maps.incitat.io`. Independent query-busted visual QA fetched 91 PNGs, all 256×256, CORS `*`, and CDN `MISS` |
 | Tunnel candidate validation, rule matching and permission-preserving backup location | Candidate ingress valid; tile rule 3 precedes unchanged OSRM rule 4; backup `/etc/cloudflared/config.yml.ride-tiles-20261010T104704Z.bak` |
 | OSRM nearest/route checks before and after tunnel activation | Local routing, post-activation public route and public nearest checks returned `Ok` |
-| Final VM resource and isolation check | 1 CPU/2 GiB cap; current memory `219.8 MiB`, peak `468.9 MiB` (`491,724,800` bytes); `OOMKilled=false`, restart count `0`; durable disk `86 GiB` free. Loopback port `8082` and read-only `/data` confirmed; tunnel active and public OSRM `Ok` |
-| Private planner and existing public trip; route/waypoints, attribution, source transition, outage fallback, offline viewed tiles | Awaiting final verification |
-| Application build, Git revision, Cloudflare Worker version and live screenshots | Awaiting final verification |
+| Final VM resource and isolation check | 1 CPU/2 GiB cap; post-release memory `165.5 MiB`, peak `468.9 MiB` (`491,724,800` bytes); `OOMKilled=false`, restart count `0`; durable disk `86 GiB` free. Loopback port `8082` and read-only `/data` confirmed; tunnel active and post-release public OSRM `Ok` |
+| Private planner and existing public trip; route/waypoints, attribution, source transition, outage fallback, offline viewed tiles | Both use owned revision `2026-10-10-1` and correct attribution. Private route retains 101 marker/editor handles and 2 paths; public retains 51 waypoints, 52 paths, 6,724.8 km and 88h 14m. Live blocked-tile test switched to OSM and recovered to owned; offline Sydney revisit loaded every previously viewed tile. Global/wide-context selection and high-zoom rendering passed. External providers are absent from the application tile cache |
+| Application build, Git revision, Cloudflare Worker version and live screenshots | Live build `2026-10-10T05`, application commit `4b1e283`; Worker version `83a59bbd-f7ae-4d5a-9552-62fcef83e4e0` at 100%. Existing D1/KV/R2 variables and seven secret names preserved, no migration. Live screenshots saved outside the repository in `output/ride-tiles-live/`: `private-planner-sydney.jpg`, `private-offline-sydney.jpg`, `public-shared-overview.jpg` |
+
+The preceding application version was `a65b5901-e92f-48e8-a840-67d88d87b772`
+(build T03). The intermediate T04 release was superseded after the live shared
+viewer check caught the hidden-container initialization issue; use T05 for this
+tile release. Screenshots and QA receipts stay outside source control.
 
 TileServer GL 5.6.0 allocates both tile and static renderer pools even with
 static map endpoints disabled. The configured pool minimum of 1 and maximum of
