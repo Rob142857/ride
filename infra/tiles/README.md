@@ -24,7 +24,7 @@ the `ride-tiles` Compose service, container `ride-australia-tiles`, with:
 The public raster URL is:
 
 ```text
-https://maps.incitat.io/styles/ride-australia/{z}/{x}/{y}.png?v=2026-10-10-1
+https://maps.incitat.io/styles/ride-australia/{z}/{x}/{y}.png?v=2026-10-10-2
 ```
 
 The tile rule in the existing locally managed Cloudflare Tunnel uses host
@@ -103,13 +103,13 @@ enter the service worker's `ride-owned-tiles-v1` cache, capped at 800 tiles.
 Redirects, error pages and non-PNG responses are excluded. This is a bounded
 cache of viewed tiles, not a download of all Australian raster tiles.
 
-The owned URL carries the stable tile revision `v=2026-10-10-1`. Bump the
+The owned URL carries the stable tile revision `v=2026-10-10-2`. Bump the
 revision in `public/js/basemaps.js` whenever data, style, glyphs or rendering
 settings change, and use that revision during public verification. Both CDN
 requests and service-worker cache keys retain the query, so draft or previous
 rendering output is not reused for the new release.
 
-The next prepared revision, `2026-10-10-2`, registers a second raster style,
+The live revision, `2026-10-10-2`, registers a second raster style,
 `ride-australia-labels`, for labels above the route. It contains the exact same
 48 symbol layers in the same order, with identical sources, glyphs, sprites,
 filters, collision settings and text halos. All non-symbol layers and root
@@ -121,6 +121,11 @@ same tile coordinates and revision query as the base endpoint:
 ```text
 https://maps.incitat.io/styles/ride-australia-labels/{z}/{x}/{y}.png?v=2026-10-10-2
 ```
+
+The labels overlay sits above the thinner route and below interactive markers;
+it does not intercept pointer events. Successful base and labels PNGs share
+the bounded owned-tile cache, with distinct endpoint URLs. A labels failure
+leaves the base map and its labels available.
 
 This revision also makes the existing motorway/trunk/primary face and casing
 layers visible at their first available style zoom (5/6/8), instead of fading
@@ -138,14 +143,31 @@ The shared viewer exposes its content before Leaflet measures the map and caps
 initial zoom at 19. Source selection waits for valid geometry, then recovers on
 map movement. Same-origin page navigation uses fresh network HTML with an exact
 cached-page fallback offline, followed by the application shell. The release
-uses shell cache `ride-v10` while retaining the viewed owned-tile cache.
+uses shell cache `ride-v11` while retaining the viewed owned-tile cache.
 
 ## Verification record
 
-The hosting and application checks below were completed for the live release.
-These records describe revision `2026-10-10-1` / build T05. The labels revision
-requires fresh transparent-PNG, route-label, offline and resource verification
-before its activation can be recorded as complete.
+The current release is build `2026-10-10T06`, tile revision `2026-10-10-2`.
+The completed checks are recorded below. Archive, glyph, sprite and image pins
+remain those of the T05 baseline.
+
+| T06 evidence | Result |
+| --- | --- |
+| Application commit and live Cloudflare Worker | Application commit `7664137`; Worker `da33de30-d60e-4b87-8bda-8b534c690a75`. Preceding T05 Worker `83a59bbd-f7ae-4d5a-9552-62fcef83e4e0` retained for application rollback |
+| Runtime candidate and rollback files | Verified candidate `/srv/ride-tiles-labels-candidate-20261010T06`; T05 config, styles, receipt and preparation script retained in `/srv/ride-tiles-backups/20261010T06` |
+| Base and labels endpoint rendering | Candidate base/labels PNGs at zooms 6, 14, 16 and 19 returned `200`, CORS `*`. Labels contained more than 61,000 zero-alpha pixels out of 65,536 plus visible glyphs; base pixels were all opaque |
+| Candidate resource check and activation | Candidate memory `298.9 MiB` under the `2 GiB` cap, `OOMKilled=false`, restart count `0`. Activation recreated only the tile container; public OSRM returned `Ok` afterward |
+| Live private and shared Sydney route labels at zoom 16 | Private loaded all 60 base and 60 labels tiles; aligned Bunn Street text remained readable above the route. Shared loaded 8 base and 8 labels tiles with the same thin blue route; clicking a real marker opened its popup |
+| Live viewed-tile offline revisit and cache ownership | Offline private Sydney zoom 16 redrew and loaded all 60 base and 60 labels tiles. Shell cache was only `ride-v11`; owned cache held 630 tiles total, including 128 revision-2 base and 68 revision-2 labels tiles |
+| Private Parkes zoom 14 and shared Sydney zoom 19 | Private Parkes loaded 60 base and 60 labels tiles; Henry Parkes Way remained readable directly above the red route. Shared Sydney zoom 19 loaded 10 base and 10 labels tiles; road surfaces and Darling Drive text remained visible across the blue route |
+| Live loaded host resources after both styles | Production memory `248.4 MiB`, peak `619,712,512` bytes (591 MiB), under the unchanged `2 GiB` cap; `OOMKilled=false`, restart count `0`. Tunnel active, public OSRM `Ok`. Temporary candidate container removed; candidate files and receipts retained |
+| Regression checks and screenshots | Node map/cache tests and five Python style tests pass. LRM detail-refresh checks preserve selected alternatives and invisible interaction paths. ESLint reports zero errors and one preexisting unused-variable warning. Before/after, offline, rural and shared close-up screenshots are retained outside the repository in `output/ride-roads-qa/` |
+
+### Historical T05 baseline
+
+The following records describe revision `2026-10-10-1` / build T05. They retain
+the original archive validation, renderer QA and deployment history; their
+single-style application and resource results are historical.
 
 | Evidence | Result |
 | --- | --- |
@@ -161,10 +183,11 @@ before its activation can be recorded as complete.
 | Private planner and existing public trip; route/waypoints, attribution, source transition, outage fallback, offline viewed tiles | Both use owned revision `2026-10-10-1` and correct attribution. Private route retains 101 marker/editor handles and 2 paths; public retains 51 waypoints, 52 paths, 6,724.8 km and 88h 14m. Live blocked-tile test switched to OSM and recovered to owned; offline Sydney revisit loaded every previously viewed tile. Global/wide-context selection and high-zoom rendering passed. External providers are absent from the application tile cache |
 | Application build, Git revision, Cloudflare Worker version and live screenshots | Live build `2026-10-10T05`, application commit `4b1e283`; Worker version `83a59bbd-f7ae-4d5a-9552-62fcef83e4e0` at 100%. Existing D1/KV/R2 variables and seven secret names preserved, no migration. Live screenshots saved outside the repository in `output/ride-tiles-live/`: `private-planner-sydney.jpg`, `private-offline-sydney.jpg`, `public-shared-overview.jpg` |
 
-The preceding application version was `a65b5901-e92f-48e8-a840-67d88d87b772`
+The application version preceding the T05 baseline was `a65b5901-e92f-48e8-a840-67d88d87b772`
 (build T03). The intermediate T04 release was superseded after the live shared
-viewer check caught the hidden-container initialization issue; use T05 for this
-tile release. Screenshots and QA receipts stay outside source control.
+viewer check caught the hidden-container initialization issue. T06 supersedes
+T05 with route labels above the route. Screenshots and QA receipts stay outside
+source control.
 
 TileServer GL 5.6.0 allocates both tile and static renderer pools even with
 static map endpoints disabled. The configured pool minimum of 1 and maximum of
