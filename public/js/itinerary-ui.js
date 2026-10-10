@@ -53,6 +53,13 @@
       el('itineraryImportBtn')?.addEventListener('click', () => {
         if (!App.isSharedView) App.importTrip();
       });
+      el('itineraryUpdateBtn')?.addEventListener('click', () => {
+        if (!App.isSharedView && App.ensureEditable('update this itinerary')) el('itineraryUpdateFile')?.click();
+      });
+      el('itineraryUpdateFile')?.addEventListener('change', async event => {
+        await this.previewFileUpdate(event.target.files?.[0]);
+        event.target.value = '';
+      });
       el('itineraryBackupBtn')?.addEventListener('click', () => {
         if (!App.isSharedView) Share.exportOwnerJSON?.();
       });
@@ -74,6 +81,7 @@
       el('itineraryStatus')?.replaceChildren();
       if (el('itinerarySettings')) el('itinerarySettings').hidden = true;
       if (el('itineraryBackupBtn')) el('itineraryBackupBtn').disabled = true;
+      if (el('itineraryUpdateBtn')) el('itineraryUpdateBtn').disabled = true;
       if (el('itineraryImportBtn')) el('itineraryImportBtn').disabled = !!App.isSharedView;
     },
 
@@ -91,6 +99,7 @@
       }
       el('itineraryImportBtn').disabled = false;
       el('itineraryBackupBtn').disabled = false;
+      el('itineraryUpdateBtn').disabled = false;
       el('itineraryPrivacy').textContent = trip.isPublic ? 'Owner planning' : 'Private planning';
       const source = trip.settings?.itinerary;
       if (!source?.stops?.length) {
@@ -101,6 +110,7 @@
           el('itinerarySummary').append(start);
         }
         el('itineraryBackupBtn').disabled = false;
+        el('itineraryUpdateBtn').disabled = false;
         return;
       }
       const result = model().recalculate(source);
@@ -278,10 +288,71 @@
       this.openPreview(model().recalculate(plan), 'Review dates and fuel');
     },
 
-    openPreview(result, title) {
+    /** Read only planning data; never pass this file to the trip importer. */
+    prepareFileUpdate(data, trip) {
+      if (!data || typeof data !== 'object' || Array.isArray(data) || !trip?.id || data.rideTripId !== trip.id) throw new Error('Choose the mapped planning file for this Ride trip. Its Ride trip ID must match the open trip.');
+      const source = data.itinerary || data.settings?.itinerary;
+      if (!source || !Array.isArray(source.stops)) throw new Error('This file needs a dated itinerary.');
+      const result = model().recalculate(source);
+      if (result.conflicts.length) throw new Error(result.conflicts[0].message);
+      const waypointIds = new Set((trip.waypoints || []).map(waypoint => waypoint.id));
+      const journalIds = new Set((trip.journal || []).map(entry => entry.id));
+      if (data.waypoints !== undefined && !Array.isArray(data.waypoints)) throw new Error('File waypoints must be an array.');
+      if ((data.waypoints || []).some(waypoint => !waypointIds.has(waypoint.id))) throw new Error('The file contains a waypoint outside the open Ride trip.');
+      if (data.journal !== undefined && !Array.isArray(data.journal)) throw new Error('File journal entries must be an array.');
+      if ((data.journal || []).some(entry => !journalIds.has(entry.id))) throw new Error('The file contains a journal note outside the open Ride trip.');
+      for (const stop of result.itinerary.stops) {
+        if (!stop.waypointId || !waypointIds.has(stop.waypointId)) throw new Error(`${stop.name}: waypoint does not belong to the open Ride trip.`);
+        for (const key of ['fromWaypointId', 'toWaypointId']) if (stop.leg?.[key] && !waypointIds.has(stop.leg[key])) throw new Error(`${stop.name}: leg waypoint does not belong to the open Ride trip.`);
+        if (stop.privateJournalRefs !== undefined && (!Array.isArray(stop.privateJournalRefs) || stop.privateJournalRefs.some(id => !journalIds.has(id)))) throw new Error(`${stop.name}: private note does not belong to the open Ride trip.`);
+      }
+      for (const existing of trip.settings?.itinerary?.stops || []) {
+        if (!existing.fixedDate) continue;
+        const incoming = result.itinerary.stops.find(stop => stop.id === existing.id);
+        if (!incoming || incoming.fixedDate !== existing.fixedDate || incoming.anchorMode !== (existing.anchorMode || 'arrival')) throw new Error(`${existing.name}: keep the existing fixed-date commitment in this planning file.`);
+      }
+      return result;
+    },
+
+    async previewFileUpdate(file) {
+      if (!file || !App.currentUser || !App.useCloud || App.isSharedView || !App.ensureEditable('update this itinerary')) return;
+      const trip = App.currentTrip;
+      const version = Number(trip?.version);
+      try {
+        if (file.size > 15 * 1024 * 1024) throw new Error('Choose a planning file smaller than 15 MB.');
+        const data = JSON.parse(await file.text());
+        if (App.currentTrip?.id !== trip?.id || Number(App.currentTrip?.version) !== version) throw new Error('Trip changed while reading the file. Open the planning file again.');
+        this.openPreview(this.prepareFileUpdate(data, trip), 'Update this itinerary', { planningFileUpdate: true });
+      } catch (error) {
+        this.closePreview();
+        UI.showToast(error.message || 'Could not open this planning file.', 'error');
+      }
+    },
+
+    draftChanges(previousPlan, plan) {
+      const changes = [];
+      const oldStops = new Map((previousPlan?.stops || []).map(stop => [stop.id, stop]));
+      const fields = ['title', 'name', 'type', 'dueDate', 'date', 'scheduledDate', 'targetDate', 'localTime', 'time', 'timeZone', 'url', 'sourceUrl', 'draft', 'draftText', 'text', 'content', 'description', 'notes', 'status'];
+      const signature = item => JSON.stringify(fields.map(key => item?.[key] ?? null));
+      for (const stop of plan.stops) for (const key of ['outreach', 'work']) {
+        const oldItems = oldStops.get(stop.id)?.[key] || [];
+        const newItems = stop[key] || [];
+        const oldById = new Map(oldItems.map((item, index) => [item.id || `item-${index}`, item]));
+        newItems.forEach((item, index) => {
+          const itemId = item.id || `item-${index}`;
+          const old = oldById.get(itemId);
+          oldById.delete(itemId);
+          if (signature(old) !== signature(item)) changes.push({ town: stop.name, previous: old, item });
+        });
+        oldById.forEach(previous => changes.push({ town: stop.name, previous, item: null }));
+      }
+      return changes;
+    },
+
+    openPreview(result, title, options = {}) {
       const trip = App.currentTrip;
       const validation = model().validate(result.itinerary);
-      this.pending = { result, tripId: trip.id, baseVersion: Number(trip.version), validation };
+      this.pending = { result, tripId: trip.id, baseVersion: Number(trip.version), validation, ...options };
       el('itineraryPreviewTitle').textContent = title;
       const body = el('itineraryPreviewBody');
       body.replaceChildren(textNode('p', `${dateLabel(result.itinerary.startDate)} → ${dateLabel(result.itinerary.stops.at(-1)?.departureDate)} · ${result.totals?.nights || 0} nights · ${money(result.totals?.fuelCost)} fuel`));
@@ -293,7 +364,28 @@
           list.append(textNode('li', `${stop.name}: ${old ? `${dateRange(old)} → ` : ''}${dateRange(stop)}`));
         }
       });
+      oldById.forEach(old => {
+        if (!result.itinerary.stops.some(stop => stop.id === old.id)) list.append(textNode('li', `${old.name}: ${dateRange(old)} → removed from planning`));
+      });
       if (list.childElementCount) body.append(list);
+      if (options.planningFileUpdate) {
+        const draftChanges = this.draftChanges(trip.settings?.itinerary, result.itinerary);
+        body.append(textNode('p', `${draftChanges.length} posting / work draft changes. This replaces planning data only. Your route, waypoints, journals, other settings and trip visibility stay as they are.`, 'itinerary-muted'));
+        const schedule = item => item ? [item.dueDate || item.date || item.scheduledDate || 'No date', item.localTime || item.time, item.timeZone].filter(Boolean).join(' · ') : 'Absent';
+        const draftText = item => item?.draft || item?.content || item?.text || item?.draftText || '';
+        draftChanges.forEach(change => {
+          const details = textNode('details', '');
+          const activity = change.item || change.previous;
+          details.append(textNode('summary', `${change.town} · ${activity.title || activity.name || activity.type || 'Draft'}: ${schedule(change.previous)} → ${schedule(change.item)}`));
+          const before = draftText(change.previous);
+          const after = draftText(change.item);
+          if (before !== after) details.append(textNode('p', `Existing draft: ${before || '(none)'}`), textNode('p', `New draft: ${after || '(removed)'}`));
+          const beforeGroup = change.previous?.url || change.previous?.sourceUrl;
+          const afterGroup = change.item?.url || change.item?.sourceUrl;
+          if (beforeGroup !== afterGroup) details.append(textNode('p', `Group / source: ${beforeGroup || '(none)'} → ${afterGroup || '(removed)'}`));
+          body.append(details);
+        });
+      }
       const messages = textNode('div', '');
       this.renderMessages(messages, result);
       body.append(messages);
