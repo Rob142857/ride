@@ -27,3 +27,11 @@ node scripts/ride-session-preview.js
 ```
 
 Then open <http://127.0.0.1:3014/>. The preview uses synthetic trip, GPS, routing, and API responses on loopback only.
+
+## Verified release
+
+Build `2026-10-12T01` (13 October in Australia/Sydney), service worker `ride-v12`, was deployed from commit `aae9e8b`. Live Worker version: `41ccdbe8-fb79-4130-9075-a0623f1315cb`. The build endpoint, versioned recording/navigation assets, and signed-in trip loading were verified after deployment. No schema migration was required.
+
+All seven Ride checks above plus the map tile, itinerary, and itinerary update checks passed. Targeted lint has no errors; frontend syntax checks and the Worker bundle check passed. A synthetic phone preview verified Update and Undo. GPS tests used synthetic positions; no test ride logs were inserted into production. A 50,000-point route replay averaged 0.64 ms per fix after a 513 ms initial join.
+
+The last verified rollback target is build `2026-10-10T06`, Worker version `da33de30-d60e-4b87-8bda-8b534c690a75`, with its working road-label layering. Keep local recording queues when rolling back; the older client does not recover the new queues, and they remain available when this release is restored. Retain server secrets and bindings during deployment or rollback. Browser GPS in the background is not guaranteed, and missing travel is not reconstructed as recorded fixes.
