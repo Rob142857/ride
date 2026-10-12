@@ -131,6 +131,7 @@ function routeVisibilityTest() {
   let options;
   const context = vm.createContext({
     RideBasemaps: { routeStyle: (z, o) => basemap.routeStyle(z, o) },
+    App: { currentTrip: { id: 'fixture-trip' }, currentUser: { id: 'fixture-user' } },
     window: {}, L: {
       latLng: (lat, lng) => ({ lat, lng }),
       Routing: {

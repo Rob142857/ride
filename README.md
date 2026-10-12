@@ -95,6 +95,8 @@ Static preview without Worker API:
 npm start    # serves public/ on :3000
 ```
 
+Ride mode records a private GPS track separately from the saved trip plan. See [Ride recording](docs/ride-recording.md) for recording, sync, pause, recovery, and test details.
+
 ## Deploy
 
 ```bash

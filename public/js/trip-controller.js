@@ -113,6 +113,9 @@ Object.assign(App, {
   },
 
   loadTripData(trip) {
+    // A background refresh must not tear down a live GPS session.
+    if (this.isRiding && this._rideTripId === trip.id) return;
+    this.endRideForTripSwitch?.();
     window.RideInsights?.track('trip_open');
     if (trip.waypoints) trip.waypoints = Trip.normalizeWaypointOrder(trip.waypoints);
     trip = this.normalizeTrip(trip);
@@ -136,11 +139,7 @@ Object.assign(App, {
 
     // Load and draw historical ride tracks for this trip (async, non-blocking)
     if (this.useCloud && this.currentUser && trip.id) {
-      API.rideLogs.list(trip.id).then(logs => {
-        if (this.currentTrip?.id === trip.id && logs.length) {
-          MapManager.drawRideLogs(logs);
-        }
-      }).catch(() => {});
+      this.flushPendingRides?.().finally(() => this.refreshRideTracks?.());
     }
     // Render route-alternatives panel (SPA) if module available
     if (typeof window.RouteAlternatives !== 'undefined') {
@@ -156,6 +155,10 @@ Object.assign(App, {
           window.addEventListener('ride:routeSelected', (ev) => {
             const { routeIndex } = ev.detail || {};
             if (routeIndex == null || !this.currentTrip) return;
+            if (this.isRiding) {
+              UI.showToast('Exit Ride to change the planned route.', 'info');
+              return;
+            }
             const alternatives = this.currentTrip.alternativeRoutes || this.currentTrip.alternative_routes || [];
             const allOptions = alternatives.length ? alternatives : [this.currentTrip.route];
             const selected = allOptions[routeIndex];

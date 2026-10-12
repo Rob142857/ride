@@ -62,9 +62,10 @@ assert.equal(context.window.Trip.uniqueRouteChoices([fileRoute(), fileRoute()], 
 function fileRoute() { return { coordinates: [{ lat: -33, lng: 148 }, { lat: -34, lng: 149 }], distance: 100000, duration: 3600 }; }
 let drawnPoints;
 const mapContext = vm.createContext({ window: {}, L: { polyline(points) { drawnPoints = points; return { addTo() { return {}; } }; } } });
+vm.runInContext(fs.readFileSync('public/js/basemaps.js', 'utf8'), mapContext);
 vm.runInContext(fs.readFileSync('public/js/map.js', 'utf8'), mapContext);
 const mapManager = mapContext.window.MapManager;
-mapManager.map = { removeLayer() {}, removeControl() {} };
+mapManager.map = { removeLayer() {}, removeControl() {}, getZoom: () => 13 };
 mapManager.addWaypointMarker = () => {};
 mapManager._hideRouteSelector = () => {};
 mapManager.updateRoute = () => { throw new Error('Loading saved geometry must not reroute or write the trip'); };

@@ -44,11 +44,11 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
   
-   <link rel="stylesheet" href="css/global.css?v=2026-10-10T06">
-    <link rel="stylesheet" href="css/app.css?v=2026-10-10T06">
-    <link rel="stylesheet" href="css/ride-mode.css?v=2026-10-10T06">
-    <link rel="stylesheet" href="css/route-components.css?v=2026-10-10T06">
-    <link rel="stylesheet" href="css/itinerary.css?v=2026-10-10T06">
+   <link rel="stylesheet" href="css/global.css?v=2026-10-12T01">
+    <link rel="stylesheet" href="css/app.css?v=2026-10-12T01">
+    <link rel="stylesheet" href="css/ride-mode.css?v=2026-10-12T01">
+    <link rel="stylesheet" href="css/route-components.css?v=2026-10-12T01">
+    <link rel="stylesheet" href="css/itinerary.css?v=2026-10-12T01">
   </head>
 <body class="geistsans_47a3c9f1-module__2HyNMa__variable geistmono_cfbefb1d-module__tUxLBG__variable antialiased">
   <div id="app">
@@ -239,8 +239,22 @@
             <span id="rideEta">—</span>
           </div>
         </div>
-        <span class="ride-rec-dot" title="Recording track" aria-hidden="true"></span>
+        <div class="ride-hud-status" role="status" aria-live="polite" aria-atomic="true">
+          <span id="rideStatusDot" class="ride-rec-dot" aria-hidden="true"></span>
+          <span id="rideRecordingStatus">Waiting for GPS</span>
+        </div>
         <button id="rideBannerExitBtn" class="ride-banner-exit" aria-label="Exit ride">✕</button>
+        <div id="rideDeviationBanner" class="ride-feedback ride-deviation hidden" role="group" aria-label="Route choice">
+          <p id="rideDeviationText">Taking a different road. Update guidance to the next stop?</p>
+          <div class="ride-feedback-actions">
+            <button id="rideDeviationUpdate" class="ride-feedback-btn primary" type="button">Update</button>
+            <button id="rideDeviationKeep" class="ride-feedback-btn" type="button">Keep plan</button>
+          </div>
+        </div>
+        <div id="rideUndoBanner" class="ride-feedback ride-undo hidden" role="group" aria-label="Undo recent change">
+          <span id="rideUndoText"></span>
+          <button id="rideUndoButton" class="ride-feedback-btn" type="button">Undo</button>
+        </div>
       </div>
       <!-- Hidden elements for backward compat -->
       <span id="rideTripName" class="hidden"></span>
@@ -706,33 +720,37 @@
   
   <!-- Scripts -->
 <script src="/insights.js" data-app="ride" data-component="planner" data-endpoint="https://events.rmesolutions.com.au/collect" defer></script>
-<script src="js/insights-hook.js?v=2026-10-10T06"></script>
+<script src="js/insights-hook.js?v=2026-10-12T01"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-  <script src="js/route-editor.js?v=2026-10-10T06"></script>
-  <script src="js/route-selector.js?v=2026-10-10T06"></script>
-  <script src="js/api.js?v=2026-10-10T06"></script>
-  <script src="js/storage.js?v=2026-10-10T06"></script>
-  <script src="js/utils.js?v=2026-10-10T06"></script>
-  <script src="js/trip.js?v=2026-10-10T06"></script>
-  <script src="js/itinerary.js?v=2026-10-10T06"></script>
-  <script src="js/basemaps.js?v=2026-10-10T06"></script>
-    <script src="js/map.js?v=2026-10-10T06"></script>
-  <script src="js/map-ride.js?v=2026-10-10T06"></script>
-  <script src="js/route-alternatives.js?v=2026-10-10T06"></script>
-  <script src="js/ui.js?v=2026-10-10T06"></script>
-  <script src="js/ui-renderers.js?v=2026-10-10T06"></script>
-  <script src="js/ui-place-search.js?v=2026-10-10T06"></script>
-  <script src="js/share.js?v=2026-10-10T06"></script>
-  <script src="js/export-import.js?v=2026-10-10T06"></script>
-  <script src="js/app-core.js?v=2026-10-10T06"></script>
-  <script src="js/auth-controller.js?v=2026-10-10T06"></script>
-  <script src="js/trip-controller.js?v=2026-10-10T06"></script>
-  <script src="js/trip-details.js?v=2026-10-10T06"></script>
-  <script src="js/waypoint-controller.js?v=2026-10-10T06"></script>
-  <script src="js/journal-controller.js?v=2026-10-10T06"></script>
-  <script src="js/ride-controller.js?v=2026-10-10T06"></script>
-  <script src="js/itinerary-ui.js?v=2026-10-10T06"></script>
+  <script src="js/route-editor.js?v=2026-10-12T01"></script>
+  <script src="js/route-selector.js?v=2026-10-12T01"></script>
+  <script src="js/api.js?v=2026-10-12T01"></script>
+  <script src="js/storage.js?v=2026-10-12T01"></script>
+  <script src="js/utils.js?v=2026-10-12T01"></script>
+  <script src="js/trip.js?v=2026-10-12T01"></script>
+  <script src="js/itinerary.js?v=2026-10-12T01"></script>
+  <script src="js/basemaps.js?v=2026-10-12T01"></script>
+    <script src="js/map.js?v=2026-10-12T01"></script>
+  <script src="js/map-ride.js?v=2026-10-12T01"></script>
+  <script src="js/route-alternatives.js?v=2026-10-12T01"></script>
+  <script src="js/ui.js?v=2026-10-12T01"></script>
+  <script src="js/ui-renderers.js?v=2026-10-12T01"></script>
+  <script src="js/ui-place-search.js?v=2026-10-12T01"></script>
+  <script src="js/share.js?v=2026-10-12T01"></script>
+  <script src="js/export-import.js?v=2026-10-12T01"></script>
+  <script src="js/app-core.js?v=2026-10-12T01"></script>
+  <script src="js/auth-controller.js?v=2026-10-12T01"></script>
+  <script src="js/trip-controller.js?v=2026-10-12T01"></script>
+  <script src="js/trip-details.js?v=2026-10-12T01"></script>
+  <script src="js/waypoint-controller.js?v=2026-10-12T01"></script>
+  <script src="js/journal-controller.js?v=2026-10-12T01"></script>
+  <script src="js/ride-recorder.js?v=2026-10-12T01"></script>
+  <script src="js/ride-navigation.js?v=2026-10-12T01"></script>
+  <script src="js/ride-ride-ui.js?v=2026-10-12T01"></script>
+  <script src="js/ride-controller.js?v=2026-10-12T01"></script>
+  <script src="js/ride-session.js?v=2026-10-12T01"></script>
+  <script src="js/itinerary-ui.js?v=2026-10-12T01"></script>
   
   <!-- Service Worker Registration, Live Update & PWA Install -->
   <script>
@@ -790,6 +808,6 @@
       installBanner?.classList.add('hidden');
     }
   </script>
-  <script src="js/share-patch.js?v=2026-10-10T06"></script>
+  <script src="js/share-patch.js?v=2026-10-12T01"></script>
 </body>
 </html>

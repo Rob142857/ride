@@ -35,7 +35,7 @@ Object.assign(MapManager, {
   /**
    * Start riding mode: show live position and follow
    */
-  startRide(onPosition) {
+  startRide(onPosition, onStatus) {
     if (!('geolocation' in navigator)) {
       UI.showToast('GPS not available on this device', 'error');
       return;
@@ -56,6 +56,7 @@ Object.assign(MapManager, {
     }
 
     this.ridePositionCb = onPosition;
+    this.rideStatusCb = onStatus;
     this._gpsErrors = 0;
 
     // Follow mode: true = auto-pan to rider; false = user has panned away
@@ -74,12 +75,10 @@ Object.assign(MapManager, {
     this.map.on('movestart', this._onRideMoveStart);
 
     // Live trail polyline — drawn as the rider moves
-    this._rideTrailCoords = [];
+    this._rideTrailSegments = [[]];
     if (this._rideTrailLayer) this.map.removeLayer(this._rideTrailLayer);
     this._rideTrailLayer = L.polyline([], {
-      color: '#34d399',
-      weight: 4,
-      opacity: 0.75,
+      ...RideBasemaps.routeStyle(this.map.getZoom(), { color: '#34d399' }),
       className: 'ride-trail-live'
     }).addTo(this.map);
 
@@ -95,8 +94,29 @@ Object.assign(MapManager, {
     // Watch position
     this.rideWatchId = navigator.geolocation.watchPosition(
       (pos) => {
+        if (document.visibilityState === 'hidden') return;
         this._gpsErrors = 0; // reset on success
+        const timestamp = Number(pos.timestamp) || Date.now();
         const { latitude, longitude, heading, accuracy } = pos.coords;
+        const fix = { lat: latitude, lng: longitude, heading, accuracy, timestamp };
+        if (window.RideNavigation && !window.RideNavigation.isUsableNavigationFix(fix)) {
+          this.rideStatusCb?.({ type: 'weak-fix' });
+          return;
+        }
+        const last = this._lastAcceptedRideFix;
+        const elapsed = last ? (timestamp - last.timestamp) / 1000 : null;
+        if (elapsed != null && (elapsed <= 0 || RideUtils.haversine(last, fix) / elapsed > 70)) {
+          this.rideStatusCb?.({ type: 'weak-fix' });
+          return;
+        }
+        this._lastAcceptedRideFix = fix;
+        if ((this._lastRideFixAt && timestamp - this._lastRideFixAt > 30000) || this._rideGapPending) {
+          this.rideStatusCb?.({ type: 'gap', reason: 'gps-gap', durationMs: this._lastRideFixAt ? timestamp - this._lastRideFixAt : null });
+          this._rideTrailSegments.push([]);
+        }
+        this._rideGapPending = false;
+        this._lastRideFixAt = timestamp;
+        this.rideStatusCb?.({ type: 'fix' });
         const latlng = [latitude, longitude];
         this.rideHeading = heading;
         this.rideMarker.setLatLng(latlng);
@@ -124,9 +144,9 @@ Object.assign(MapManager, {
         }
 
         // Grow live trail
-        this._rideTrailCoords.push(latlng);
+        this._rideTrailSegments[this._rideTrailSegments.length - 1].push(latlng);
         if (this._rideTrailLayer) {
-          this._rideTrailLayer.setLatLngs(this._rideTrailCoords);
+          this._rideTrailLayer.setLatLngs(this._rideTrailSegments);
         }
 
         if (!this.rideAccuracyCircle) {
@@ -137,12 +157,14 @@ Object.assign(MapManager, {
         }
 
         if (typeof this.ridePositionCb === 'function') {
-          this.ridePositionCb({ lat: latitude, lng: longitude, heading, accuracy });
+          this.ridePositionCb(fix);
         }
       },
       (err) => {
         console.error('Ride GPS error', err);
         this._gpsErrors = (this._gpsErrors || 0) + 1;
+        this._rideGapPending = true;
+        this.rideStatusCb?.({ type: 'error', reason: 'gps-error', error: err });
         // Retry up to 5 times with backoff before giving up
         if (this._gpsErrors <= 5) {
           const delay = Math.min(2000 * this._gpsErrors, 10000);
@@ -164,12 +186,17 @@ Object.assign(MapManager, {
    * Stop riding mode tracking
    */
   stopRide() {
+    this._cancelPendingRideRoute();
     if (this.rideWatchId && navigator.geolocation) {
       navigator.geolocation.clearWatch(this.rideWatchId);
     }
     clearTimeout(this._gpsRetryTimer);
     this.rideWatchId = null;
     this.ridePositionCb = null;
+    this.rideStatusCb = null;
+    this._lastRideFixAt = null;
+    this._lastAcceptedRideFix = null;
+    this._rideGapPending = false;
     this._gpsErrors = 0;
     this._rideFollowing = false;
     this._rideInitialZoomDone = false;
@@ -193,7 +220,7 @@ Object.assign(MapManager, {
     if (this._rideTrailLayer) {
       this.map.removeLayer(this._rideTrailLayer);
       this._rideTrailLayer = null;
-      this._rideTrailCoords = [];
+      this._rideTrailSegments = [];
     }
     this._updateFollowBtn();
   },
@@ -224,58 +251,79 @@ Object.assign(MapManager, {
   /** Delegate to shared utility */
   haversineLatLng(a, b) { return RideUtils.haversine(a, b); },
 
-  rerouteFromPosition(startPos, remainingWaypoints = []) {
-    const startLatLng = L.latLng(startPos.lat, startPos.lng);
-    const ordered = [startLatLng, ...remainingWaypoints.map(wp => L.latLng(wp.lat, wp.lng))];
+  /** Request a route for the active navigation leg without touching the plan. */
+  rerouteRideLeg(startPos, targetWaypoint, context, onSuccess, onError) {
+    if (!targetWaypoint || !this.map) return;
+    this._cancelPendingRideRoute();
+    const map = this.map;
+    const pending = { context, handle: null, cancelled: false };
+    this._pendingRideRouteRequest = pending;
+    // A direct OSRM request adds no map control or provisional route. Removing
+    // a Routing.control inside routesfound would interrupt LRM's subsequent
+    // setAlternatives/rendering on a control whose map has become null.
+    try {
+      const router = L.Routing.osrmv1({ serviceUrl: this.OSRM_SERVICE_URL });
+      const formatter = new L.Routing.Formatter();
+      const waypoints = [startPos, targetWaypoint].map(point =>
+        L.Routing.waypoint(L.latLng(point.lat, point.lng)));
+      pending.handle = router.route(waypoints, (error, routes) => {
+        if (pending.cancelled || this._pendingRideRouteRequest !== pending || this.map !== map) return;
+        const route = routes?.[0];
+        if (error || !route?.coordinates?.length) {
+          this._pendingRideRouteRequest = null;
+          onError?.(error || new Error('Routing service returned no route'), context);
+          return;
+        }
+        let routeData;
+        try {
+          routeData = {
+            distance: route.summary.totalDistance,
+            duration: route.summary.totalTime,
+            coordinates: route.coordinates.map(point => ({ lat: point.lat, lng: point.lng })),
+            steps: (route.instructions || []).map((instruction, index) => ({
+              text: instruction.text || formatter.formatInstruction(instruction, index),
+              distance: instruction.distance,
+              time: instruction.time,
+              index: instruction.index
+            }))
+          };
+        } catch (conversionError) {
+          this._pendingRideRouteRequest = null;
+          onError?.(conversionError, context);
+          return;
+        }
+        this._pendingRideRouteRequest = null;
+        onSuccess?.(routeData, context);
+      }, this, { alternatives: false, steps: true });
+    } catch (error) {
+      if (this._pendingRideRouteRequest !== pending || pending.cancelled) return;
+      this._pendingRideRouteRequest = null;
+      onError?.(error, context);
+    }
+  },
 
-    // Clear existing route/control and rebuild
-    this.clearRoute();
+  _cancelPendingRideRoute() {
+    const pending = this._pendingRideRouteRequest;
+    this._pendingRideRouteRequest = null;
+    if (!pending) return;
+    pending.cancelled = true;
+    try { pending.handle?.abort(); } catch { /* stale callbacks are also ignored */ }
+  },
 
-    if (ordered.length < 2) return;
-
-    this.routingControl = L.Routing.control({
-      waypoints: ordered,
-      serviceUrl: this.OSRM_SERVICE_URL,
-      routeWhileDragging: false,
-      showAlternatives: false,
-      addWaypoints: false,
-      fitSelectedRoutes: false,
-      lineOptions: {
-        styles: [
-          { color: '#e94560', opacity: 0.8, weight: 6 },
-          { color: '#ff6b6b', opacity: 0.5, weight: 10 }
-        ]
-      },
-      createMarker: () => null,
-      show: false
+  setRideNavigationRoute(routeData) {
+    if (!this.map || !routeData?.coordinates?.length) return;
+    if (this._rideNavigationLayer) this.map.removeLayer(this._rideNavigationLayer);
+    const coords = routeData.coordinates.map(point => [point.lat ?? point[1], point.lng ?? point[0]]);
+    this._rideNavigationLayer = L.polyline(coords, {
+      ...RideBasemaps.routeStyle(this.map.getZoom(), { color: '#3b82f6', selected: true }),
+      className: 'ride-navigation-route'
     }).addTo(this.map);
+  },
 
-    this.routingControl.on('routesfound', (e) => {
-      const route = e.routes[0];
-      if (route) {
-        const steps = (route.instructions || []).map((instr) => ({
-          text: instr.text,
-          distance: instr.distance,
-          time: instr.time,
-          index: instr.index
-        }));
-
-        App.saveRouteData({
-          distance: route.summary.totalDistance,
-          duration: route.summary.totalTime,
-          coordinates: route.coordinates,
-          steps
-        });
-
-        UI.showToast('Rerouted', 'info');
-      }
-    });
-
-    this.routingControl.on('routingerror', (e) => {
-      console.error('Reroute failed:', e.error);
-      App.rideRerouting = false;
-      UI.showToast('Reroute failed — following original route', 'error');
-    });
+  clearRideNavigationRoute() {
+    this._cancelPendingRideRoute();
+    if (this._rideNavigationLayer && this.map) this.map.removeLayer(this._rideNavigationLayer);
+    this._rideNavigationLayer = null;
   },
 
   /**

@@ -141,28 +141,19 @@ Object.assign(App, {
   },
 
   enterRideMode() {
+    if (this.isRiding) return;
     if (!this.currentTrip) { UI.showToast('No trip loaded', 'error'); return; }
+    if (!this.currentUser || !this.useCloud) {
+      UI.showToast('Sign in to record a ride', 'error');
+      UI.showAuthGate('Sign in to record a ride');
+      return;
+    }
     const activeRoute = this.getActiveRoute();
     if (!activeRoute?.coordinates?.length) {
       UI.showToast('Add a route first to start riding', 'error'); return;
     }
     if (!('geolocation' in navigator)) {
       UI.showToast('Your device does not support GPS', 'error'); return;
-    }
-    // Navigate the ACTIVE route (the alternative the rider selected), not just
-    // the primary. We temporarily point currentTrip.route at the active route
-    // so the existing HUD / metrics / reroute code all operate on the same
-    // geometry the rider sees drawn on the map. The real primary is restored on
-    // exit so we never persist the swapped value.
-    if (activeRoute !== this.currentTrip.route) {
-      this._primaryRouteBackup = this.currentTrip.route;
-      this.currentTrip.route = {
-        ...activeRoute,
-        coordinates: activeRoute.coordinates,
-        steps: Array.isArray(activeRoute.steps) ? activeRoute.steps : []
-      };
-    } else {
-      this._primaryRouteBackup = null;
     }
     this.isRiding = true;
     window.RideInsights?.track('ride_start');
@@ -171,12 +162,57 @@ Object.assign(App, {
     this.rideInitialRouted = false;
     this.offRouteCounter = 0;
     this.lastRerouteAt = 0;
-    this._rideNearIdx = 0;           // sliding window cursor
-    this._rideStartTime = Date.now();
+    this._rideNearIdx = 0;
+    this._rideSessionId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    this._rideTripId = this.currentTrip.id;
+    this._rideUserId = this.currentUser.id ?? this.currentUser.userId ?? null;
+    this._ridePlanRoute = {
+      ...activeRoute,
+      coordinates: activeRoute.coordinates,
+      steps: Array.isArray(activeRoute.steps) ? activeRoute.steps : []
+    };
+    this._ridePlanFingerprint = RideNavigation.routeFingerprint(this._ridePlanRoute);
+    this._rideProgress = null;
+    this._savedRideProgress = null;
+    this._rideLastFixTimestamp = null;
+    this._lastRidePosition = null;
+    this._rideRequestId = 0;
+    this._rideNavigationRoute = null;
+    this._rideDetourPromptedTargets = new Set();
+    this._rideDetourDecisions = new Map();
     this._rideArrived = false;
-    // GPS breadcrumb track — sampled during ride, saved as private log on exit
-    this._rideTrack = [];
-    this._rideTrackLastPt = null;
+    const capturedTripId = this._rideTripId;
+    const capturedUserId = this._rideUserId;
+    try {
+      this._rideRecorder = window.RideRecorder?.create({
+        userId: capturedUserId,
+        tripId: capturedTripId,
+        saveLog: payload => {
+          if (App.currentUser?.id !== capturedUserId) throw new Error('Sign in to sync this ride');
+          return API.rideLogs.save(capturedTripId, payload);
+        },
+        onStatus: status => this._onRideRecorderStatus(status)
+      }) || null;
+    } catch (error) {
+      this._rideRecorder = null;
+      console.error('RideRecorder could not start', error);
+      window.RideRideUI?.setRecordingStatus?.('Recording unavailable');
+    }
+    if (!this._rideRecorder) console.warn('RideRecorder is unavailable; this ride will not be recorded.');
+    this._onRideVisibilityChange = () => {
+      if (!this.isRiding || !this._rideRecorder) return;
+      if (document.visibilityState === 'hidden') {
+        MapManager._rideGapPending = true;
+        this._rideRecorder.pause('hidden');
+      } else this._rideRecorder.resume();
+    };
+    this._onRidePageHide = () => {
+      if (!this.isRiding || !this._rideRecorder) return;
+      MapManager._rideGapPending = true;
+      this._rideRecorder.pause('pagehide');
+    };
+    document.addEventListener('visibilitychange', this._onRideVisibilityChange);
+    window.addEventListener('pagehide', this._onRidePageHide);
     document.getElementById('rideOverlay')?.classList.remove('hidden');
     document.body.classList.add('ride-mode');
     const setText = (id, value) => {
@@ -185,12 +221,17 @@ Object.assign(App, {
     };
     setText('rideTripName', this.currentTrip.name || 'Ride');
     setText('rideStops', (this.currentTrip.waypoints?.length ?? 0).toString());
-    setText('rideDistanceRemaining', this.currentTrip.route?.distance ? RideUtils.formatDistance(this.currentTrip.route.distance) : '—');
-    setText('rideEta', this.currentTrip.route?.duration ? RideUtils.formatDuration(this.currentTrip.route.duration) : '—');
+    setText('rideDistanceRemaining', this._ridePlanRoute.distance ? RideUtils.formatDistance(this._ridePlanRoute.distance) : '—');
+    setText('rideEta', this._ridePlanRoute.duration ? RideUtils.formatDuration(this._ridePlanRoute.duration) : '—');
     setText('rideNextInstruction', 'Follow the route');
     setText('rideNextMeta', 'Waiting for GPS…');
-    this.precomputeRouteMetrics();
-    MapManager.startRide(pos => this.onRidePosition(pos));
+    this._savedRideProgress = this._readRideProgress(capturedTripId, this._ridePlanFingerprint, RideNavigation.routeMetrics(this._ridePlanRoute).total);
+    MapManager.clearRideNavigationRoute?.();
+    MapManager.startRide(pos => this.onRidePosition(pos), status => this._onRideGpsStatus(status));
+  },
+
+  endRideForTripSwitch() {
+    if (this.isRiding) this.exitRideMode();
   },
 
   exitRideMode() {
@@ -200,23 +241,35 @@ Object.assign(App, {
     this.rideRerouting = false;
     this.offRouteCounter = 0;
     this._rideArrived = false;
-    // Restore the real (primary) route if ride mode swapped in an alternative.
-    if (this._primaryRouteBackup) {
-      this.currentTrip.route = this._primaryRouteBackup;
-      this._primaryRouteBackup = null;
-    }
     document.getElementById('rideOverlay')?.classList.add('hidden');
     document.body.classList.remove('ride-mode');
     MapManager.stopRide();
-
-    // Save GPS track as a private journal entry + ride log (async, non-blocking)
-    const track = this._rideTrack || [];
-    const startTime = this._rideStartTime;
-    this._rideTrack = [];
-    this._rideTrackLastPt = null;
-    if (track.length >= 3) {
-      this._saveRideLog(track, startTime).catch(err => console.warn('Ride log save failed:', err));
-    }
+    document.removeEventListener('visibilitychange', this._onRideVisibilityChange);
+    window.removeEventListener('pagehide', this._onRidePageHide);
+    const recorder = this._rideRecorder;
+    const stoppedTripId = this._rideTripId;
+    const stoppedUserId = this._rideUserId;
+    this._rideRecorder = null;
+    Promise.resolve().then(() => recorder?.stop()).catch(error => {
+      console.warn('Ride recording stop could not finish:', error);
+    }).finally(() => {
+      if (this.currentTrip?.id === stoppedTripId && this.currentUser?.id === stoppedUserId && this.useCloud) {
+        this.refreshRideTracks?.();
+      }
+    });
+    this._rideNavigationRoute = null;
+    this._ridePlanRoute = null;
+    this._ridePlanFingerprint = null;
+    this._savedRideProgress = null;
+    this._rideDetourPromptedTargets = null;
+    this._rideDetourDecisions = null;
+    this._rideSessionId = null;
+    this._rideTripId = null;
+    this._rideUserId = null;
+    this._rideRequestId++;
+    MapManager.clearRideNavigationRoute?.();
+    window.RideRideUI?.clearDeviation?.();
+    window.RideRideUI?.clearUndo?.();
   },
 
   /**
@@ -248,257 +301,296 @@ Object.assign(App, {
   },
 
   precomputeRouteMetrics() {
-    if (!this.currentTrip?.route?.coordinates) return;
-    const coords = this.currentTrip.route.coordinates;
-    const cumulative = [0];
-    let total = 0;
-    for (let i = 1; i < coords.length; i++) {
-      total += this.haversine(coords[i - 1], coords[i]);
-      cumulative.push(total);
-    }
-    this.currentTrip.route._cumulative = cumulative;
-    this.currentTrip.route._total = total;
+    const route = this._rideNavigationRoute || this._ridePlanRoute || this.currentTrip?.route;
+    if (!route?.coordinates) return;
+    const metrics = RideNavigation.routeMetrics(route);
+    route._cumulative = metrics.cumulative;
+    route._total = metrics.total;
   },
 
   /** @deprecated Use RideUtils.haversine directly */
   haversine(a, b) { return RideUtils.haversine(a, b); },
 
-  markVisitedWaypoints(position) {
-    if (!this.currentTrip?.waypoints) return;
-    const threshold = 40;
-    if (!this.rideVisitedWaypoints) this.rideVisitedWaypoints = new Set();
-    this.currentTrip.waypoints.forEach(wp => {
-      if (this.rideVisitedWaypoints.has(wp.id)) return;
-      if (this.haversine(wp, position) <= threshold) {
-        this.rideVisitedWaypoints.add(wp.id);
-        UI.showToast(`📍 Arrived at ${wp.name || 'waypoint'}`, 'success');
-      }
-    });
+  _onRideRecorderStatus(status) {
+    const state = status?.state;
+    const reason = status?.reason;
+    const text = typeof status === 'string' ? status : (status?.message || (
+      reason === 'storage-error' || reason === 'unsaved-data' || state === 'storage-error' ? 'Storage unavailable · fixes not saved'
+        : reason === 'another-tab' ? 'Recording in another tab'
+          : reason === 'pending-limit' ? 'Sync needed · recording paused'
+            : state === 'recording' && status?.syncPending ? 'Recording · sync pending'
+              : state === 'sync-pending' ? 'Sync pending'
+                : reason === 'stationary' ? 'Stopped briefly · waiting for movement'
+                : state === 'paused' ? 'Recording paused'
+                  : state === 'recording' ? 'Recording ride' : 'Waiting for GPS'
+    ));
+    window.RideRideUI?.setRecordingStatus?.(text);
+  },
+
+  _onRideGpsStatus(status) {
+    if (!this._rideRecorder) return;
+    if (status?.type === 'weak-fix') {
+      window.RideRideUI?.setRecordingStatus?.('Waiting for accurate GPS');
+      return;
+    }
+    if (status?.type === 'error' || status?.type === 'gap') {
+      this._rideRecorder.pause(status.reason || 'gps-error');
+      window.RideRideUI?.setRecordingStatus?.(status.reason === 'gps-gap' ? 'GPS gap · trail segmented' : 'GPS signal lost · saving track');
+    } else if (status?.type === 'fix') {
+      if (document.visibilityState === 'visible') this._rideRecorder.resume();
+    }
+  },
+
+  _rideProgressKey(tripId) { return `ride-progress:${tripId}`; },
+
+  _readRideProgress(tripId, fingerprint, routeLength) {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(this._rideProgressKey(tripId)) || 'null');
+      if (!Number.isFinite(saved?.progress) || saved.progress < 0 || saved.progress > routeLength || saved.fingerprint !== fingerprint || !Number.isFinite(saved.updatedAt)) return null;
+      if (Date.now() - saved.updatedAt > 24 * 60 * 60 * 1000 || saved.updatedAt > Date.now() + 60000) return null;
+      return { progress: saved.progress, fingerprint: saved.fingerprint, updatedAt: saved.updatedAt };
+    } catch (_) { return null; }
+  },
+
+  _writeRideProgress(progress) {
+    if (!this._rideTripId || !Number.isFinite(progress)) return;
+    try { sessionStorage.setItem(this._rideProgressKey(this._rideTripId), JSON.stringify({ progress, fingerprint: this._ridePlanFingerprint, updatedAt: Date.now() })); } catch (_) {}
+  },
+
+  markVisitedWaypoints(position, nextWaypoint) {
+    if (!nextWaypoint || !this.rideVisitedWaypoints) return;
+    const arrivalRadius = Math.min(90, Math.max(45, (position.accuracy || 0) * 0.7));
+    if (this.haversine(nextWaypoint, position) <= arrivalRadius) {
+      this.rideVisitedWaypoints.add(nextWaypoint.id);
+      UI.showToast(`📍 Arrived at ${nextWaypoint.name || 'waypoint'}`, 'success');
+    }
   },
 
   getRemainingWaypoints() {
-    if (!this.currentTrip?.waypoints) return [];
-    if (!this.rideVisitedWaypoints) this.rideVisitedWaypoints = new Set();
-    return [...this.currentTrip.waypoints]
-      .filter(wp => !this.rideVisitedWaypoints.has(wp.id))
-      .sort((a, b) => a.order - b.order);
+    const waypoints = [...(this.currentTrip?.waypoints || [])].sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+    return waypoints.filter(wp => !this.rideVisitedWaypoints?.has(wp.id));
   },
 
-  /**
-   * Find nearest route coordinate using sliding window from last known position.
-   * Falls back to full scan if the window doesn't find a close match.
-   */
-  _findNearestRouteIdx(coords, pos) {
-    const windowSize = 150; // look ±150 points from last position
-    const start = Math.max(0, (this._rideNearIdx || 0) - 20);
-    const end = Math.min(coords.length, (this._rideNearIdx || 0) + windowSize);
+  _makePlannedNavigationRoute(position, progress, stopInfo) {
+    const route = this._ridePlanRoute;
+    const routeMetrics = RideNavigation.routeMetrics(route);
+    const end = stopInfo?.nextWaypoint ? stopInfo.waypointProgress : routeMetrics.total;
+    const coordinates = RideNavigation.sliceRoute(route, progress, end);
+    const distance = Math.max(0, end - progress);
+    const sourceDuration = Number(route.duration);
+    const duration = Number.isFinite(sourceDuration) && sourceDuration > 0
+      ? sourceDuration * distance / Math.max(1, routeMetrics.total) : null;
+    return {
+      coordinates: coordinates.length ? coordinates : [position, stopInfo?.nextWaypoint].filter(Boolean),
+      steps: RideNavigation.mapStepsToLeg(route, progress, end),
+      distance,
+      duration,
+      _planned: true,
+      _targetWaypointId: stopInfo?.nextWaypoint?.id || null
+    };
+  },
 
-    let bestIdx = this._rideNearIdx || 0;
-    let bestDist = Infinity;
+  _setRideNavigationRoute(route) {
+    if (!route?.coordinates?.length) return;
+    this._rideNavigationRoute = route;
+    if (!route._planned) MapManager.setRideNavigationRoute?.(route);
+    const metrics = RideNavigation.routeMetrics(route);
+    route._cumulative = metrics.cumulative;
+    route._total = metrics.total;
+    this._rideNavProgress = 0;
+    this.precomputeRouteMetrics();
+  },
 
-    // Windowed search (fast path)
-    for (let i = start; i < end; i++) {
-      const d = this.haversine(coords[i], pos);
-      if (d < bestDist) { bestDist = d; bestIdx = i; }
-    }
-
-    // If windowed result is far (>300m), do a full scan as fallback
-    if (bestDist > 300) {
-      for (let i = 0; i < coords.length; i++) {
-        const d = this.haversine(coords[i], pos);
-        if (d < bestDist) { bestDist = d; bestIdx = i; }
+  _requestRideLeg(position, waypoint, reason = 'reroute') {
+    if (!this.isRiding || !waypoint || this.rideRerouting) return;
+    const priorNavigationRoute = this._cloneRideRoute(this._rideNavigationRoute);
+    const requestDetails = {
+      position: { lat: position.lat, lng: position.lng, accuracy: position.accuracy, timestamp: position.timestamp },
+      progress: this._rideProgress,
+      targetWaypointId: waypoint.id,
+      targetProgress: this._rideStopInfo?.waypointProgress ?? null,
+      reason,
+      priorNavigationRoute
+    };
+    this.rideRerouting = true;
+    const requestId = ++this._rideRequestId;
+    const context = RideNavigation.requestContext(this._rideSessionId, this._rideTripId, requestId);
+    const detourContext = { ...context, ...requestDetails };
+    const isCurrent = () => this.isRiding && RideNavigation.isCurrentRequest(context, {
+      sessionId: this._rideSessionId, tripId: this.currentTrip?.id, requestId: this._rideRequestId
+    });
+    this.lastRerouteAt = Date.now();
+    MapManager.rerouteRideLeg(position, waypoint, context, (routeData, resultContext) => {
+      if (!isCurrent() || !RideNavigation.isCurrentRequest(resultContext, context)) return;
+      if (this._rideNextWaypoint?.id !== waypoint.id) { this.rideRerouting = false; return; }
+      this.rideRerouting = false;
+      const decision = this._rideDetourDecisions.get(waypoint.id);
+      window.RideRideUI?.clearDeviation?.();
+      if (decision === 'update') {
+        this._setRideNavigationRoute(routeData);
+        this._updateRideHud(this._lastRidePosition || position);
+        UI.showToast(`Rerouted to ${waypoint.name || 'next stop'}`, 'info');
+        return;
       }
-    }
+      if (decision === 'keep') return;
+      if (!this._rideDetourPromptedTargets.has(waypoint.id) || !decision) {
+        this._rideDetourPromptedTargets.add(waypoint.id);
+        const adoptionContext = { ...detourContext, routeData };
+        App.offerRideDetour?.({
+          context: adoptionContext,
+          onUpdate: () => {
+            this._rideDetourDecisions.set(waypoint.id, 'update');
+            return App.adoptRideDetour?.(adoptionContext);
+          },
+          onKeep: () => {
+            this._rideDetourDecisions.set(waypoint.id, 'keep');
+            this._restorePlannedRideGuidance(adoptionContext);
+          }
+        });
+      }
+    }, (_error, resultContext) => {
+      if (!isCurrent() || !RideNavigation.isCurrentRequest(resultContext, context)) return;
+      this.rideRerouting = false;
+      if (this._rideNextWaypoint?.id !== waypoint.id) return;
+      UI.showToast('Reroute unavailable. Continuing with offline guidance.', 'info');
+      this._updateRideHud(position, true);
+    });
+  },
 
-    this._rideNearIdx = bestIdx;
-    return { idx: bestIdx, dist: bestDist };
+  _cloneRideRoute(route) {
+    if (!route) return null;
+    return {
+      ...route,
+      coordinates: (route.coordinates || []).map(point => Array.isArray(point) ? [...point] : { ...point }),
+      steps: (route.steps || []).map(step => ({ ...step }))
+    };
+  },
+
+  _restorePlannedRideGuidance(context) {
+    if (!this.isRiding || context?.tripId !== this._rideTripId || !this._ridePlanRoute) return;
+    if (context.targetWaypointId !== this._rideNextWaypoint?.id) return;
+    const waypoint = this._rideNextWaypoint || this.currentTrip?.waypoints?.find(item => item.id === context.targetWaypointId) || null;
+    const total = RideNavigation.routeMetrics(this._ridePlanRoute).total;
+    const progress = Number.isFinite(this._rideProgress) ? this._rideProgress : context.progress;
+    const planned = this._makePlannedNavigationRoute(
+      this._lastRidePosition || context.position || {},
+      Number.isFinite(progress) ? progress : 0,
+      this._rideStopInfo?.nextWaypoint?.id === waypoint?.id
+        ? this._rideStopInfo
+        : { nextWaypoint: waypoint, waypointProgress: context.targetProgress ?? total }
+    );
+    this._rideNavigationRoute = planned;
+    this._ridePlannedLegTargetId = waypoint?.id ?? null;
+    this._rideNavProgress = 0;
+    this.precomputeRouteMetrics();
+    MapManager.clearRideNavigationRoute?.();
+  },
+
+  _updateRideHud(position, forcePlanned = false) {
+    const route = forcePlanned || !this._rideNavigationRoute ? this._ridePlanRoute : this._rideNavigationRoute;
+    if (!route?.coordinates?.length) return;
+    const previous = this._rideNavProgress;
+    const projected = RideNavigation.projectProgress(route, position, previous);
+    if (!projected) return;
+    this._rideNavProgress = Math.max(previous || 0, projected.progress);
+    const metrics = RideNavigation.routeMetrics(route);
+    const remaining = Math.max(0, metrics.total - this._rideNavProgress);
+    const distanceEl = document.getElementById('rideDistanceRemaining');
+    if (distanceEl) distanceEl.textContent = RideUtils.formatDistance(remaining);
+    const etaEl = document.getElementById('rideEta');
+    if (etaEl && route.duration) etaEl.textContent = RideUtils.formatDuration(route.duration * (remaining / Math.max(1, metrics.total)));
+    const meta = document.getElementById('rideNextMeta');
+    const instruction = document.getElementById('rideNextInstruction');
+    const currentSegment = RideNavigation.segmentAtProgress(metrics.cumulative, this._rideNavProgress);
+    const step = (route.steps || []).find(item => Number(item.index) > currentSegment);
+    if (route._planned && !step && this._rideNextWaypoint) {
+      if (instruction) instruction.textContent = `Heading to ${this._rideNextWaypoint.name || 'next stop'}`;
+      if (meta) meta.textContent = `${RideUtils.formatDistance(remaining)} remaining`;
+      return;
+    }
+    if (instruction) instruction.textContent = step?.text || (this._rideNextWaypoint ? `Heading to ${this._rideNextWaypoint.name || 'next stop'}` : 'Continue to destination');
+    if (meta) meta.textContent = step ? `${RideUtils.formatDistance(Math.max(0, (metrics.cumulative[step.index] || this._rideNavProgress) - this._rideNavProgress))} ahead` : `${RideUtils.formatDistance(remaining)} remaining`;
   },
 
   onRidePosition(pos) {
-    if (!this.isRiding || !this.currentTrip?.route?.coordinates || !this.currentTrip.route._cumulative) return;
-
-    // On first GPS fix, check if we're far from the route.
-    if (!this.rideInitialRouted) {
-      this.rideInitialRouted = true;
-      const coords = this.currentTrip.route.coordinates;
-      let nearestDist = Infinity;
-      for (let i = 0; i < coords.length; i++) {
-        const d = this.haversine(coords[i], pos);
-        if (d < nearestDist) nearestDist = d;
-      }
-      if (nearestDist > 200) {
-        const allWaypoints = [...(this.currentTrip.waypoints || [])].sort((a, b) => a.order - b.order);
-        if (allWaypoints.length) {
-          UI.showToast('Routing to your first waypoint…', 'info');
-          this.rideRerouting = true;
-          this.lastRerouteAt = Date.now();
-          MapManager.rerouteFromPosition(pos, allWaypoints);
-          return;
-        }
-      }
+    // Recording is independent of route readiness and navigation state.
+    this._rideRecorder?.record(pos);
+    if (!RideNavigation.isUsableNavigationFix(pos)) {
+      window.RideRideUI?.setRecordingStatus?.('Waiting for accurate GPS');
+      return;
     }
+    const lastFix = this._lastRidePosition;
+    const fixElapsed = lastFix ? (pos.timestamp - lastFix.timestamp) / 1000 : null;
+    if (fixElapsed != null && (fixElapsed <= 0 || RideNavigation.distance(lastFix, pos) / fixElapsed > 70)) return;
+    if (!this.isRiding || !this.currentTrip || this.currentTrip.id !== this._rideTripId || !this._ridePlanRoute?.coordinates?.length) return;
+    this._lastRidePosition = { lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy, timestamp: pos.timestamp };
 
-    const coords = this.currentTrip.route.coordinates;
-    const cumulative = this.currentTrip.route._cumulative;
-    const total = this.currentTrip.route._total || cumulative[cumulative.length - 1] || 0;
-    this.markVisitedWaypoints(pos);
-    const remainingWaypoints = this.getRemainingWaypoints();
+    const route = this._ridePlanRoute;
+    if (this._rideProgress == null && this._savedRideProgress) {
+      const savedPoint = RideNavigation.pointAtProgress(route, this._savedRideProgress.progress);
+      const accuracy = Number(pos.accuracy);
+      const validationRadius = Math.max(100, (Number.isFinite(accuracy) ? Math.max(0, accuracy) : 0) * 2);
+      if (savedPoint && RideNavigation.distance(savedPoint, pos) <= validationRadius) {
+        this._rideProgress = this._savedRideProgress.progress;
+      }
+      this._savedRideProgress = null;
+    }
+    const hadPriorProgress = Number.isFinite(this._rideProgress);
+    const previousFixTimestamp = this._rideLastFixTimestamp;
+    const elapsedSeconds = Number.isFinite(previousFixTimestamp) ? Math.max(0, (Number(pos.timestamp) - previousFixTimestamp) / 1000) : 0;
+    const gpsGap = Number.isFinite(previousFixTimestamp) && elapsedSeconds > 30;
+    const maxForwardMeters = gpsGap ? 5000 : Math.min(1200, 60 + elapsedSeconds * 70);
+    const projected = RideNavigation.projectProgress(route, pos, this._rideProgress, { gpsGap, maxForwardMeters });
+    if (!projected) return;
+    if (!hadPriorProgress) this._rideProgress = projected.progress;
+    else this._rideProgress = Math.max(this._rideProgress - 35, projected.progress);
+    this._rideLastFixTimestamp = Number(pos.timestamp) || Date.now();
+    this._writeRideProgress(this._rideProgress);
+
+    const priorTargetId = this._rideNextWaypoint?.id ?? null;
+    let stopInfo = RideNavigation.inferNextStop(route, this.currentTrip.waypoints, pos, this._rideProgress, this.rideVisitedWaypoints, { projection: projected, gpsGap });
+    if (!projected.ambiguous) this.markVisitedWaypoints(pos, stopInfo.nextWaypoint);
+    stopInfo = RideNavigation.inferNextStop(route, this.currentTrip.waypoints, pos, this._rideProgress, this.rideVisitedWaypoints, { projection: projected, gpsGap });
+    this._rideNextWaypoint = stopInfo.nextWaypoint;
+    this._rideStopInfo = stopInfo;
+    this._rideProgress = Math.max(this._rideProgress, stopInfo.progress || 0);
+    this._rideAmbiguousPosition = !!projected.ambiguous || !!stopInfo.ambiguous;
+    const targetId = this._rideNextWaypoint?.id ?? null;
+    const targetChanged = priorTargetId !== targetId;
+    if (targetChanged) {
+      this._rideRequestId++;
+      this.rideRerouting = false;
+      MapManager.clearRideNavigationRoute?.();
+      window.RideRideUI?.clearDeviation?.();
+      window.RideRideUI?.clearUndo?.();
+      this._ridePlannedLegTargetId = undefined;
+    }
+    if (targetChanged || !this._rideNavigationRoute || (this._rideNavigationRoute._planned && this._ridePlannedLegTargetId !== targetId)) {
+      this._setRideNavigationRoute(this._makePlannedNavigationRoute(pos, this._rideProgress, stopInfo));
+      this._ridePlannedLegTargetId = targetId;
+    }
+    const inferredVisited = new Set(stopInfo.inferredVisitedIds || []);
+    const remaining = this.getRemainingWaypoints().filter(wp => !inferredVisited.has(wp.id));
     const stopsEl = document.getElementById('rideStops');
-    if (stopsEl) stopsEl.textContent = remainingWaypoints.length.toString();
+    if (stopsEl) stopsEl.textContent = remaining.length.toString();
 
-    // Find nearest route point (sliding window)
-    const { idx: nearestIdx, dist: bestDist } = this._findNearestRouteIdx(coords, pos);
-
-    // Off-route detection with dynamic threshold
-    const dynamicThreshold = Math.max(50, (pos.accuracy || 30) * 1.6);
+    const activeRoute = this._rideNavigationRoute || this._ridePlanRoute;
+    const near = RideNavigation.projectProgress(activeRoute, pos, this._rideNavProgress);
+    const threshold = Math.max(60, (pos.accuracy || 30) * 1.8);
+    this.offRouteCounter = near && near.distance > threshold ? (this.offRouteCounter || 0) + 1 : 0;
     const now = Date.now();
-    if (bestDist > dynamicThreshold) {
-      this.offRouteCounter = (this.offRouteCounter || 0) + 1;
-    } else {
-      this.offRouteCounter = 0;
+    if (this._rideNextWaypoint && this._rideDetourDecisions.get(this._rideNextWaypoint.id) !== 'keep' &&
+        this.offRouteCounter >= 4 && !this.rideRerouting && now - (this.lastRerouteAt || 0) > 45000) {
+      this._requestRideLeg(pos, this._rideNextWaypoint, 'off-route');
     }
 
-    const canReroute = bestDist > dynamicThreshold && this.offRouteCounter >= 4
-      && !this.rideRerouting && (now - (this.lastRerouteAt || 0) > 45000);
-    if (canReroute) {
-      this.rideRerouting = true;
-      this.lastRerouteAt = now;
-      UI.showToast('Off route. Rerouting…', 'info');
-      MapManager.rerouteFromPosition(pos, remainingWaypoints);
-    }
-
-    // Distance remaining
-    const remaining = Math.max(0, total - cumulative[nearestIdx]);
-    document.getElementById('rideDistanceRemaining').textContent = RideUtils.formatDistance(remaining);
-
-    // Live ETA: estimate from remaining distance and average speed so far
-    const elapsed = (now - (this._rideStartTime || now)) / 1000;
-    const travelled = total - remaining;
-    if (elapsed > 10 && travelled > 50) {
-      const avgSpeed = travelled / elapsed; // m/s
-      const etaSeconds = remaining / avgSpeed;
-      document.getElementById('rideEta').textContent = RideUtils.formatDuration(etaSeconds);
-    }
-
-    // Arrival detection
-    if (remaining < 30 && remainingWaypoints.length === 0 && !this._rideArrived) {
+    this._updateRideHud(pos);
+    if (!this._rideNextWaypoint && stopInfo.distance < 30 && !this._rideAmbiguousPosition && !this._rideArrived) {
       this._rideArrived = true;
-      document.getElementById('rideNextInstruction').textContent = '🏁 You have arrived!';
-      document.getElementById('rideNextMeta').textContent = 'Ride complete';
-      UI.showToast('🏁 You have arrived at your destination!', 'success');
-      return;
-    }
-
-    // Turn-by-turn instruction
-    const steps = this.currentTrip.route.steps || [];
-    const nextStep = steps.find(s => s.index > nearestIdx);
-    if (nextStep) {
-      document.getElementById('rideNextInstruction').textContent = nextStep.text || 'Continue';
-      const distToNextStep = cumulative[nextStep.index] - cumulative[nearestIdx];
-      document.getElementById('rideNextMeta').textContent = `${RideUtils.formatDistance(Math.max(0, distToNextStep))} ahead`;
-    } else if (!this._rideArrived) {
-      document.getElementById('rideNextInstruction').textContent = 'Continue to destination';
-      document.getElementById('rideNextMeta').textContent = RideUtils.formatDistance(remaining) + ' remaining';
-    }
-
-    // Append breadcrumb to GPS track (sampled, not every tick)
-    this._recordTrackPoint(pos);
-  },
-
-  /**
-   * Sample GPS position into the ride track at most once every 5 seconds and
-   * only when the rider has moved ≥ 5 m, to keep track size sensible.
-   */
-  _recordTrackPoint(pos) {
-    const now = Date.now();
-    const pt = { lat: pos.lat, lng: pos.lng, t: now };
-    if (this._rideTrack.length === 0) {
-      this._rideTrack.push(pt);
-      this._rideTrackLastPt = pt;
-      return;
-    }
-    const last = this._rideTrackLastPt;
-    const dt = (now - last.t) / 1000;   // seconds since last sample
-    const dm = this.haversine(last, pt); // meters moved
-    if (dt >= 5 && dm >= 5) {
-      this._rideTrack.push(pt);
-      this._rideTrackLastPt = pt;
-      // Cap at 3000 points to keep storage reasonable
-      if (this._rideTrack.length > 3000) this._rideTrack.splice(0, 1);
-    }
-  },
-
-  /**
-   * Build a private journal entry and persist the ride log to the API.
-   * Called asynchronously after exitRideMode() so it never blocks the UI.
-   */
-  async _saveRideLog(track, startedAtMs) {
-    if (!this.currentTrip || !this.useCloud || !this.currentUser) return;
-
-    // Compute distance from track
-    let distMeters = 0;
-    for (let i = 1; i < track.length; i++) {
-      distMeters += this.haversine(track[i - 1], track[i]);
-    }
-    if (distMeters < 100) return; // too short (stationary / accidental) — skip
-
-    const endedAtMs = Date.now();
-    const durationSec = Math.round((endedAtMs - (startedAtMs || endedAtMs)) / 1000);
-    const startedAtISO = new Date(startedAtMs || endedAtMs).toISOString();
-    const endedAtISO   = new Date(endedAtMs).toISOString();
-    const startPt = track[0];
-
-    const distStr    = RideUtils.formatDistance(distMeters);
-    const durStr     = RideUtils.formatDuration(durationSec);
-    const avgKmh     = durationSec > 0 ? ((distMeters / durationSec) * 3.6).toFixed(1) : '—';
-    const dateStr    = new Date(startedAtMs || endedAtMs).toLocaleDateString(undefined, {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    });
-    const timeStr    = new Date(startedAtMs || endedAtMs).toLocaleTimeString(undefined, {
-      hour: '2-digit', minute: '2-digit'
-    });
-
-    const title   = `Ride — ${dateStr} at ${timeStr}`;
-    const content = `🏍️ **${distStr}** · ${durStr} · avg ${avgKmh} km/h\n\n_Automatically recorded during navigation._`;
-
-    let entry = null;
-    try {
-      entry = await API.journal.add(this.currentTrip.id, {
-        title,
-        content,
-        is_private: true,
-        tags: ['ride-log'],
-        location: { lat: startPt.lat, lng: startPt.lng }
-      });
-      entry.attachments = [];
-      if (!this.currentTrip.journal) this.currentTrip.journal = [];
-      this.currentTrip.journal.unshift(entry);
-      UI.renderJournal(this.currentTrip.journal);
-    } catch (err) {
-      console.error('Ride journal entry failed:', err);
-    }
-
-    try {
-      await API.rideLogs.save(this.currentTrip.id, {
-        journal_entry_id: entry?.id || null,
-        started_at: startedAtISO,
-        ended_at: endedAtISO,
-        distance_meters: Math.round(distMeters),
-        duration_seconds: durationSec,
-        track
-      });
-    } catch (err) {
-      console.error('Ride log save failed:', err);
-    }
-
-    UI.showToast(`Ride logged — ${distStr} in ${durStr} 📍`, 'success');
-
-    // Refresh ride logs on the map so the new track shows immediately
-    if (this.currentTrip) {
-      try {
-        const logs = await API.rideLogs.list(this.currentTrip.id);
-        MapManager.drawRideLogs(logs);
-      } catch (_) {}
+      const instruction = document.getElementById('rideNextInstruction');
+      const meta = document.getElementById('rideNextMeta');
+      if (instruction) instruction.textContent = '🏁 You have arrived!';
+      if (meta) meta.textContent = 'Ride complete';
     }
   }
 });

@@ -15,6 +15,7 @@ Object.assign(App, {
    */
   _setAuthState(state, reason = '') {
     const prev = this._authState;
+    const hadUser = !!this.currentUser;
     if (prev === state && state !== 'CHECKING') return; // no-op for same state (allow re-CHECKING)
     this._authState = state;
 
@@ -31,11 +32,12 @@ Object.assign(App, {
         break;
 
       case 'UNAUTHENTICATED':
+        this.endRideForTripSwitch?.();
         this.currentUser = null;
         this.useCloud = false;
         localStorage.removeItem('ride_last_user_id');
         this.updateUserUI();
-        if (prev === 'AUTHENTICATED') {
+        if (hadUser || prev === 'AUTHENTICATED') {
           // Was logged in, now logged out — clear trip state
           this._clearTripUI();
         }
@@ -48,11 +50,12 @@ Object.assign(App, {
         break;
 
       case 'ERROR':
+        this.endRideForTripSwitch?.();
         this.currentUser = null;
         this.useCloud = false;
         localStorage.removeItem('ride_last_user_id');
         this.updateUserUI();
-        if (prev === 'AUTHENTICATED') this._clearTripUI();
+        if (hadUser || prev === 'AUTHENTICATED') this._clearTripUI();
         if (reason) UI.showToast(reason, 'error');
         if (!this.isSharedView && !UI.isLandingGateVisible()) {
           UI.showAuthGate(reason || 'Auth error');
@@ -67,7 +70,9 @@ Object.assign(App, {
       const user = await API.auth.getUser();
       if (user) {
         const lastUserId = localStorage.getItem('ride_last_user_id');
-        if (lastUserId && lastUserId !== user.id) {
+        if ((this.currentUser?.id && this.currentUser.id !== user.id) || (lastUserId && lastUserId !== user.id)) {
+          this.endRideForTripSwitch?.();
+          this._clearTripUI();
           Storage.clearTrips();
           Storage.setTripOrder([]);
         }
@@ -80,6 +85,12 @@ Object.assign(App, {
       this._setAuthState('UNAUTHENTICATED', 'Signed out');
       return false;
     } catch (error) {
+      // Connectivity cannot revoke an existing login or discard an offline
+      // ride. The server still enforces ownership when queued logs are sent.
+      if (error.status !== 401 && this.currentUser) {
+        this._authState = 'AUTHENTICATED';
+        return false;
+      }
       const reason = error.status === 401
         ? 'Session expired. Please sign in again.'
         : 'Auth check failed. Working offline until re-auth.';
@@ -94,6 +105,10 @@ Object.assign(App, {
   },
 
   handleConnectionLost(detail) {
+    if (this.isRiding && this.currentUser && (detail?.kind === 'network' || detail?.kind === 'server')) {
+      this._onRideRecorderStatus?.({ state: 'sync-pending' });
+      return;
+    }
     if (this._authState !== 'AUTHENTICATED') {
       if (!this.isSharedView) UI.showAuthGate('Sign in to save & share');
       return;
@@ -219,6 +234,7 @@ Object.assign(App, {
   },
 
   async logout() {
+    this.endRideForTripSwitch?.();
     try { await API.auth.logout(); } catch (e) {}
     Storage.clearTrips();
     const dropdown = document.querySelector('.user-dropdown');
@@ -233,12 +249,16 @@ Object.assign(App, {
       const hadUser = !!this.currentUser;
       const authed = await this.checkAuth();
       if (authed || hadUser) {
-        await this.refreshData('visibility');
+        if (this.isRiding) this.flushPendingRides?.();
+        else if (authed) await this.refreshData('visibility');
       }
     });
     window.addEventListener('online', async () => {
       const authed = await this.checkAuth();
-      if (authed) await this.refreshData('online');
+      if (authed) {
+        this.flushPendingRides?.();
+        if (!this.isRiding) await this.refreshData('online');
+      }
     });
   }
 });

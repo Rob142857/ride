@@ -85,6 +85,7 @@ body.ride-mode .leaflet-control-zoom {
   box-shadow: 0 12px 28px rgba(0,0,0,0.45);
   backdrop-filter: blur(12px);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -232,6 +233,96 @@ body.ride-mode .leaflet-control-zoom {
   margin-right: 4px;
 }
 
+/* Compact status and route feedback live inside the existing ride banner. */
+.ride-hud-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 118px;
+  color: rgba(255,255,255,0.92);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.ride-hud-status .ride-rec-dot {
+  width: 8px;
+  height: 8px;
+  margin: 0;
+}
+
+.ride-hud-status[data-state="paused"] .ride-rec-dot,
+.ride-hud-status[data-state="waiting"] .ride-rec-dot {
+  background: #fbbf24;
+  box-shadow: none;
+  animation: none;
+}
+
+.ride-hud-status[data-state="sync"] .ride-rec-dot {
+  background: #93c5fd;
+  box-shadow: none;
+  animation: none;
+}
+
+.ride-feedback {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 9px;
+  background: rgba(15,23,42,0.58);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.ride-feedback.hidden {
+  display: none;
+}
+
+.ride-feedback p {
+  margin: 0;
+}
+
+.ride-feedback-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.ride-feedback-btn {
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ride-feedback-btn.primary {
+  background: #fff;
+  border-color: #fff;
+  color: #1e3a8a;
+}
+
+.ride-feedback-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.ride-undo {
+  flex-basis: 100%;
+}
+
 @keyframes ride-rec-pulse {
   0%   { box-shadow: 0 0 0 0 rgba(248,113,113,0.6); }
   60%  { box-shadow: 0 0 0 6px rgba(248,113,113,0); }
@@ -343,6 +434,11 @@ body.ride-mode .leaflet-control-zoom {
 
   .ride-banner-minimal .ride-next-main {
     font-size: 15px;
+  }
+
+  .ride-hud-status {
+    max-width: 100px;
+    font-size: 10px;
   }
 
   .ride-banner-stats {

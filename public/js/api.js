@@ -425,8 +425,15 @@ const API = {
     },
 
     async list(tripId) {
-      const data = await API.request(`/trips/${tripId}/ride-logs`);
-      return data.logs || [];
+        const logs = [];
+        let offset = 0;
+        do {
+          const data = await API.request(`/trips/${tripId}/ride-logs?offset=${offset}`);
+          logs.push(...(data.logs || []));
+          const next = data.next_offset;
+          offset = Number.isInteger(next) && next > offset ? next : null;
+        } while (offset !== null);
+        return logs;
     },
   },
 };

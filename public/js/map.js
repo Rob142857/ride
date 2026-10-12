@@ -95,6 +95,8 @@ const MapManager = {
         this._updateRouteLineStyles();
       }
       this.savedRouteLayer?.setStyle(RideBasemaps.routeStyle(this.map.getZoom()));
+      this._rideNavigationLayer?.setStyle(RideBasemaps.routeStyle(this.map.getZoom(), { color: '#3b82f6' }));
+      this._rideTrailLayer?.setStyle({ ...RideBasemaps.routeStyle(this.map.getZoom(), { color: '#34d399' }), className: 'ride-trail-live' });
     });
 
     return this;
@@ -456,6 +458,9 @@ const MapManager = {
    * Update route between waypoints — now with alternatives
    */
   updateRoute(waypoints) {
+    if (App.isRiding) return;
+    const ownerTripId = App.currentTrip?.id;
+    const ownerUserId = App.currentUser?.id;
     window.RideInsights?.track('route_calculate');
     this.clearRoute();
     this._hideRouteSelector();
@@ -506,7 +511,10 @@ const MapManager = {
       this._selectRoute(event.route.routesIndex);
     });
 
+    const currentControl = this.routingControl;
     this.routingControl.on('routesfound', (e) => {
+      if (this.routingControl !== currentControl || App.isRiding ||
+          App.currentTrip?.id !== ownerTripId || App.currentUser?.id !== ownerUserId) return;
       const routes = e.routes;
       if (!routes || !routes.length) return;
       window.RideInsights?.track('route_result');
@@ -621,20 +629,28 @@ const MapManager = {
     logs.forEach(log => {
       const pts = Array.isArray(log.track) ? log.track : [];
       if (pts.length < 2) return;
-      const latlngs = pts.map(p => [p.lat, p.lng]);
+      const segments = [[]];
+      let previousTime = null;
+      pts.forEach(p => {
+        if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return;
+        const time = typeof p.t === 'number' ? p.t : Date.parse(p.t);
+        if (previousTime != null && Number.isFinite(time) && time - previousTime > 30000) segments.push([]);
+        segments[segments.length - 1].push([p.lat, p.lng]);
+        previousTime = Number.isFinite(time) ? time : null;
+      });
       const dist = log.distance_meters ? RideUtils.formatDistance(log.distance_meters) : '';
       const dur  = log.duration_seconds ? RideUtils.formatDuration(log.duration_seconds) : '';
       const date = log.started_at
         ? new Date(log.started_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
         : '';
-      const layer = L.polyline(latlngs, {
+      const layer = L.polyline(segments, {
         color: '#10b981',
         weight: 3,
         opacity: 0.55,
         dashArray: '6 4',
         className: 'ride-log-track'
       }).addTo(this.map);
-      const label = [date, dist, dur].filter(Boolean).join(' · ');
+      const label = ['GPS recorded', date, dist, dur].filter(Boolean).join(' · ');
       if (label) layer.bindTooltip(label, { sticky: true, className: 'ride-log-tooltip' });
       (this._rideLogLayers = this._rideLogLayers || []).push(layer);
     });

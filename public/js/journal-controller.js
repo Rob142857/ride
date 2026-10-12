@@ -246,6 +246,9 @@ Object.assign(App, {
   },
 
   async saveRouteData(routeData) {
+    // Ride navigation owns a separate leg. A late planning response must not
+    // replace the saved journey while the rider is travelling.
+    if (this.isRiding) return;
     if (!this.currentTrip || !this.ensureEditable('save routes')) return;
     const duration = routeData?.duration ?? routeData?.time ?? null;
     this.currentTrip.route = {
@@ -260,16 +263,6 @@ Object.assign(App, {
     // Route coordinates changed: reset sliding-window cursor so the next
     // GPS tick recomputes nearest-point against the new path.
     this._rideNearIdx = 0;
-
-    // During ride mode, reroutes are ephemeral — update in-memory route for
-    // navigation HUD only, but do NOT persist to the API.  This prevents the
-    // rider's live GPS position (embedded as the first coordinate of the
-    // rerouted path) from being written to the trip and exposed on the public
-    // trip page.
-    if (this.isRiding) {
-      UI.updateTripStats(this.currentTrip);
-      return;
-    }
 
     UI.updateTripStats(this.currentTrip);
     const calculatedRoutes = this.currentTrip.route?._allAlternatives || [];

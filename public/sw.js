@@ -13,7 +13,7 @@
  * and post a 'ride:update' message to all clients so they can reload.
  */
 
-const CACHE_NAME = 'ride-v11';
+const CACHE_NAME = 'ride-v12';
 const TILES_CACHE = 'ride-owned-tiles-v1';
 const MAX_CACHED_TILES = 800;
 
@@ -32,6 +32,10 @@ const STATIC_ASSETS = [
   '/js/waypoint-controller.js',
   '/js/journal-controller.js',
   '/js/ride-controller.js',
+  '/js/ride-recorder.js',
+  '/js/ride-navigation.js',
+  '/js/ride-ride-ui.js',
+  '/js/ride-session.js',
   '/js/insights-hook.js',
   '/insights.js',
   '/js/utils.js',
@@ -41,6 +45,7 @@ const STATIC_ASSETS = [
   '/js/itinerary-ui.js',
   '/js/basemaps.js',
   '/js/map.js',
+  '/js/map-ride.js',
   '/js/ui.js',
   '/js/share.js',
   '/icons/icon-192.png',

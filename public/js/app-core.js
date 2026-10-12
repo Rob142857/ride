@@ -224,6 +224,7 @@ const App = {
   handleOnlineChange(online) {
     this.isOnline = online;
     UI.showToast(online ? 'Back online' : 'You are offline', online ? 'success' : 'info');
+    if (online) this.flushPendingRides?.();
   },
 
   ensureEditable(action = 'make changes') {
@@ -281,6 +282,7 @@ const App = {
 
   /** Clear all trip-related UI (used on logout / auth fail) */
   _clearTripUI() {
+    this.endRideForTripSwitch?.();
     this.currentTrip = null;
     this.tripListCache = [];
     MapManager.clear();
