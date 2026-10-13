@@ -41,6 +41,9 @@ Object.assign(UI, {
             ${wp.notes ? `<div class="waypoint-notes">${this.escapeHtml(wp.notes)}</div>` : ''}
           </div>
           <div class="waypoint-actions">
+            <button class="icon-btn waypoint-move" type="button" data-waypoint-move="up" aria-label="Move ${this.escapeHtml(wp.name)} up" title="Move up" ${index === 0 ? 'disabled' : ''}>↑</button>
+            <button class="icon-btn waypoint-move" type="button" data-waypoint-move="down" aria-label="Move ${this.escapeHtml(wp.name)} down" title="Move down" ${index === orderedWaypoints.length - 1 ? 'disabled' : ''}>↓</button>
+            <button class="icon-btn waypoint-move-position" type="button" data-waypoint-position data-waypoint-name="${this.escapeHtml(wp.name)}" aria-label="Move ${this.escapeHtml(wp.name)} to position" title="Move to position">↕</button>
             <button class="icon-btn" onclick="MapManager.centerOnWaypoint(App.currentTrip.waypoints.find(w => w.id === '${wp.id}')); event.stopPropagation();" aria-label="Center on map">
               <svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
             </button>
@@ -66,11 +69,121 @@ Object.assign(UI, {
       });
     });
 
+    container.querySelectorAll('.waypoint-move').forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const item = button.closest('.waypoint-item');
+        const id = item?.dataset.id;
+        const direction = button.dataset.waypointMove;
+        const ids = Array.from(container.querySelectorAll('.waypoint-item')).map((row) => row.dataset.id).filter(Boolean);
+        const index = ids.indexOf(id);
+        const nextIndex = index + (direction === 'up' ? -1 : 1);
+        if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) return;
+        [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
+        App.reorderWaypoints(ids);
+      });
+    });
+
+    container.querySelectorAll('.waypoint-move-position').forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const item = button.closest('.waypoint-item');
+        if (item?.dataset.id) this.requestWaypointPosition(item.dataset.id, button.dataset.waypointName || 'waypoint', button);
+      });
+    });
+
     // Drag & drop reordering
     if (container.dataset.reorderBound !== '1') {
       container.dataset.reorderBound = '1';
       this._bindWaypointReorder(container);
     }
+  },
+
+  orderWaypointAtPosition(orderIds, waypointId, targetPosition) {
+    if (!Array.isArray(orderIds) || !Number.isInteger(targetPosition) || targetPosition < 1 || targetPosition > orderIds.length) return null;
+    const currentIndex = orderIds.indexOf(waypointId);
+    if (currentIndex < 0) return null;
+    const nextOrder = orderIds.slice();
+    nextOrder.splice(currentIndex, 1);
+    nextOrder.splice(targetPosition - 1, 0, waypointId);
+    return nextOrder;
+  },
+
+  requestWaypointPosition(waypointId, waypointName, returnFocusElement) {
+    const container = document.getElementById('waypointsList');
+    const orderIds = Array.from(container?.querySelectorAll('.waypoint-item') || []).map((row) => row.dataset.id).filter(Boolean);
+    const currentPosition = orderIds.indexOf(waypointId) + 1;
+    if (!currentPosition) return false;
+    const modal = document.getElementById('waypointPositionModal');
+    const description = document.getElementById('waypointPositionDescription');
+    const input = document.getElementById('waypointPositionInput');
+    const form = document.getElementById('waypointPositionForm');
+    const error = document.getElementById('waypointPositionError');
+    if (!modal || !description || !input || !form || !error) return false;
+
+    modal.dataset.waypointId = waypointId;
+    modal.returnFocusElement = returnFocusElement || document.activeElement;
+    description.textContent = `Choose a position from 1 to ${orderIds.length} for ${waypointName}.`;
+    input.min = '1';
+    input.max = String(orderIds.length);
+    input.value = String(currentPosition);
+    input.removeAttribute('aria-invalid');
+    error.textContent = '';
+    error.classList.add('hidden');
+
+    if (form.dataset.positionBound !== '1') {
+      form.dataset.positionBound = '1';
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        this.submitWaypointPosition();
+      });
+      modal.querySelectorAll('[data-position-close]').forEach((button) => {
+        button.addEventListener('click', () => this.closeWaypointPositionDialog());
+      });
+      modal.addEventListener('click', (event) => {
+        if (event.target === modal) this.closeWaypointPositionDialog();
+      });
+      modal.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          this.closeWaypointPositionDialog();
+        }
+      });
+    }
+
+    this.openModal('waypointPositionModal');
+    input.focus();
+    return true;
+  },
+
+  submitWaypointPosition() {
+    const modal = document.getElementById('waypointPositionModal');
+    const input = document.getElementById('waypointPositionInput');
+    const error = document.getElementById('waypointPositionError');
+    const container = document.getElementById('waypointsList');
+    if (!modal || !input || !error || !container) return false;
+    const orderIds = Array.from(container.querySelectorAll('.waypoint-item')).map((row) => row.dataset.id).filter(Boolean);
+    const rawPosition = input.value.trim();
+    const targetPosition = /^\d+$/.test(rawPosition) ? Number(rawPosition) : NaN;
+    const nextOrder = this.orderWaypointAtPosition(orderIds, modal.dataset.waypointId, targetPosition);
+    if (!nextOrder) {
+      input.setAttribute('aria-invalid', 'true');
+      error.textContent = `Enter a whole-number position from 1 to ${orderIds.length}.`;
+      error.classList.remove('hidden');
+      input.focus();
+      return false;
+    }
+    if (!nextOrder.every((id, index) => id === orderIds[index])) App.reorderWaypoints(nextOrder);
+    this.closeWaypointPositionDialog();
+    return true;
+  },
+
+  closeWaypointPositionDialog() {
+    const modal = document.getElementById('waypointPositionModal');
+    const returnFocusElement = modal?.returnFocusElement;
+    this.closeModal('waypointPositionModal');
+    modal?.removeAttribute('data-waypoint-id');
+    if (returnFocusElement?.focus) returnFocusElement.focus();
   },
 
   /** Bind drag-and-drop + touch reordering to waypoint list container */

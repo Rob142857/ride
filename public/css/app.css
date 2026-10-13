@@ -2183,6 +2183,12 @@ body.doc-page {
   color: var(--text-primary);
 }
 
+.field-error {
+  margin: -4px 0 12px;
+  color: var(--danger, #f87171);
+  font-size: 0.85rem;
+}
+
 .field-row {
   display: flex;
   justify-content: space-between;
@@ -2738,6 +2744,24 @@ body.doc-page {
   width: 28px;
   height: 28px;
   padding: 0;
+}
+
+.waypoint-actions .waypoint-move,
+.waypoint-actions .waypoint-move-position {
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-secondary);
+}
+
+.waypoint-actions .waypoint-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.waypoint-actions .waypoint-move:focus-visible,
+.waypoint-actions .waypoint-move-position:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .waypoint-actions svg {
