@@ -50,7 +50,31 @@ assert.throws(() => planner.prepareFileUpdate(invalid, original), /valid departu
 const conflict = copy(file); conflict.itinerary.stops[0].plannedNights = 5;
 assert.throws(() => planner.prepareFileUpdate(conflict, original), /must include/);
 const erasedAnchor = copy(file); delete erasedAnchor.itinerary.stops[1].fixedDate;
-assert.throws(() => planner.prepareFileUpdate(erasedAnchor, original), /keep the existing fixed-date/);
+const erased = planner.prepareFileUpdate(erasedAnchor, original);
+assert.deepEqual(copy(erased.anchorChanges), [{ stopId: 'city', name: 'City stay', before: { date: '2026-10-14', mode: 'withinStay' }, after: null, removedStop: false }]);
+const changedAnchor = copy(file);
+changedAnchor.itinerary.stops[1].fixedDate = '2026-10-16';
+changedAnchor.itinerary.stops[1].anchorMode = 'departure';
+const changed = planner.prepareFileUpdate(changedAnchor, original);
+assert.deepEqual(copy(changed.anchorChanges), [{ stopId: 'city', name: 'City stay', before: { date: '2026-10-14', mode: 'withinStay' }, after: { date: '2026-10-16', mode: 'departure' }, removedStop: false }]);
+assert.equal(JSON.stringify(original), before, 'Anchor review must not mutate the current trip');
+const removedStop = copy(file); removedStop.itinerary.stops = removedStop.itinerary.stops.filter(stop => stop.id !== 'city');
+assert.equal(planner.prepareFileUpdate(removedStop, original).anchorChanges[0].removedStop, true);
+const invalidAnchor = copy(changedAnchor); invalidAnchor.itinerary.stops[1].fixedDate = '2026-10-17';
+assert.throws(() => planner.prepareFileUpdate(invalidAnchor, original), /must meet/);
+const changedWithUnrelated = copy(changedAnchor);
+changedWithUnrelated.itinerary.stops[2].fixedDate = '2026-10-16';
+changedWithUnrelated.itinerary.stops[2].anchorMode = 'arrival';
+// The later unrelated commitment remains a real constraint, even when another
+// anchor is explicitly changed by the file.
+const twoAnchors = fixture();
+twoAnchors.settings.itinerary.stops[2].fixedDate = '2026-10-16';
+twoAnchors.settings.itinerary.stops[2].anchorMode = 'arrival';
+const kept = planner.prepareFileUpdate(changedWithUnrelated, twoAnchors);
+assert.equal(kept.anchorChanges.length, 1);
+assert.equal(kept.itinerary.stops[2].fixedDate, '2026-10-16');
+const violatesUnrelated = copy(changedWithUnrelated); violatesUnrelated.itinerary.stops[0].plannedNights = 4;
+assert.throws(() => planner.prepareFileUpdate(violatesUnrelated, twoAnchors), /must meet/);
 const gated = copy(plan);
 gated.stops[1].outreach = ['blocked', 'suppressed'].map(status => ({ status, leadDays: 7, dueDate: '2026-10-06', publicationGate: 'Do not publish' }));
 const shiftedGates = model.previewExtendStay(gated, 'river').itinerary.stops[1].outreach;
@@ -61,6 +85,18 @@ assert.ok(shiftedGates.every(item => item.publicationGate === 'Do not publish'))
 async function run() {
   let requests = 0;
   context.App.currentTrip = fixture();
+  planner.openPreview(changed, 'Update this itinerary', { planningFileUpdate: true });
+  const rendered = node => [node.textContent || '', ...(node.children || []).map(rendered)].join(' ');
+  const previewText = rendered(nodes.get('itineraryPreviewBody'));
+  assert.match(previewText, /fixed-date commitment changes/);
+  assert.match(previewText, /14 Oct 2026 \(during stay\).*16 Oct 2026 \(departure\)/);
+  assert.match(nodes.get('itineraryPreviewApply').textContent, /including fixed commitments/);
+  assert.equal(planner.pending.anchorChanges.length, 1);
+  planner.openPreview(erased, 'Update this itinerary', { planningFileUpdate: true });
+  assert.match(rendered(nodes.get('itineraryPreviewBody')), /No fixed date/);
+  planner.openPreview(planner.prepareFileUpdate(removedStop, context.App.currentTrip), 'Update this itinerary', { planningFileUpdate: true });
+  assert.match(rendered(nodes.get('itineraryPreviewBody')), /Stop removed from planning/);
+  planner.closePreview();
   const retained = ['route', 'waypoints', 'journal', 'isPublic'].map(key => JSON.stringify(context.App.currentTrip[key]));
   context.API.trips.create = () => { throw new Error('A planning update must never create a trip'); };
   context.API.trips.update = async (id, body, options) => {
@@ -71,7 +107,7 @@ async function run() {
     assert.equal(options.headers['If-Match'], '7');
     return { version: 8, settings: { ...context.App.currentTrip.settings, itinerary: body.settings.itinerary } };
   };
-  planner.openPreview(prepared, 'Update this itinerary', { planningFileUpdate: true });
+  planner.openPreview(changed, 'Update this itinerary', { planningFileUpdate: true });
   await planner.savePreview();
   assert.equal(requests, 1);
   assert.equal(context.App.currentTrip.version, 8);
@@ -79,9 +115,12 @@ async function run() {
   assert.equal(context.App.currentTrip.settings.share.includeRoute, false);
   assert.deepEqual(['route', 'waypoints', 'journal', 'isPublic'].map(key => JSON.stringify(context.App.currentTrip[key])), retained);
   assert.equal(context.App.currentTrip.settings.itinerary.stops[0].outreach[0].dueDate, '2026-10-05');
+  assert.equal(context.App.currentTrip.settings.itinerary.stops[1].fixedDate, '2026-10-16');
+  assert.equal(context.App.currentTrip.settings.itinerary.stops[1].anchorMode, 'departure');
 
   context.App.currentTrip = fixture();
   planner.openPreview(prepared, 'Update this itinerary', { planningFileUpdate: true });
+  assert.equal(nodes.get('itineraryPreviewApply').textContent, 'Save changes');
   context.App.currentTrip.version++;
   await planner.savePreview();
   assert.equal(requests, 1, 'A changed local version must not send a write');
