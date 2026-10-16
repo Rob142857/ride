@@ -306,12 +306,24 @@
         for (const key of ['fromWaypointId', 'toWaypointId']) if (stop.leg?.[key] && !waypointIds.has(stop.leg[key])) throw new Error(`${stop.name}: leg waypoint does not belong to the open Ride trip.`);
         if (stop.privateJournalRefs !== undefined && (!Array.isArray(stop.privateJournalRefs) || stop.privateJournalRefs.some(id => !journalIds.has(id)))) throw new Error(`${stop.name}: private note does not belong to the open Ride trip.`);
       }
-      for (const existing of trip.settings?.itinerary?.stops || []) {
-        if (!existing.fixedDate) continue;
-        const incoming = result.itinerary.stops.find(stop => stop.id === existing.id);
-        if (!incoming || incoming.fixedDate !== existing.fixedDate || incoming.anchorMode !== (existing.anchorMode || 'arrival')) throw new Error(`${existing.name}: keep the existing fixed-date commitment in this planning file.`);
-      }
+      result.anchorChanges = this.fixedAnchorChanges(trip.settings?.itinerary, result.itinerary);
       return result;
+    },
+
+    fixedAnchorChanges(previousPlan, nextPlan) {
+      const previous = new Map((previousPlan?.stops || []).map(stop => [stop.id, stop]));
+      const next = new Map((nextPlan?.stops || []).map(stop => [stop.id, stop]));
+      const anchor = stop => stop?.fixedDate ? { date: stop.fixedDate, mode: stop.anchorMode || 'arrival' } : null;
+      const changes = [];
+      for (const id of new Set([...previous.keys(), ...next.keys()])) {
+        const before = anchor(previous.get(id));
+        const after = anchor(next.get(id));
+        if (JSON.stringify(before) !== JSON.stringify(after)) changes.push({
+          stopId: id, name: next.get(id)?.name || previous.get(id)?.name,
+          before, after, removedStop: !next.has(id),
+        });
+      }
+      return changes;
     },
 
     async previewFileUpdate(file) {
@@ -369,6 +381,15 @@
       });
       if (list.childElementCount) body.append(list);
       if (options.planningFileUpdate) {
+        const anchorChanges = this.fixedAnchorChanges(trip.settings?.itinerary, result.itinerary);
+        this.pending.anchorChanges = anchorChanges;
+        if (anchorChanges.length) {
+          body.append(textNode('p', `${anchorChanges.length} fixed-date commitment changes. Saving this planning file also saves these changes:`, 'itinerary-warning'));
+          const anchors = textNode('ul', '', 'itinerary-change-list');
+          const describe = anchor => anchor ? `${dateLabel(anchor.date)} (${({ arrival: 'arrival', departure: 'departure', withinStay: 'during stay' })[anchor.mode] || anchor.mode})` : 'No fixed date';
+          anchorChanges.forEach(change => anchors.append(textNode('li', `${change.name}: ${describe(change.before)} → ${change.removedStop ? 'Stop removed from planning' : describe(change.after)}`)));
+          body.append(anchors);
+        }
         const draftChanges = this.draftChanges(trip.settings?.itinerary, result.itinerary);
         body.append(textNode('p', `${draftChanges.length} posting / work draft changes. This replaces planning data only. Your route, waypoints, journals, other settings and trip visibility stay as they are.`, 'itinerary-muted'));
         const schedule = item => item ? [item.dueDate || item.date || item.scheduledDate || 'No date', item.localTime || item.time, item.timeZone].filter(Boolean).join(' · ') : 'Absent';
@@ -391,6 +412,7 @@
       body.append(messages);
       (validation.errors || []).forEach(error => body.append(textNode('p', error.message || String(error), 'itinerary-conflict')));
       body.append(textNode('p', 'Draft deadlines move with their stops. Published posts and confirmed meetings need manual review; this app does not send or change anything externally.', 'itinerary-muted'));
+      el('itineraryPreviewApply').textContent = this.pending.anchorChanges?.length ? 'Save changes including fixed commitments' : 'Save changes';
       el('itineraryPreviewApply').disabled = !validation.valid || !!result.conflicts?.length || this.saving;
       UI.openModal('itineraryPreviewModal');
       el('itineraryPreviewCancel').focus();

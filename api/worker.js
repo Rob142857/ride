@@ -14,16 +14,20 @@ import { ShareHandler } from './share.js';
 import { AccountHandler } from './account.js';
 import { PlacesHandler } from './places.js';
 import { RideLogsHandler } from './ride-logs.js';
+import { CompanionItineraryHandler } from './companion-itinerary.js';
 import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
 
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-10-12T01';
+const BUILD_ID = '2026-10-15T01';
 
 const router = new Router();
 
-// CORS preflight
+// Companion is the only cross-origin consumer allowed to read private itinerary snapshots.
+router.options('/api/trips/:id/companion-itinerary', CompanionItineraryHandler.preflight);
+
+// CORS preflight for existing Ride API routes
 router.options('*', () => cors());
 
 // Auth routes
@@ -45,6 +49,7 @@ router.get('/api/admin/places-usage', requireAdminUser, PlacesHandler.usageStats
 router.get('/api/trips', requireAuth, TripsHandler.listTrips);
 router.post('/api/trips', requireAuth, TripsHandler.createTrip);
 router.get('/api/trips/:id', requireAuth, TripsHandler.getTrip);
+router.get('/api/trips/:id/companion-itinerary', CompanionItineraryHandler.get);
 router.put('/api/trips/:id', requireAuth, TripsHandler.updateTrip);
 router.delete('/api/trips/:id', requireAuth, TripsHandler.deleteTrip);
 
