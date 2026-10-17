@@ -36,3 +36,9 @@ node scripts/saved-places-test.js
 ```
 
 Runs the real Worker router against in-memory SQLite built from the migration. Fixtures are invented.
+
+## Verified release
+
+Build `2026-10-17T01` (17 October 2026, Australia/Sydney), service worker `ride-v13`, deployed from merge `7013953`. Live Worker version: `5f954135-58d5-45dd-85e3-0bcc3fef7021`. The migration was applied to production D1 before the deploy. After deployment, every saved-places route returned 401 without a session, `/api/_build` reported the new build and the app shell loaded with the new assets.
+
+Rollback target: Worker version `f4b233b3-0e5f-4319-b2ea-962ebad96c62` (build `2026-10-15T01`): `npx wrangler rollback f4b233b3-0e5f-4319-b2ea-962ebad96c62`. The `saved_places` table can stay; the older Worker ignores it.
