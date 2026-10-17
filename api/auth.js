@@ -78,6 +78,31 @@ const PROVIDERS = {
   }
 };
 
+// Trip Companion signs in through Ride and should land back on itself.
+const COMPANION_ORIGIN = 'https://trip.incitat.io';
+
+/**
+ * Where to send the user after sign-in. Ride's own URLs become a path;
+ * Trip Companion keeps its absolute URL; anything else (other hosts,
+ * look-alike hosts, userinfo tricks, protocol-relative or javascript: URLs,
+ * unparseable input) falls back to '/'. Exact origin match only.
+ */
+export function sanitizeReturnUrl(raw) {
+  if (typeof raw !== 'string' || !raw) return '/';
+  let parsed;
+  try {
+    parsed = new URL(raw, BASE_URL);
+  } catch {
+    return '/';
+  }
+  if (parsed.username || parsed.password) return '/';
+  if (parsed.origin === new URL(BASE_URL).origin) {
+    return parsed.pathname + parsed.search + parsed.hash;
+  }
+  if (parsed.origin === COMPANION_ORIGIN) return parsed.href;
+  return '/';
+}
+
 export const AuthHandler = {
   /**
    * Initiate OAuth login - redirect to provider
@@ -100,22 +125,7 @@ export const AuthHandler = {
     const state = crypto.randomUUID();
     
     // Store state in KV temporarily (5 minutes)
-    // Validate return URL — extract path from same-origin URLs, reject foreign origins
-    let returnUrl = url.searchParams.get('return') || '/';
-    try {
-      const parsed = new URL(returnUrl, BASE_URL);
-      // Only allow same-origin return URLs
-      if (parsed.origin === new URL(BASE_URL).origin) {
-        returnUrl = parsed.pathname + parsed.search + parsed.hash;
-      } else {
-        returnUrl = '/';
-      }
-    } catch {
-      // If URL parsing fails, ensure it's a safe relative path
-      if (!returnUrl.startsWith('/') || returnUrl.startsWith('//')) {
-        returnUrl = '/';
-      }
-    }
+    const returnUrl = sanitizeReturnUrl(url.searchParams.get('return'));
     await env.RIDE_TRIP_PLANNER_SESSIONS.put(`oauth_state_${state}`, JSON.stringify({
       provider: providerName,
       returnUrl
