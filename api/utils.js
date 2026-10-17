@@ -104,6 +104,11 @@ export async function parseBody(request) {
   }
 }
 
+/** True when an Authorization header carries a Ride personal access token. */
+export function isPersonalAccessToken(authHeader) {
+  return /^bearer\s+ride_pat_/i.test(authHeader || '') && /\sride_pat_/.test(authHeader);
+}
+
 /**
  * Authentication middleware
  */
@@ -114,6 +119,11 @@ export async function requireAuth(context) {
   let token = null;
   
   const authHeader = request.headers.get('Authorization');
+  // Personal access tokens work only on routes wrapped with scoped() in
+  // api-tokens.js. Everywhere else they are refused outright.
+  if (isPersonalAccessToken(authHeader)) {
+    return errorResponse('Access tokens cannot be used on this route', 403);
+  }
   if (authHeader?.startsWith('Bearer ')) {
     token = authHeader.slice(7);
   } else {
@@ -176,6 +186,10 @@ export async function optionalAuth(context) {
   let token = null;
   
   const authHeader = request.headers.get('Authorization');
+  if (isPersonalAccessToken(authHeader)) {
+    context.user = null;
+    return; // Access tokens never act as a browser session
+  }
   if (authHeader?.startsWith('Bearer ')) {
     token = authHeader.slice(7);
   } else {

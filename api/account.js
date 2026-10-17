@@ -30,6 +30,12 @@ export const AccountHandler = {
     // Remove the user's private saved places (not tied to any trip)
     await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM saved_places WHERE user_id = ?').bind(user.id).run();
 
+    // Remove fuel fill-ups and check-ins (they also cascade with trips) and
+    // revoke every personal access token, so no script keeps access.
+    await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM fuel_fills WHERE user_id = ?').bind(user.id).run();
+    await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM checkins WHERE user_id = ?').bind(user.id).run();
+    await env.RIDE_TRIP_PLANNER_DB.prepare('UPDATE api_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').bind(new Date().toISOString(), user.id).run();
+
     // Remove all trips (cascades to child tables via FK)
     await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM trips WHERE user_id = ?').bind(user.id).run();
 

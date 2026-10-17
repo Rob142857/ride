@@ -466,4 +466,48 @@ const API = {
       return API.request('/saved-places/import', { method: 'POST', body: file });
     },
   },
+
+  // Personal access tokens (session only). The secret comes back once, on create.
+  tokens: {
+    async list() {
+      return API.request('/tokens');
+    },
+
+    async create({ name, scopes, expiresInDays }) {
+      return API.request('/tokens', { method: 'POST', body: { name, scopes, expires_in_days: expiresInDays } });
+    },
+
+    async revoke(id) {
+      const data = await API.request(`/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return data.token;
+    },
+  },
+
+  // Fuel fill-ups and estimated range for a trip
+  fuel: {
+    async add(tripId, fill) {
+      return API.request(`/trips/${encodeURIComponent(tripId)}/fuel-fills`, { method: 'POST', body: fill });
+    },
+
+    async list(tripId) {
+      const data = await API.request(`/trips/${encodeURIComponent(tripId)}/fuel-fills`);
+      return data.fills || [];
+    },
+
+    async status(tripId) {
+      return API.request(`/trips/${encodeURIComponent(tripId)}/fuel-status`, { silent: true });
+    },
+  },
+
+  // "I'm here" check-ins and last known location for a trip
+  checkins: {
+    async add(tripId, checkin) {
+      const data = await API.request(`/trips/${encodeURIComponent(tripId)}/checkins`, { method: 'POST', body: checkin });
+      return data.checkin;
+    },
+
+    async lastLocation(tripId) {
+      return API.request(`/trips/${encodeURIComponent(tripId)}/last-location`, { silent: true });
+    },
+  },
 };

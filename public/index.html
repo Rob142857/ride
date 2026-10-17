@@ -44,12 +44,13 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
   
-   <link rel="stylesheet" href="css/global.css?v=2026-10-17T02">
-    <link rel="stylesheet" href="css/app.css?v=2026-10-17T02">
-    <link rel="stylesheet" href="css/ride-mode.css?v=2026-10-17T02">
-    <link rel="stylesheet" href="css/route-components.css?v=2026-10-17T02">
-    <link rel="stylesheet" href="css/itinerary.css?v=2026-10-17T02">
-    <link rel="stylesheet" href="css/saved-places.css?v=2026-10-17T02">
+   <link rel="stylesheet" href="css/global.css?v=2026-10-17T03">
+    <link rel="stylesheet" href="css/app.css?v=2026-10-17T03">
+    <link rel="stylesheet" href="css/ride-mode.css?v=2026-10-17T03">
+    <link rel="stylesheet" href="css/route-components.css?v=2026-10-17T03">
+    <link rel="stylesheet" href="css/itinerary.css?v=2026-10-17T03">
+    <link rel="stylesheet" href="css/saved-places.css?v=2026-10-17T03">
+    <link rel="stylesheet" href="css/live.css?v=2026-10-17T03">
   </head>
 <body class="geistsans_47a3c9f1-module__2HyNMa__variable geistmono_cfbefb1d-module__tUxLBG__variable antialiased">
   <div id="app">
@@ -178,6 +179,15 @@
         <button id="closeItineraryBtn" class="icon-btn" aria-label="Close itinerary">✕</button>
       </div>
       <div class="panel-content itinerary-content">
+        <section id="tripLiveCard" class="trip-live-card hidden" aria-label="Fuel and location">
+          <div class="trip-live-actions">
+            <button id="liveAddFillBtn" type="button" class="primary-btn">⛽ Add fill-up</button>
+            <button id="liveCheckinBtn" type="button" class="cancel-btn">📍 I'm here</button>
+          </div>
+          <p id="liveFuelLine" class="trip-live-line"></p>
+          <p id="liveLocationLine" class="trip-live-line"></p>
+          <p id="liveStatus" class="trip-live-status" role="status"></p>
+        </section>
         <div id="itinerarySummary" aria-live="polite"></div>
         <details id="itinerarySettings" class="itinerary-settings">
           <summary>Dates and fuel settings</summary>
@@ -300,6 +310,87 @@
             <button type="submit" class="primary-btn">Save</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="fuelFillModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="fuelFillTitle">
+      <div class="modal-content live-modal">
+        <div class="modal-header">
+          <h3 id="fuelFillTitle">Add fill-up</h3>
+          <button type="button" class="modal-close" data-close aria-label="Close">×</button>
+        </div>
+        <form id="fuelFillForm" novalidate>
+          <label class="field-label" for="fuelFillPrice">Price ($ per litre)</label>
+          <input id="fuelFillPrice" type="number" min="0.01" max="20" step="0.001" inputmode="decimal" required>
+          <label class="live-check"><input id="fuelFillFull" type="checkbox" checked> Filled to full</label>
+          <label class="field-label" for="fuelFillLitres">Litres (optional)</label>
+          <input id="fuelFillLitres" type="number" min="0.1" max="1000" step="0.01" inputmode="decimal">
+          <details class="live-more">
+            <summary>Station, jerry can, payment, odometer</summary>
+            <label class="field-label" for="fuelFillStation">Station</label>
+            <input id="fuelFillStation" type="text" maxlength="200">
+            <label class="live-check"><input id="fuelFillJerry" type="checkbox"> Jerry can filled</label>
+            <div class="live-grid">
+              <label class="field-label">Jerry litres<input id="fuelFillJerryLitres" type="number" min="0" max="500" step="0.1" inputmode="decimal"></label>
+              <label class="field-label">Odometer (km)<input id="fuelFillOdometer" type="number" min="0" step="1" inputmode="numeric"></label>
+            </div>
+            <label class="field-label" for="fuelFillPayment">Paid with</label>
+            <select id="fuelFillPayment">
+              <option value="">Not recorded</option>
+              <option value="card">Card</option>
+              <option value="afterpay">Afterpay</option>
+              <option value="cash">Cash</option>
+              <option value="other">Other</option>
+            </select>
+            <label class="field-label" for="fuelFillNotes">Notes</label>
+            <textarea id="fuelFillNotes" rows="2" maxlength="2000"></textarea>
+          </details>
+          <p id="fuelFillLocation" class="microcopy"></p>
+          <div class="modal-actions">
+            <button type="button" class="cancel-btn" data-close>Cancel</button>
+            <button id="fuelFillSave" type="submit" class="primary-btn">Save fill-up</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="accessTokensModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="accessTokensTitle">
+      <div class="modal-content live-modal">
+        <div class="modal-header">
+          <h3 id="accessTokensTitle">Access tokens</h3>
+          <button type="button" class="modal-close" data-close aria-label="Close">×</button>
+        </div>
+        <p class="microcopy">Let a script you trust, such as your trip agent, read or update your own Ride data. A token never works for sign-in, account settings or other tokens. Keep it private like a password.</p>
+        <div id="accessTokenSecretBox" class="token-secret hidden" role="alert">
+          <strong>Copy this token now. Ride will not show it again.</strong>
+          <input id="accessTokenSecret" type="text" readonly aria-label="New access token" autocomplete="off" spellcheck="false">
+          <div class="token-secret-actions">
+            <button id="accessTokenCopy" type="button" class="primary-btn">Copy</button>
+            <button id="accessTokenDone" type="button" class="cancel-btn">I've saved it</button>
+          </div>
+        </div>
+        <form id="accessTokenForm" novalidate>
+          <label class="field-label" for="accessTokenName">Name</label>
+          <input id="accessTokenName" type="text" maxlength="80" placeholder="Trip agent" required>
+          <fieldset class="token-scopes">
+            <legend class="field-label">What it can do</legend>
+            <div id="accessTokenScopes"></div>
+          </fieldset>
+          <label class="field-label" for="accessTokenExpiry">Expires after</label>
+          <select id="accessTokenExpiry">
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+            <option value="90" selected>90 days</option>
+            <option value="180">180 days</option>
+            <option value="365">1 year</option>
+          </select>
+          <div class="modal-actions">
+            <button id="accessTokenCreate" type="submit" class="primary-btn">Create token</button>
+          </div>
+        </form>
+        <h4 class="token-list-heading">Your tokens</h4>
+        <p id="accessTokenStatus" class="microcopy" role="status"></p>
+        <div id="accessTokenList" class="token-list"></div>
       </div>
     </div>
 
@@ -781,6 +872,11 @@
             <input type="number" id="fuelPrice" step="0.01" min="0" placeholder="e.g. 3.20" />
           </div>
         </div>
+        <div class="form-section settings-tokens">
+          <span class="toggle-label-text">Access tokens</span>
+          <p class="microcopy">For scripts such as your trip agent. Only you can create or revoke them.</p>
+          <button type="button" id="accessTokensBtn" class="secondary-btn">Manage access tokens</button>
+        </div>
         <div class="form-actions">
           <button type="button" id="settingsCancel" class="secondary-btn">Cancel</button>
           <button type="button" id="settingsSave" class="primary-btn">Save</button>
@@ -850,38 +946,39 @@
   
   <!-- Scripts -->
 <script src="/insights.js" data-app="ride" data-component="planner" data-endpoint="https://events.rmesolutions.com.au/collect" defer></script>
-<script src="js/insights-hook.js?v=2026-10-17T02"></script>
+<script src="js/insights-hook.js?v=2026-10-17T03"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.min.js"></script>
-  <script src="js/route-editor.js?v=2026-10-17T02"></script>
-  <script src="js/route-selector.js?v=2026-10-17T02"></script>
-  <script src="js/api.js?v=2026-10-17T02"></script>
-  <script src="js/storage.js?v=2026-10-17T02"></script>
-  <script src="js/utils.js?v=2026-10-17T02"></script>
-  <script src="js/trip.js?v=2026-10-17T02"></script>
-  <script src="js/itinerary.js?v=2026-10-17T02"></script>
-  <script src="js/basemaps.js?v=2026-10-17T02"></script>
-    <script src="js/map.js?v=2026-10-17T02"></script>
-  <script src="js/map-ride.js?v=2026-10-17T02"></script>
-  <script src="js/route-alternatives.js?v=2026-10-17T02"></script>
-  <script src="js/ui.js?v=2026-10-17T02"></script>
-  <script src="js/ui-renderers.js?v=2026-10-17T02"></script>
-  <script src="js/ui-place-search.js?v=2026-10-17T02"></script>
-  <script src="js/share.js?v=2026-10-17T02"></script>
-  <script src="js/export-import.js?v=2026-10-17T02"></script>
-  <script src="js/app-core.js?v=2026-10-17T02"></script>
-  <script src="js/auth-controller.js?v=2026-10-17T02"></script>
-  <script src="js/trip-controller.js?v=2026-10-17T02"></script>
-  <script src="js/trip-details.js?v=2026-10-17T02"></script>
-  <script src="js/waypoint-controller.js?v=2026-10-17T02"></script>
-  <script src="js/journal-controller.js?v=2026-10-17T02"></script>
-  <script src="js/ride-recorder.js?v=2026-10-17T02"></script>
-  <script src="js/ride-navigation.js?v=2026-10-17T02"></script>
-  <script src="js/ride-ride-ui.js?v=2026-10-17T02"></script>
-  <script src="js/ride-controller.js?v=2026-10-17T02"></script>
-  <script src="js/ride-session.js?v=2026-10-17T02"></script>
-  <script src="js/itinerary-ui.js?v=2026-10-17T02"></script>
-  <script src="js/saved-places-ui.js?v=2026-10-17T02"></script>
+  <script src="js/route-editor.js?v=2026-10-17T03"></script>
+  <script src="js/route-selector.js?v=2026-10-17T03"></script>
+  <script src="js/api.js?v=2026-10-17T03"></script>
+  <script src="js/storage.js?v=2026-10-17T03"></script>
+  <script src="js/utils.js?v=2026-10-17T03"></script>
+  <script src="js/trip.js?v=2026-10-17T03"></script>
+  <script src="js/itinerary.js?v=2026-10-17T03"></script>
+  <script src="js/basemaps.js?v=2026-10-17T03"></script>
+    <script src="js/map.js?v=2026-10-17T03"></script>
+  <script src="js/map-ride.js?v=2026-10-17T03"></script>
+  <script src="js/route-alternatives.js?v=2026-10-17T03"></script>
+  <script src="js/ui.js?v=2026-10-17T03"></script>
+  <script src="js/ui-renderers.js?v=2026-10-17T03"></script>
+  <script src="js/ui-place-search.js?v=2026-10-17T03"></script>
+  <script src="js/share.js?v=2026-10-17T03"></script>
+  <script src="js/export-import.js?v=2026-10-17T03"></script>
+  <script src="js/app-core.js?v=2026-10-17T03"></script>
+  <script src="js/auth-controller.js?v=2026-10-17T03"></script>
+  <script src="js/trip-controller.js?v=2026-10-17T03"></script>
+  <script src="js/trip-details.js?v=2026-10-17T03"></script>
+  <script src="js/waypoint-controller.js?v=2026-10-17T03"></script>
+  <script src="js/journal-controller.js?v=2026-10-17T03"></script>
+  <script src="js/ride-recorder.js?v=2026-10-17T03"></script>
+  <script src="js/ride-navigation.js?v=2026-10-17T03"></script>
+  <script src="js/ride-ride-ui.js?v=2026-10-17T03"></script>
+  <script src="js/ride-controller.js?v=2026-10-17T03"></script>
+  <script src="js/ride-session.js?v=2026-10-17T03"></script>
+  <script src="js/itinerary-ui.js?v=2026-10-17T03"></script>
+  <script src="js/saved-places-ui.js?v=2026-10-17T03"></script>
+  <script src="js/live-ui.js?v=2026-10-17T03"></script>
   
   <!-- Service Worker Registration, Live Update & PWA Install -->
   <script>
@@ -939,6 +1036,6 @@
       installBanner?.classList.add('hidden');
     }
   </script>
-  <script src="js/share-patch.js?v=2026-10-17T02"></script>
+  <script src="js/share-patch.js?v=2026-10-17T03"></script>
 </body>
 </html>

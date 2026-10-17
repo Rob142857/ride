@@ -1,0 +1,51 @@
+/* Live trip actuals (fill-ups, check-ins) and access tokens. Mobile first. */
+.trip-live-card {
+  margin: 0 0 14px; padding: 12px; border: 1px solid var(--border-elegant); border-radius: 8px;
+  background: rgba(255, 255, 255, .04); overflow-wrap: anywhere;
+}
+.trip-live-card.hidden { display: none; }
+.trip-live-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.trip-live-actions button { min-height: 48px; padding: 10px 12px; font-size: .9rem; }
+.trip-live-actions button:disabled { opacity: .5; cursor: wait; }
+.trip-live-line { margin: 4px 0 0; font-size: .82rem; color: #dfe2ec; }
+.trip-live-status { margin: 6px 0 0; font-size: .78rem; color: #a1d9f7; min-height: 1em; }
+
+.live-modal { max-width: 520px; max-height: 88vh; overflow-y: auto; }
+.live-modal input[type="number"], .live-modal input[type="text"], .live-modal select, .live-modal textarea { width: 100%; }
+.live-modal input[type="date"] { color-scheme: dark; }
+.live-check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: .9rem; color: #dfe2ec; cursor: pointer; }
+.live-check input[type="checkbox"] {
+  -webkit-appearance: checkbox; appearance: auto; width: 22px; height: 22px; min-height: 0; padding: 0; margin: 0;
+  accent-color: var(--accent); flex: 0 0 auto;
+}
+.live-more { margin: 6px 0 10px; border: 1px solid var(--border-elegant); border-radius: 8px; padding: 10px; }
+.live-more summary { cursor: pointer; font-size: .85rem; font-weight: 600; min-height: 32px; }
+.live-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.live-grid .field-label { display: block; }
+.live-grid input { margin-top: 4px; }
+
+.settings-tokens { border-top: 1px solid var(--border-elegant); padding-top: 12px; margin-top: 12px; }
+.settings-tokens button { min-height: 44px; margin-top: 6px; }
+
+.token-secret {
+  margin: 10px 0 14px; padding: 12px; border: 1px solid #f59e0b; border-radius: 8px; background: rgba(245, 158, 11, .1);
+  color: #fde68a; font-size: .85rem;
+}
+.token-secret.hidden { display: none; }
+.token-secret input {
+  width: 100%; margin: 8px 0; padding: 10px; font-family: ui-monospace, Consolas, monospace; font-size: .8rem;
+  background: var(--bg-primary); color: #fff; border: 1px solid var(--border-elegant); border-radius: 6px;
+}
+.token-secret-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.token-secret-actions button { min-height: 44px; }
+.token-scopes { border: 0; padding: 0; margin: 8px 0; }
+.token-scopes .live-check { min-height: 40px; font-size: .85rem; }
+.token-list-heading { margin: 16px 0 4px; font-size: .95rem; }
+.token-list { display: grid; gap: 8px; }
+.token-row { padding: 10px; border: 1px solid var(--border-elegant); border-radius: 8px; background: rgba(255, 255, 255, .03); }
+.token-row-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.token-badge { font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: rgba(34, 197, 94, .2); color: #bbf7d0; }
+.token-revoked .token-badge, .token-expired .token-badge { background: rgba(148, 163, 184, .2); color: #cbd5e1; }
+.token-revoked, .token-expired { opacity: .7; }
+.token-meta { margin: 4px 0 0; font-size: .76rem; color: #b2b7c8; overflow-wrap: anywhere; }
+.token-revoke { margin-top: 8px; min-height: 40px; color: #f3b5b5; border-color: rgba(239, 68, 68, .45); }

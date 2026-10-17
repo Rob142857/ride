@@ -107,6 +107,30 @@ Or manually: `npx wrangler deploy`
 
 Detailed setup: `DEPLOY.md`. For new environments, copy `wrangler.template.toml`.
 
+## Access tokens and trip actuals API
+
+Owners can create personal access tokens in **Settings > Access tokens** for scripts such as a trip agent.
+A token is shown once (`ride_pat_` + 43 characters); Ride stores only its SHA-256 hash. Tokens can't sign in,
+change account settings or manage tokens, and they work only on the routes below, per scope. Each token is
+limited to 60 requests a minute, and every write made with a token is recorded in `api_token_audit`.
+Token responses carry no CORS headers. Migration: `api/migrations/2026-10-17_tokens_fuel_checkins.sql`.
+
+| Scope | Routes |
+|---|---|
+| `trips:read` | `GET /api/trips`, `GET /api/trips/:id` |
+| `itinerary:write` | `PUT /api/trips/:id/itinerary` with `If-Match: <version>` and `{ "itinerary": {...} }` (planning settings only) |
+| `places:rw` | `/api/saved-places` (all routes) |
+| `fuel:rw` | `GET/POST /api/trips/:tripId/fuel-fills`, `GET/PUT/DELETE .../fuel-fills/:id`, `GET /api/trips/:tripId/fuel-status` |
+| `checkins:rw` | `GET/POST /api/trips/:tripId/checkins`, `DELETE .../checkins/:id`, `GET /api/trips/:tripId/last-location` |
+| `ridelogs:read` | `GET /api/trips/:tripId/ride-logs` |
+
+The newest fill's price becomes the trip's planning `fuel.pricePerLitre` (and bumps the trip version).
+`fuel-status` estimates range left from the last full fill, using the larger of logged ride distance and the
+planned legs travelled since, against the plan's tank + jerry capacity (default 110 L) and L/100 km.
+
+Trip Companion uses `/api/companion/...` (live status, saved places, quick fill-up and check-in). Those routes
+accept only the owner's Ride session cookie and allow CORS only from `https://trip.incitat.io`.
+
 ## Public Share URLs
 
 - Canonical short URL: `https://ride.incitat.io/<shortCode>`
