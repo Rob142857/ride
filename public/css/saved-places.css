@@ -1,0 +1,74 @@
+/* Saved places: the owner's private list of places worth revisiting. Mobile first. */
+#placesPanel { background: rgba(18, 20, 34, .97); }
+.places-content { padding: 14px; }
+.places-intro { color: #b2b7c8; font-size: .85rem; margin: 0 0 12px; }
+.places-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.places-actions button { min-height: 44px; padding: 10px 14px; font-size: .85rem; }
+.places-map-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: .85rem; color: #dfe2ec; cursor: pointer; }
+.places-map-toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
+.places-filters { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.places-filters input { grid-column: 1 / -1; }
+.places-filters input, .places-filters select {
+  width: 100%; min-height: 44px; padding: 8px 10px; color-scheme: dark; font: inherit; font-size: .85rem;
+  background: var(--bg-primary); border: 1px solid var(--border-elegant); border-radius: 8px; color: white;
+}
+.places-status-row { display: flex; justify-content: space-between; gap: 10px; font-size: .78rem; color: #b2b7c8; min-height: 1.2em; margin: 4px 0 10px; }
+.places-list { display: grid; gap: 10px; }
+.places-empty { padding: 20px 0; color: #c5c9d7; font-size: .9rem; }
+.places-empty button { margin-top: 12px; }
+.place-card { padding: 12px; border: 1px solid var(--border-elegant); border-radius: 8px; background: rgba(255, 255, 255, .03); overflow-wrap: anywhere; }
+.place-card-head { display: flex; gap: 10px; align-items: flex-start; }
+.place-icon { font-size: 1.4rem; line-height: 1; padding-top: 2px; }
+.place-titles h3 { margin: 0; font-size: 1rem; color: var(--text-primary); }
+.place-meta { font-size: .78rem; color: #c8ccda; margin-top: 2px; }
+.place-address { font-size: .8rem; color: #b2b7c8; margin-top: 6px; }
+.place-avoid { font-size: .8rem; color: #ead8a0; margin-top: 6px; }
+.place-notes { font-size: .85rem; color: #dfe2ec; margin: 6px 0 0; white-space: pre-line; }
+.place-tags { font-size: .75rem; color: #a1d9f7; margin-top: 6px; }
+.place-sources { display: flex; gap: 12px; font-size: .78rem; margin-top: 6px; }
+.place-sources a { color: #a1d9f7; }
+.place-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.place-actions button, .place-actions a { min-height: 40px; padding: 8px 12px; font-size: .78rem; text-decoration: none; display: inline-flex; align-items: center; }
+.place-actions button:disabled, .places-actions button:disabled, .places-tools button:disabled { opacity: .45; cursor: not-allowed; }
+.place-delete { color: #f3b5b5; border-color: rgba(239, 68, 68, .45); }
+.places-tools { display: flex; gap: 8px; flex-wrap: wrap; padding: 16px 0 8px; }
+.places-tools button { min-height: 44px; font-size: .8rem; padding: 9px 12px; }
+
+.places-pick-banner {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 60;
+  top: calc(var(--header-height) + var(--safe-area-top) + 10px);
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; max-width: calc(100vw - 32px);
+  background: rgba(18, 20, 34, .95); border: 1px solid var(--accent); border-radius: 10px; color: #fff; font-size: .85rem;
+}
+.places-pick-banner.hidden { display: none; }
+.places-pick-banner button { min-height: 40px; padding: 6px 12px; }
+body.places-pick-mode #map { cursor: crosshair; }
+
+.saved-place-modal { max-width: 560px; max-height: 88vh; overflow-y: auto; }
+.saved-place-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.saved-place-grid .field-label { display: block; }
+.saved-place-grid .field-label select, .saved-place-grid .field-label input { margin-top: 4px; }
+.saved-place-modal input[type="date"] { color-scheme: dark; }
+.saved-place-more { margin: 4px 0 12px; border: 1px solid var(--border-elegant); border-radius: 8px; padding: 10px; }
+.saved-place-more summary { cursor: pointer; font-size: .85rem; font-weight: 600; min-height: 32px; }
+.saved-place-modal .modal-actions { flex-wrap: wrap; }
+#savedPlaceDeleteBtn { margin-right: auto; }
+
+.saved-place-marker span {
+  display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border-radius: 8px; border: 2px solid #fff; font-size: 15px; box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+}
+.saved-place-popup { display: grid; gap: 4px; min-width: 160px; max-width: 240px; font-size: 12px; }
+.saved-place-popup button { margin-top: 6px; min-height: 36px; }
+
+@media (min-width: 768px) {
+  #placesPanel { left: var(--sidebar-width); max-width: 820px; }
+  body.sidebar-collapsed #placesPanel { left: 0; }
+  .places-filters { grid-template-columns: 2fr 1fr 1fr 1fr; }
+  .places-filters input { grid-column: auto; }
+}
+@media (max-width: 340px) {
+  .places-filters { grid-template-columns: 1fr 1fr; }
+  .places-filters #placesSort { grid-column: 1 / -1; }
+  .saved-place-grid { grid-template-columns: 1fr; }
+}

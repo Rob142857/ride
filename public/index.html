@@ -49,6 +49,7 @@
     <link rel="stylesheet" href="css/ride-mode.css?v=2026-10-15T01">
     <link rel="stylesheet" href="css/route-components.css?v=2026-10-15T01">
     <link rel="stylesheet" href="css/itinerary.css?v=2026-10-15T01">
+    <link rel="stylesheet" href="css/saved-places.css?v=2026-10-15T01">
   </head>
 <body class="geistsans_47a3c9f1-module__2HyNMa__variable geistmono_cfbefb1d-module__tUxLBG__variable antialiased">
   <div id="app">
@@ -157,6 +158,7 @@
         <li><button id="importBtn">Import Trip</button></li>
         <li><button id="exportBtn">Export Current Trip</button></li>
         <li><button id="itineraryMenuBtn">Trip Itinerary</button></li>
+        <li><button id="placesMenuBtn">My Places</button></li>
         <li><button id="settingsBtn">Settings</button></li>
         <li class="menu-divider"></li>
         <li><button id="aboutBtn">About</button></li>
@@ -197,6 +199,109 @@
         </div>
       </div>
     </section>
+
+    <section id="placesPanel" class="panel hidden" aria-labelledby="placesHeading">
+      <div class="panel-header">
+        <div class="panel-title">
+          <h2 id="placesHeading">My Places</h2>
+          <span class="itinerary-badge">Private</span>
+          <button id="refreshPlacesBtn" class="icon-btn heading-refresh" aria-label="Refresh places">↻</button>
+        </div>
+        <button id="closePlacesBtn" class="icon-btn" aria-label="Close places">✕</button>
+      </div>
+      <div class="panel-content places-content">
+        <p class="places-intro">Camps, showers and spots worth coming back to. Only you can see these.</p>
+        <div class="places-actions">
+          <button id="placesAddMapBtn" type="button" class="primary-btn">+ Tap map</button>
+          <button id="placesAddHereBtn" type="button" class="cancel-btn">+ My location</button>
+          <label class="places-map-toggle"><input id="placesMapToggle" type="checkbox"> Show on map</label>
+        </div>
+        <div class="places-filters">
+          <input id="placesSearch" type="search" placeholder="Search name, notes, tags" aria-label="Search places">
+          <select id="placesTypeFilter" aria-label="Filter by type"><option value="">All types</option></select>
+          <select id="placesTagFilter" aria-label="Filter by tag"><option value="">All tags</option></select>
+          <select id="placesSort" aria-label="Sort places">
+            <option value="recent">Recent</option>
+            <option value="name">Name</option>
+            <option value="rating">Rating</option>
+          </select>
+        </div>
+        <div class="places-status-row"><span id="placesStatus" role="status"></span><span id="placesCount"></span></div>
+        <div id="placesList" class="places-list"></div>
+        <div class="places-tools">
+          <button id="placesExportBtn" type="button" class="cancel-btn">Export JSON</button>
+          <button id="placesImportBtn" type="button" class="cancel-btn">Import JSON</button>
+          <input id="placesImportFile" type="file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+    </section>
+
+    <div id="placesPickBanner" class="places-pick-banner hidden" role="status">
+      <span>Tap the map to drop a place</span>
+      <button id="placesPickCancel" type="button" class="cancel-btn">Cancel</button>
+    </div>
+
+    <div id="savedPlaceModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="savedPlaceTitle">
+      <div class="modal-content saved-place-modal">
+        <div class="modal-header">
+          <h3 id="savedPlaceTitle">Save a place</h3>
+          <button type="button" class="modal-close" data-close aria-label="Close">×</button>
+        </div>
+        <form id="savedPlaceForm" novalidate>
+          <label class="field-label" for="savedPlaceName">Name</label>
+          <input id="savedPlaceName" type="text" maxlength="200" required>
+          <div class="saved-place-grid">
+            <label class="field-label">Type<select id="savedPlaceType"></select></label>
+            <label class="field-label">Rating
+              <select id="savedPlaceRating">
+                <option value="">Not rated</option>
+                <option value="5">★★★★★ 5</option>
+                <option value="4">★★★★ 4</option>
+                <option value="3">★★★ 3</option>
+                <option value="2">★★ 2</option>
+                <option value="1">★ 1</option>
+              </select>
+            </label>
+            <label class="field-label">Latitude<input id="savedPlaceLat" type="number" step="any" inputmode="decimal" required></label>
+            <label class="field-label">Longitude<input id="savedPlaceLng" type="number" step="any" inputmode="decimal" required></label>
+          </div>
+          <div id="savedPlaceWaypointRow">
+            <label class="field-label">From a waypoint in this trip<select id="savedPlaceWaypoint"></select></label>
+          </div>
+          <p id="savedPlaceLinkNote" class="microcopy"></p>
+          <label class="field-label" for="savedPlaceAddress">Address</label>
+          <input id="savedPlaceAddress" type="text" maxlength="500">
+          <label class="field-label" for="savedPlaceNotes">Notes</label>
+          <textarea id="savedPlaceNotes" rows="4" maxlength="10000"></textarea>
+          <label class="field-label" for="savedPlaceTags">Tags (comma separated)</label>
+          <input id="savedPlaceTags" type="text" placeholder="river, quiet, free">
+          <details id="savedPlaceMore" class="saved-place-more">
+            <summary>Cost, facilities, timing and links</summary>
+            <div class="saved-place-grid">
+              <label class="field-label">Cost ($)<input id="savedPlaceCost" type="number" min="0" step="0.01" inputmode="decimal"></label>
+              <label class="field-label">Cost seen on<input id="savedPlaceCostSeen" type="date"></label>
+            </div>
+            <label class="field-label" for="savedPlaceCostNote">Cost note</label>
+            <input id="savedPlaceCostNote" type="text" maxlength="200" placeholder="per night, off-peak">
+            <label class="field-label" for="savedPlaceFacilities">Facilities (comma separated)</label>
+            <input id="savedPlaceFacilities" type="text" placeholder="toilets, hot showers, water">
+            <label class="field-label" for="savedPlaceBestTime">Best time</label>
+            <input id="savedPlaceBestTime" type="text" maxlength="1000">
+            <label class="field-label" for="savedPlaceAvoid">Avoid</label>
+            <input id="savedPlaceAvoid" type="text" maxlength="1000" placeholder="school holidays, long weekends">
+            <label class="field-label" for="savedPlaceLastVisited">Last visited</label>
+            <input id="savedPlaceLastVisited" type="date">
+            <label class="field-label" for="savedPlaceLinks">Source links (one per line)</label>
+            <textarea id="savedPlaceLinks" rows="2" placeholder="https://"></textarea>
+          </details>
+          <div class="modal-actions">
+            <button id="savedPlaceDeleteBtn" type="button" class="cancel-btn place-delete hidden">Delete</button>
+            <button type="button" class="cancel-btn" data-close>Cancel</button>
+            <button type="submit" class="primary-btn">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <div id="itineraryPreviewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="itineraryPreviewTitle">
       <div class="modal-content itinerary-preview">
@@ -432,6 +537,11 @@
           <div class="field-row attachments-row">
             <label class="field-label">Attachments</label>
             <div id="waypointAttachmentList" class="note-attachments"></div>
+          </div>
+
+          <div class="field-row">
+            <button type="button" class="secondary-btn" id="waypointSaveAsPlaceBtn">Save to my Places</button>
+            <p class="microcopy">Keep this spot in your private list of places worth revisiting.</p>
           </div>
 
           <div class="modal-actions">
@@ -771,6 +881,7 @@
   <script src="js/ride-controller.js?v=2026-10-15T01"></script>
   <script src="js/ride-session.js?v=2026-10-15T01"></script>
   <script src="js/itinerary-ui.js?v=2026-10-15T01"></script>
+  <script src="js/saved-places-ui.js?v=2026-10-15T01"></script>
   
   <!-- Service Worker Registration, Live Update & PWA Install -->
   <script>
