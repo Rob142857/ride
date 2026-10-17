@@ -31,3 +31,8 @@ apps/web/build/
 # Logs
 *.log
 npm-debug.log*
+
+# Playwright output (baselines live in e2e/mobile/__screenshots__)
+test-results/
+playwright-report/
+

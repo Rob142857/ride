@@ -20,6 +20,9 @@
     "kv:create": "wrangler kv:namespace create RIDE_TRIP_PLANNER_SESSIONS",
     "dev:remote": "wrangler dev --remote --d1=RIDE_TRIP_PLANNER_DB --kv=RIDE_TRIP_PLANNER_SESSIONS --r2=RIDE_TRIP_PLANNER_ATTACHMENTS",
     "smoke": "node scripts/smoke.js",
+    "test:mobile": "playwright test",
+    "test:mobile:update": "playwright test --update-snapshots",
+    "test:mobile:report": "playwright show-report playwright-report/mobile",
     "setup": "echo 'Run: npm run db:create && npm run kv:create && update wrangler.toml with IDs && npm run db:migrate'"
   },
   "keywords": [
@@ -34,7 +37,10 @@
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
     "@eslint/js": "^9.0",
+    "@playwright/test": "1.64.1",
     "eslint": "^9.0.0",
+    "leaflet": "1.9.4",
+    "leaflet-routing-machine": "3.2.12",
     "sharp": "^0.35.5",
     "wrangler": "^4.151.0"
   }

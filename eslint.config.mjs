@@ -135,6 +135,30 @@ export default [
   },
 
   {
+    // Playwright mobile suite: Node ES modules whose page.evaluate callbacks
+    // run in the browser.
+    files: ['e2e/**/*.mjs', 'playwright.config.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        Buffer: 'readonly',
+        URL: 'readonly',
+        window: 'readonly',
+        document: 'readonly',
+        localStorage: 'readonly',
+        getComputedStyle: 'readonly',
+        URLSearchParams: 'readonly',
+        structuredClone: 'readonly',
+      },
+    },
+    // Playwright fixtures must destructure an empty object: ({}, use) => ...
+    rules: { ...baseRules, 'no-empty-pattern': 'off' },
+  },
+
+  {
     // SDK package is consumed as a module; keep false-positive noise low
     files: ['packages/**/*.js'],
     languageOptions: {
