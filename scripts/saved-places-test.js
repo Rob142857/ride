@@ -52,6 +52,7 @@ function buildDatabase() {
     CREATE TABLE attachments (id TEXT PRIMARY KEY, trip_id TEXT, storage_key TEXT);
   `);
   db.exec(fs.readFileSync(path.join(repo, 'api/migrations/2026-10-17_saved_places.sql'), 'utf8'));
+  db.exec(fs.readFileSync(path.join(repo, 'api/migrations/2026-10-17_tokens_fuel_checkins.sql'), 'utf8'));
   db.exec(`
     INSERT INTO users (id, email) VALUES ('owner', 'owner@example.test'), ('other', 'other@example.test'),
       ('blocked', 'blocked@example.test');

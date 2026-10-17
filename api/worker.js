@@ -16,6 +16,11 @@ import { PlacesHandler } from './places.js';
 import { RideLogsHandler } from './ride-logs.js';
 import { CompanionItineraryHandler } from './companion-itinerary.js';
 import { SavedPlacesHandler } from './saved-places.js';
+import { ApiTokensHandler, scoped } from './api-tokens.js';
+import { FuelFillsHandler } from './fuel-fills.js';
+import { CheckinsHandler } from './checkins.js';
+import { ItineraryWriteHandler } from './itinerary-write.js';
+import { CompanionLiveHandler } from './companion-live.js';
 import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
 
 // Build fingerprint — changes on every deploy. Used by service worker and client
@@ -27,6 +32,8 @@ const router = new Router();
 
 // Companion is the only cross-origin consumer allowed to read private itinerary snapshots.
 router.options('/api/trips/:id/companion-itinerary', CompanionItineraryHandler.preflight);
+// Companion live API (fuel status, last location, saved places, quick writes): trip.incitat.io only.
+router.options('/api/companion/*', CompanionLiveHandler.preflight);
 
 // CORS preflight for existing Ride API routes
 router.options('*', () => cors());
@@ -46,10 +53,17 @@ router.post('/api/admin/users/:id/notes', requireAdminUser, AuthHandler.addAdmin
 router.put('/api/admin/users/:id/notes/:noteId', requireAdminUser, AuthHandler.updateAdminNote);
 router.get('/api/admin/places-usage', requireAdminUser, PlacesHandler.usageStats);
 
-// Trip routes (protected)
-router.get('/api/trips', requireAuth, TripsHandler.listTrips);
+// Personal access tokens: managed only from a signed-in Ride session (never with a token).
+router.get('/api/tokens', ApiTokensHandler.list);
+router.post('/api/tokens', ApiTokensHandler.create);
+router.delete('/api/tokens/:id', ApiTokensHandler.revoke);
+
+// Trip routes (protected). scoped(scope, handler) accepts the owner's session or
+// a personal access token with that scope; plain requireAuth refuses tokens.
+router.get('/api/trips', scoped('trips:read', TripsHandler.listTrips));
 router.post('/api/trips', requireAuth, TripsHandler.createTrip);
-router.get('/api/trips/:id', requireAuth, TripsHandler.getTrip);
+router.get('/api/trips/:id', scoped('trips:read', TripsHandler.getTrip));
+router.put('/api/trips/:id/itinerary', scoped('itinerary:write', ItineraryWriteHandler.put));
 router.get('/api/trips/:id/companion-itinerary', CompanionItineraryHandler.get);
 router.put('/api/trips/:id', requireAuth, TripsHandler.updateTrip);
 router.delete('/api/trips/:id', requireAuth, TripsHandler.deleteTrip);
@@ -60,7 +74,27 @@ router.put('/api/trips/:id/alternatives', requireAuth, TripsHandler.saveAlternat
 
 // Ride logs (actual GPS tracks) for a trip (protected)
 router.post('/api/trips/:tripId/ride-logs', requireAuth, RideLogsHandler.saveRideLog);
-router.get('/api/trips/:tripId/ride-logs', requireAuth, RideLogsHandler.listRideLogs);
+router.get('/api/trips/:tripId/ride-logs', scoped('ridelogs:read', RideLogsHandler.listRideLogs));
+
+// Fuel fill-ups (live source of truth for fuel) and fuel status / estimated range
+router.get('/api/trips/:tripId/fuel-status', scoped('fuel:rw', FuelFillsHandler.status));
+router.get('/api/trips/:tripId/fuel-fills', scoped('fuel:rw', FuelFillsHandler.list));
+router.post('/api/trips/:tripId/fuel-fills', scoped('fuel:rw', FuelFillsHandler.create));
+router.get('/api/trips/:tripId/fuel-fills/:id', scoped('fuel:rw', FuelFillsHandler.get));
+router.put('/api/trips/:tripId/fuel-fills/:id', scoped('fuel:rw', FuelFillsHandler.update));
+router.delete('/api/trips/:tripId/fuel-fills/:id', scoped('fuel:rw', FuelFillsHandler.remove));
+
+// Location check-ins ("I'm here") and last known location
+router.get('/api/trips/:tripId/last-location', scoped('checkins:rw', CheckinsHandler.lastLocation));
+router.get('/api/trips/:tripId/checkins', scoped('checkins:rw', CheckinsHandler.list));
+router.post('/api/trips/:tripId/checkins', scoped('checkins:rw', CheckinsHandler.create));
+router.delete('/api/trips/:tripId/checkins/:id', scoped('checkins:rw', CheckinsHandler.remove));
+
+// Companion live API (session cookie only, CORS for https://trip.incitat.io only)
+router.get('/api/companion/trips/:tripId/live', CompanionLiveHandler.live);
+router.post('/api/companion/trips/:tripId/fuel-fills', CompanionLiveHandler.addFill);
+router.post('/api/companion/trips/:tripId/checkins', CompanionLiveHandler.addCheckin);
+router.get('/api/companion/saved-places', CompanionLiveHandler.savedPlaces);
 
 // Waypoint routes (protected)
 router.post('/api/trips/:tripId/waypoints', requireAuth, WaypointsHandler.addWaypoint);
@@ -73,13 +107,13 @@ router.get('/api/places/search', requireAuth, PlacesHandler.search);
 
 // Saved places: private, per-user places worth revisiting (protected, owner-only).
 // Fixed paths are registered before /:id so they are not read as an id.
-router.get('/api/saved-places', requireAuth, SavedPlacesHandler.list);
-router.post('/api/saved-places', requireAuth, SavedPlacesHandler.create);
-router.get('/api/saved-places/export', requireAuth, SavedPlacesHandler.exportAll);
-router.post('/api/saved-places/import', requireAuth, SavedPlacesHandler.importAll);
-router.get('/api/saved-places/:id', requireAuth, SavedPlacesHandler.get);
-router.put('/api/saved-places/:id', requireAuth, SavedPlacesHandler.update);
-router.delete('/api/saved-places/:id', requireAuth, SavedPlacesHandler.remove);
+router.get('/api/saved-places', scoped('places:rw', SavedPlacesHandler.list));
+router.post('/api/saved-places', scoped('places:rw', SavedPlacesHandler.create));
+router.get('/api/saved-places/export', scoped('places:rw', SavedPlacesHandler.exportAll));
+router.post('/api/saved-places/import', scoped('places:rw', SavedPlacesHandler.importAll));
+router.get('/api/saved-places/:id', scoped('places:rw', SavedPlacesHandler.get));
+router.put('/api/saved-places/:id', scoped('places:rw', SavedPlacesHandler.update));
+router.delete('/api/saved-places/:id', scoped('places:rw', SavedPlacesHandler.remove));
 
 // Journal routes (protected)
 router.post('/api/trips/:tripId/journal', requireAuth, JournalHandler.addJournalEntry);
