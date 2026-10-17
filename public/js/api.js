@@ -436,4 +436,34 @@ const API = {
         return logs;
     },
   },
+
+  // Saved places — private, per-user places worth revisiting (owner-only)
+  savedPlaces: {
+    async list() {
+      const data = await API.request('/saved-places');
+      return data.places || [];
+    },
+
+    async create(place) {
+      const data = await API.request('/saved-places', { method: 'POST', body: place });
+      return data.place;
+    },
+
+    async update(id, patch) {
+      const data = await API.request(`/saved-places/${encodeURIComponent(id)}`, { method: 'PUT', body: patch });
+      return data.place;
+    },
+
+    async remove(id) {
+      return API.request(`/saved-places/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+
+    async exportAll() {
+      return API.request('/saved-places/export');
+    },
+
+    async importAll(file) {
+      return API.request('/saved-places/import', { method: 'POST', body: file });
+    },
+  },
 };

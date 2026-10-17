@@ -15,6 +15,7 @@ import { AccountHandler } from './account.js';
 import { PlacesHandler } from './places.js';
 import { RideLogsHandler } from './ride-logs.js';
 import { CompanionItineraryHandler } from './companion-itinerary.js';
+import { SavedPlacesHandler } from './saved-places.js';
 import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
 
 // Build fingerprint — changes on every deploy. Used by service worker and client
@@ -69,6 +70,16 @@ router.put('/api/trips/:tripId/waypoints/reorder', requireAuth, WaypointsHandler
 
 // Places search (protected to limit API key exposure)
 router.get('/api/places/search', requireAuth, PlacesHandler.search);
+
+// Saved places: private, per-user places worth revisiting (protected, owner-only).
+// Fixed paths are registered before /:id so they are not read as an id.
+router.get('/api/saved-places', requireAuth, SavedPlacesHandler.list);
+router.post('/api/saved-places', requireAuth, SavedPlacesHandler.create);
+router.get('/api/saved-places/export', requireAuth, SavedPlacesHandler.exportAll);
+router.post('/api/saved-places/import', requireAuth, SavedPlacesHandler.importAll);
+router.get('/api/saved-places/:id', requireAuth, SavedPlacesHandler.get);
+router.put('/api/saved-places/:id', requireAuth, SavedPlacesHandler.update);
+router.delete('/api/saved-places/:id', requireAuth, SavedPlacesHandler.remove);
 
 // Journal routes (protected)
 router.post('/api/trips/:tripId/journal', requireAuth, JournalHandler.addJournalEntry);

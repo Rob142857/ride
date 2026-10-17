@@ -27,6 +27,9 @@ export const AccountHandler = {
       }
     }
 
+    // Remove the user's private saved places (not tied to any trip)
+    await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM saved_places WHERE user_id = ?').bind(user.id).run();
+
     // Remove all trips (cascades to child tables via FK)
     await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM trips WHERE user_id = ?').bind(user.id).run();
 
