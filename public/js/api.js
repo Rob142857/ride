@@ -210,6 +210,7 @@ const API = {
         const err = new Error(data.error || data.message || `Request failed (${response.status})`);
         err.status = response.status;
         err.body = data;
+        err.retryAfter = response.headers?.get?.('Retry-After') ?? null;
         throw err;
       }
 

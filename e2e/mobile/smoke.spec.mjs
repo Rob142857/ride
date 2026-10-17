@@ -64,11 +64,6 @@ test.describe('tap targets', () => {
   test.skip(({ isMobile }) => !isMobile, 'touch layouts only');
 
   test('top bar, bottom nav and map controls are at least 44px', async ({ page }) => {
-    test.info().annotations.push({
-      type: 'known-bug',
-      description: 'TODO: top-bar icon buttons (Menu 31-34x36, Start navigation, Share, Account 36x36) and Center on my location (40x40) are under 44px. Delete test.fail() once fixed.',
-    });
-    test.fail();
     await openTrip(page);
     const small = await smallTapTargets(page, '#topBar button, #bottomNav button, #locateBtn, #addWaypointBtn');
     expect(small, small.join('\n')).toEqual([]);
@@ -76,12 +71,10 @@ test.describe('tap targets', () => {
 });
 
 test.describe('saving', () => {
+  // Regression: a persistent 409 used to loop handleTripConflict -> refreshData
+  // -> OSRM reroute -> saveRouteData -> PUT (~1,600 requests in 3 s). Now the
+  // client fetches the latest trip once, pauses autosave and asks the rider.
   test('a refused save (409 conflict) does not retry in a tight loop', async ({ page, apiState }) => {
-    test.info().annotations.push({
-      type: 'known-bug',
-      description: 'TODO: when PUT /api/trips/:id keeps answering 409, handleTripConflict -> refreshData -> reroute -> saveRouteData -> PUT repeats with no back-off (~1,600 requests in 3 s against the API and maps.incitat.io OSRM). Add a back-off or stop after one reload, then delete test.fail().',
-    });
-    test.fail();
     apiState.failSaves = 409;
     let requests = 0;
     page.on('request', () => { requests += 1; });
@@ -90,5 +83,8 @@ test.describe('saving', () => {
     requests = 0;
     await page.waitForTimeout(3000);
     expect(requests).toBeLessThan(30);
+    await expect(page.locator('#tripConflictModal')).toBeVisible();
+    await expect(page.locator('#tripConflictReload')).toBeVisible();
+    await expect(page.locator('#tripConflictKeep')).toBeVisible();
   });
 });

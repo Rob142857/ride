@@ -355,7 +355,8 @@ const UI = {
     // Close on backdrop click
     document.querySelectorAll('.modal').forEach(modal => {
       modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
+        // Sticky modals (the save-conflict choice) need an explicit answer.
+        if (e.target === modal && !modal.hasAttribute('data-sticky')) {
           this.closeModal(modal.id);
         }
       });
@@ -414,6 +415,25 @@ const UI = {
   /**
    * Open modal
    */
+  /**
+   * "Changed on another device" choice. Autosave for the trip stays paused
+   * until one of the buttons is pressed.
+   */
+  showTripConflictPrompt({ onReload, onKeepMine } = {}) {
+    const modal = document.getElementById('tripConflictModal');
+    if (!modal) { onReload?.(); return; }
+    const reload = document.getElementById('tripConflictReload');
+    const keep = document.getElementById('tripConflictKeep');
+    if (reload) reload.onclick = () => onReload?.();
+    if (keep) keep.onclick = () => onKeepMine?.();
+    this.openModal('tripConflictModal');
+    reload?.focus?.();
+  },
+
+  hideTripConflictPrompt() {
+    this.closeModal('tripConflictModal');
+  },
+
   openModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {

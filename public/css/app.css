@@ -610,6 +610,8 @@ body.doc-page {
 
 /* Floating locate button (main map view only) — sits inside map bottom gutter */
 #locateBtn.locate-btn {
+  width: 44px;
+  height: 44px;
   position: absolute;
   right: 12px;
   bottom: calc(var(--nav-height) + var(--safe-area-bottom) + 22px);
@@ -3359,10 +3361,13 @@ body.doc-page {
     gap: 6px;
   }
 
+  /* 44px minimum touch target (WCAG 2.5.5 / Apple HIG); never shrink. */
   #topBar .icon-btn {
-    width: 36px;
-    height: 36px;
-    border-radius: 9px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+    border-radius: 10px;
   }
 
   #topBar .icon-btn svg {
@@ -3535,12 +3540,6 @@ body.doc-page {
 
   .topbar-right {
     gap: 4px;
-  }
-
-  #topBar .icon-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
   }
 
   #topBar .icon-btn svg {

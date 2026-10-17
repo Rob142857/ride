@@ -936,6 +936,19 @@
     </div>
 
     <!-- Toast notifications -->
+    <div id="tripConflictModal" class="modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="tripConflictTitle" aria-describedby="tripConflictText" data-sticky>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="tripConflictTitle">Changed on another device</h3>
+        </div>
+        <p id="tripConflictText" class="modal-subtitle">This trip was updated somewhere else, so your latest change wasn't saved. Saving is paused until you choose.</p>
+        <div class="modal-actions">
+          <button id="tripConflictKeep" type="button" class="cancel-btn">Keep mine</button>
+          <button id="tripConflictReload" type="button" class="primary-btn">Reload</button>
+        </div>
+      </div>
+    </div>
+
     <div id="toast" class="hidden"></div>
     
     <!-- Fullscreen toggle for supported browsers -->
@@ -952,6 +965,7 @@
   <script src="js/route-editor.js?v=2026-10-17T03"></script>
   <script src="js/route-selector.js?v=2026-10-17T03"></script>
   <script src="js/api.js?v=2026-10-17T03"></script>
+  <script src="js/save-guard.js?v=2026-10-17T03"></script>
   <script src="js/storage.js?v=2026-10-17T03"></script>
   <script src="js/utils.js?v=2026-10-17T03"></script>
   <script src="js/trip.js?v=2026-10-17T03"></script>
