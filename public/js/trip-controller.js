@@ -40,9 +40,90 @@ Object.assign(App, {
     }
   },
 
-  async handleTripConflict(_err) {
-    UI.showToast('Trip changed on another device. Reloading latest…', 'info');
-    try { await this.refreshData('conflict'); } catch (_) {}
+  /* --- Save guard: single-flight, back-off, conflict pause --- */
+
+  _getSaveGuard() {
+    if (this._tripSaveGuard) return this._tripSaveGuard;
+    const isCurrent = tripId => this.currentTrip?.id === tripId;
+    this._tripSaveGuard = window.RideSaveGuard.createSaveGuard({
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      clearTimeout: id => clearTimeout(id),
+      onConflict: (tripId, err) => { this.handleTripConflict(err, { tripId }); },
+      onRetryScheduled: (tripId, { delayMs }) => {
+        if (isCurrent(tripId)) UI.showToast(`Save failed. Retrying in ${Math.max(1, Math.round(delayMs / 1000))}s…`, 'info');
+      },
+      onRecovered: (tripId, result) => {
+        if (isCurrent(tripId) && result?.value === true) UI.showToast('Saved to cloud', 'success');
+      },
+      onGiveUp: (tripId, err) => {
+        console.error('Save abandoned after retries:', err);
+        if (isCurrent(tripId)) UI.showToast('Save failed. Not saved to cloud.', 'error');
+      },
+    });
+    return this._tripSaveGuard;
+  },
+
+  isTripSavePaused(tripId = this.currentTrip?.id) {
+    return !!tripId && !!this._tripSaveGuard?.isPaused(tripId);
+  },
+
+  /**
+   * A save was refused because the trip changed elsewhere (409/412).
+   * Autosave for the trip pauses, the latest server copy is fetched once, and
+   * the rider chooses Reload or Keep mine. Nothing retries on its own, so a
+   * persistent conflict can't turn into a request loop (it used to reload,
+   * recalculate the route on OSRM and save again, endlessly).
+   */
+  async handleTripConflict(err, { tripId } = {}) {
+    const id = tripId || this.currentTrip?.id;
+    if (!id) return;
+    this._getSaveGuard().pause(id);
+    clearTimeout(this._altSaveTimer);
+    this._pendingAltSave = false;
+    if (this._conflict?.tripId === id) return; // already fetching or asking
+    const conflict = { tripId: id, latest: null, serverVersion: Number(err?.body?.trip_version) };
+    this._conflict = conflict;
+    try {
+      conflict.latest = this.normalizeTrip(await API.trips.get(id));
+    } catch (error) {
+      console.warn('Could not fetch the latest trip after a conflict:', error);
+    }
+    if (this._conflict !== conflict) return;
+    if (this.currentTrip?.id !== id) { this._clearTripConflict(id); return; }
+    UI.showTripConflictPrompt({
+      onReload: () => this.resolveTripConflict('reload'),
+      onKeepMine: () => this.resolveTripConflict('keep'),
+    });
+  },
+
+  _clearTripConflict(tripId) {
+    this._conflict = null;
+    this._tripSaveGuard?.resume(tripId);
+  },
+
+  async resolveTripConflict(choice) {
+    const conflict = this._conflict;
+    if (!conflict) return;
+    UI.hideTripConflictPrompt();
+    this._clearTripConflict(conflict.tripId);
+    if (this.currentTrip?.id !== conflict.tripId) return;
+    if (choice === 'reload') {
+      if (conflict.latest) {
+        this.loadTripData(conflict.latest);
+        UI.showToast('Latest version loaded', 'success');
+      } else {
+        await this.refreshData('conflict');
+      }
+      return;
+    }
+    // Keep mine: adopt the server's version number, then save this device's copy once.
+    const version = Number(conflict.latest?.version ?? conflict.serverVersion);
+    if (Number.isFinite(version)) this.currentTrip.version = version;
+    const ok = await this.saveCurrentTrip();
+    if (ok) {
+      UI.showToast('Your version saved', 'success');
+      this.refreshTripsList();
+    }
   },
 
   /* --- Trip ordering --- */
@@ -116,6 +197,11 @@ Object.assign(App, {
     // A background refresh must not tear down a live GPS session.
     if (this.isRiding && this._rideTripId === trip.id) return;
     this.endRideForTripSwitch?.();
+    if (this._conflict && this._conflict.tripId !== trip.id) {
+      // The conflict prompt belongs to the trip we are leaving.
+      UI.hideTripConflictPrompt?.();
+      this._clearTripConflict(this._conflict.tripId);
+    }
     window.RideInsights?.track('trip_open');
     if (trip.waypoints) trip.waypoints = Trip.normalizeWaypointOrder(trip.waypoints);
     trip = this.normalizeTrip(trip);
@@ -220,12 +306,15 @@ Object.assign(App, {
       clearTimeout(this._altSaveTimer);
       this._pendingAltSave = true;
       this._altSaveTimer = setTimeout(async () => {
+        // Autosave is paused while the rider resolves a conflict.
+        if (this.isTripSavePaused(savedTrip.id)) { this._pendingAltSave = false; return; }
         try {
           await API.trips.saveAlternativeRoutes(savedTrip.id, backendRoutes);
           const updated = await API.trips.update(savedTrip.id, { active_route_index: activeIdx, route: routesArray[activeIdx] });
           savedTrip.version = Number(updated.version);
         } catch (err) {
           console.error('Failed to save alternative routes:', err);
+          if (err?.status === 409 || err?.status === 412) this.handleTripConflict(err, { tripId: savedTrip.id });
         }
         this._pendingAltSave = false;
       }, 1500);
@@ -337,52 +426,68 @@ Object.assign(App, {
     UI.showToast('Login to create and save trips.', 'error');
   },
 
+  /**
+   * Save the current trip. Goes through the save guard: one PUT in flight per
+   * trip, back-off retries for transient errors, and a pause on conflict.
+   * Resolves true only when this call's save reached the server.
+   */
   async saveCurrentTrip() {
     if (!this.currentTrip) return false;
     if (!this.useCloud || !this.currentUser) return false;
-    try {
-      const route = this.currentTrip.route
-        ? {
-            coordinates: this.currentTrip.route.coordinates || [],
-            distance: this.currentTrip.route.distance ?? null,
-            duration: this.currentTrip.route.duration ?? this.currentTrip.route.time ?? null,
-            steps: this.currentTrip.route.steps || [],
-            travelMode: this.currentTrip.route.travelMode || 'drive'
-          }
-        : null;
-      const updated = await API.trips.update(this.currentTrip.id, {
-        name: this.currentTrip.name,
-        description: this.currentTrip.description,
-        settings: this.currentTrip.settings,
-        route,
-        active_route_index: this.currentTrip.activeRouteIndex ?? this.currentTrip.active_route_index ?? 0,
-        cover_image_url: this.currentTrip.coverImageUrl || this.currentTrip.cover_image_url,
-        cover_focus_x: this.currentTrip.coverFocusX ?? this.currentTrip.cover_focus_x,
-        cover_focus_y: this.currentTrip.coverFocusY ?? this.currentTrip.cover_focus_y
-      }, { headers: this.getTripIfMatchHeaders() });
-      if (updated) {
-        if (updated.updated_at) {
-          this.currentTrip.updated_at = updated.updated_at;
-          this.currentTrip.updatedAt = updated.updated_at;
-        }
-        if (updated.version !== undefined) {
-          const v = Number(updated.version);
-          if (Number.isFinite(v)) this.currentTrip.version = v;
-        }
-      }
-      this.markTripWritten(this.currentTrip.id);
-      return true;
-    } catch (error) {
+    const tripId = this.currentTrip.id;
+    const result = await this._getSaveGuard().run(tripId, () => this._putCurrentTrip(tripId));
+    if (result.ok) return result.value === true;
+    if (result.reason === 'failed') {
+      const error = result.error;
       console.error('Failed to save to cloud:', error);
-      if (error.status === 409) { await this.handleTripConflict(error); return false; }
-      if (error.status === 404) {
+      if (error?.status === 404) {
         UI.showToast('Trip missing on server. Reloading your trips…', 'error');
         await this.loadInitialTrip();
       } else {
         UI.showToast('Save failed. Not saved to cloud.', 'error');
       }
-      return false;
     }
+    // 'conflict' opens the prompt, 'retrying' and 'gave-up' toast from the
+    // guard hooks, 'paused' waits for the rider's choice.
+    return false;
+  },
+
+  /** One PUT of the current trip. Reads state at call time, so retries send the latest copy. */
+  async _putCurrentTrip(tripId) {
+    const trip = this.currentTrip;
+    // Trip switched or signed out since the save was queued: nothing to send.
+    if (!trip || trip.id !== tripId || !this.useCloud || !this.currentUser) return false;
+    const route = trip.route
+      ? {
+          coordinates: trip.route.coordinates || [],
+          distance: trip.route.distance ?? null,
+          duration: trip.route.duration ?? trip.route.time ?? null,
+          steps: trip.route.steps || [],
+          travelMode: trip.route.travelMode || 'drive'
+        }
+      : null;
+    const updated = await API.trips.update(trip.id, {
+      name: trip.name,
+      description: trip.description,
+      settings: trip.settings,
+      route,
+      active_route_index: trip.activeRouteIndex ?? trip.active_route_index ?? 0,
+      cover_image_url: trip.coverImageUrl || trip.cover_image_url,
+      cover_focus_x: trip.coverFocusX ?? trip.cover_focus_x,
+      cover_focus_y: trip.coverFocusY ?? trip.cover_focus_y
+    }, { headers: this.getTripIfMatchHeaders(trip) });
+    if (updated) {
+      if (updated.updated_at) {
+        trip.updated_at = updated.updated_at;
+        trip.updatedAt = updated.updated_at;
+      }
+      if (updated.version !== undefined) {
+        const v = Number(updated.version);
+        if (Number.isFinite(v)) trip.version = v;
+      }
+    }
+    this.markTripWritten(trip.id);
+    return true;
   },
 
   async deleteTrip(tripId) {

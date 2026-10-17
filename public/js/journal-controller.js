@@ -272,12 +272,14 @@ Object.assign(App, {
       await this.saveAlternativeRoutes(allRoutes, selectedIdx);
     }
 
+    const tripId = this.currentTrip.id;
     const ok = await this.saveCurrentTrip();
     if (ok) {
-      this.markTripWritten(this.currentTrip.id);
+      this.markTripWritten(tripId);
       UI.showToast('New route saved', 'success');
       await this.refreshTripsList();
-    } else {
+    } else if (!this.isTripSavePaused(tripId) && !this._tripSaveGuard?.isBusy(tripId)) {
+      // A conflict prompt or a scheduled retry already told the rider.
       UI.showToast('Route not saved', 'error');
     }
   }
