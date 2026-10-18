@@ -107,7 +107,8 @@ const sessions = {
     assert.equal(res.status, 201, JSON.stringify(res.json));
     return res.json;
   };
-  const ALL = ['trips:read', 'itinerary:write', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read'];
+  // Waypoint routes (waypoints:rw) are covered in scripts/token-waypoints-test.js.
+  const ALL = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read'];
   const fillPath = '/api/trips/owner-trip/fuel-fills';
 
   // --- Anonymous: 401 on every new or newly scoped route; nothing written ---
@@ -177,7 +178,7 @@ const sessions = {
   // --- A token is refused on every non-scoped route (account, auth, writes) ---
   for (const [method, url, body] of [['GET', '/api/auth/me'], ['POST', '/api/user/purge'], ['POST', '/api/trips', { name: 'x' }],
     ['PUT', '/api/trips/owner-trip', { name: 'Hijack' }], ['DELETE', '/api/trips/owner-trip'], ['POST', '/api/trips/owner-trip/share'],
-    ['POST', '/api/trips/owner-trip/waypoints', { name: 'x', lat: 1, lng: 1 }], ['GET', '/api/admin/users'], ['GET', '/api/trips/owner-trip/alternatives']]) {
+    ['POST', '/api/trips/owner-trip/journal', { title: 'x' }], ['GET', '/api/admin/users'], ['GET', '/api/trips/owner-trip/alternatives']]) {
     const res = await call(method, url, { token: allToken, body });
     assert.equal(res.status, 403, `${method} ${url} must refuse a token (got ${res.status})`);
   }

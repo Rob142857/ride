@@ -119,6 +119,7 @@ Token responses carry no CORS headers. Migration: `api/migrations/2026-10-17_tok
 |---|---|
 | `trips:read` | `GET /api/trips`, `GET /api/trips/:id` |
 | `itinerary:write` | `PUT /api/trips/:id/itinerary` with `If-Match: <version>` and `{ "itinerary": {...} }` (planning settings only) |
+| `waypoints:rw` | `POST /api/trips/:tripId/waypoints`, `PUT .../waypoints/:id`, `DELETE .../waypoints/:id`, `PUT .../waypoints/reorder` with `{ "order": [ids] }`; all need `If-Match: <trip version>` |
 | `places:rw` | `/api/saved-places` (all routes) |
 | `fuel:rw` | `GET/POST /api/trips/:tripId/fuel-fills`, `GET/PUT/DELETE .../fuel-fills/:id`, `GET /api/trips/:tripId/fuel-status` |
 | `checkins:rw` | `GET/POST /api/trips/:tripId/checkins`, `DELETE .../checkins/:id`, `GET /api/trips/:tripId/last-location` |

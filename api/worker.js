@@ -96,11 +96,12 @@ router.post('/api/companion/trips/:tripId/fuel-fills', CompanionLiveHandler.addF
 router.post('/api/companion/trips/:tripId/checkins', CompanionLiveHandler.addCheckin);
 router.get('/api/companion/saved-places', CompanionLiveHandler.savedPlaces);
 
-// Waypoint routes (protected)
-router.post('/api/trips/:tripId/waypoints', requireAuth, WaypointsHandler.addWaypoint);
-router.put('/api/trips/:tripId/waypoints/:id', requireAuth, WaypointsHandler.updateWaypoint);
-router.delete('/api/trips/:tripId/waypoints/:id', requireAuth, WaypointsHandler.deleteWaypoint);
-router.put('/api/trips/:tripId/waypoints/reorder', requireAuth, WaypointsHandler.reorderWaypoints);
+// Waypoint routes (owner session, or a token with waypoints:rw). The fixed
+// /reorder path is registered before /:id so "reorder" is not read as an id.
+router.post('/api/trips/:tripId/waypoints', scoped('waypoints:rw', WaypointsHandler.addWaypoint));
+router.put('/api/trips/:tripId/waypoints/reorder', scoped('waypoints:rw', WaypointsHandler.reorderWaypoints));
+router.put('/api/trips/:tripId/waypoints/:id', scoped('waypoints:rw', WaypointsHandler.updateWaypoint));
+router.delete('/api/trips/:tripId/waypoints/:id', scoped('waypoints:rw', WaypointsHandler.deleteWaypoint));
 
 // Places search (protected to limit API key exposure)
 router.get('/api/places/search', requireAuth, PlacesHandler.search);

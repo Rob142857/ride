@@ -16,7 +16,7 @@ import { jsonResponse, errorResponse, generateId, parseBody, requireAuth, BASE_U
 import { safeJsonParse } from './handler-utils.js';
 
 export const TOKEN_PREFIX = 'ride_pat_';
-export const TOKEN_SCOPES = ['trips:read', 'itinerary:write', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read'];
+export const TOKEN_SCOPES = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read'];
 export const MAX_ACTIVE_TOKENS = 20;
 export const MAX_EXPIRY_DAYS = 365;
 export const DEFAULT_EXPIRY_DAYS = 90;
