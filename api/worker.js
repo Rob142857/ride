@@ -64,6 +64,8 @@ router.get('/api/trips', scoped('trips:read', TripsHandler.listTrips));
 router.post('/api/trips', requireAuth, TripsHandler.createTrip);
 router.get('/api/trips/:id', scoped('trips:read', TripsHandler.getTrip));
 router.put('/api/trips/:id/itinerary', scoped('itinerary:write', ItineraryWriteHandler.put));
+router.post('/api/trips/:id/itinerary/preview', scoped('itinerary:write', ItineraryWriteHandler.preview));
+router.post('/api/trips/:id/itinerary/apply', scoped('itinerary:write', ItineraryWriteHandler.apply));
 router.get('/api/trips/:id/companion-itinerary', CompanionItineraryHandler.get);
 router.put('/api/trips/:id', requireAuth, TripsHandler.updateTrip);
 router.delete('/api/trips/:id', requireAuth, TripsHandler.deleteTrip);
