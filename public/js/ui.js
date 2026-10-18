@@ -444,6 +444,15 @@ const UI = {
       }
       modal.classList.remove('hidden');
     }
+    this.syncModalOpenState();
+  },
+
+  /** body.modal-open while any dialog is showing (hides the install prompt). */
+  syncModalOpenState() {
+    try {
+      const open = !!document.querySelector?.('.modal:not(.hidden)');
+      document.body?.classList?.toggle('modal-open', open);
+    } catch { /* Non-browser test hosts have no full DOM. */ }
   },
 
   /**
@@ -480,6 +489,7 @@ const UI = {
         }
       }
     }
+    this.syncModalOpenState();
   },
 
   /**

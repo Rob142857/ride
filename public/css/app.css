@@ -500,7 +500,8 @@ body.doc-page {
   right: 12px;
   max-width: 400px;
   margin: 0 auto;
-  z-index: 300;
+  /* Below .modal (300): a dialog must never sit under the install prompt. */
+  z-index: 290;
   background: rgba(14, 16, 28, 0.92);
   backdrop-filter: blur(20px) saturate(1.4);
   -webkit-backdrop-filter: blur(20px) saturate(1.4);
@@ -509,6 +510,14 @@ body.doc-page {
   padding: 14px 16px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   animation: installSlideUp 0.4s var(--ease-smooth);
+}
+
+/* Hide the install prompt while any dialog is open, so it can't cover or take
+   a dialog's taps. body.modal-open is set by UI.openModal/closeModal; :has()
+   also covers dialogs shown without them. */
+body.modal-open .install-banner,
+body:has(.modal:not(.hidden)) .install-banner {
+  display: none !important;
 }
 
 @keyframes installSlideUp {
