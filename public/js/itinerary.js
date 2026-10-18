@@ -1,5 +1,12 @@
-/** Dated itinerary calculations. Pure functions; all writes stay in the app controller. */
-window.RideItinerary = (() => {
+/**
+ * Dated itinerary calculations. Pure functions; all writes stay in the app controller.
+ *
+ * Shared by the browser (classic script, window.RideItinerary) and the Worker
+ * (api/itinerary-plan.js imports this file, which sets globalThis.RideItinerary),
+ * so the "Update this itinerary" preview and guards are the same code in both.
+ * Keep it free of DOM access.
+ */
+(root => { root.RideItinerary = (() => {
   const DEFAULT_HOURS = Object.freeze({ reflection: 4, laptop: 4, sleep: 6, coffee: 1, meals: 1, setup: 1, breakdown: 1 });
   const DEFAULT_FUEL = Object.freeze({ pricePerLitre: 2.8, litresPer100Km: 10.5 });
   const clone = value => JSON.parse(JSON.stringify(value));
@@ -212,5 +219,112 @@ window.RideItinerary = (() => {
     return result;
   }
 
-  return { normalize, validate, recalculate, previewExtendStay, fuelForDistance, addDays, validDate };
-})();
+  /** Fixed-date commitments added, changed or removed between two plans. */
+  function fixedAnchorChanges(previousPlan, nextPlan) {
+    const previous = new Map((previousPlan?.stops || []).map(stop => [stop.id, stop]));
+    const next = new Map((nextPlan?.stops || []).map(stop => [stop.id, stop]));
+    const anchor = stop => stop?.fixedDate ? { date: stop.fixedDate, mode: stop.anchorMode || 'arrival' } : null;
+    const changes = [];
+    for (const id of new Set([...previous.keys(), ...next.keys()])) {
+      const before = anchor(previous.get(id));
+      const after = anchor(next.get(id));
+      if (JSON.stringify(before) !== JSON.stringify(after)) changes.push({
+        stopId: id, name: next.get(id)?.name || previous.get(id)?.name,
+        before, after, removedStop: !next.has(id),
+      });
+    }
+    return changes;
+  }
+
+  /** Outreach and work drafts that are new, changed or gone, per stop. */
+  function draftChanges(previousPlan, plan) {
+    const changes = [];
+    const oldStops = new Map((previousPlan?.stops || []).map(stop => [stop.id, stop]));
+    const fields = ['title', 'name', 'type', 'dueDate', 'date', 'scheduledDate', 'targetDate', 'localTime', 'time', 'timeZone', 'url', 'sourceUrl', 'draft', 'draftText', 'text', 'content', 'description', 'notes', 'status'];
+    const signature = item => JSON.stringify(fields.map(key => item?.[key] ?? null));
+    for (const stop of plan.stops) for (const key of ['outreach', 'work']) {
+      const oldItems = oldStops.get(stop.id)?.[key] || [];
+      const newItems = stop[key] || [];
+      const oldById = new Map(oldItems.map((item, index) => [item.id || `item-${index}`, item]));
+      newItems.forEach((item, index) => {
+        const itemId = item.id || `item-${index}`;
+        const old = oldById.get(itemId);
+        oldById.delete(itemId);
+        if (signature(old) !== signature(item)) changes.push({ town: stop.name, previous: old, item });
+      });
+      oldById.forEach(previous => changes.push({ town: stop.name, previous, item: null }));
+    }
+    return changes;
+  }
+
+  /** Stops whose dates are new, changed or removed (the preview's change list). */
+  function stopDateChanges(previousPlan, nextPlan) {
+    const dates = stop => ({ arrivalDate: stop.arrivalDate ?? null, departureDate: stop.departureDate ?? null, plannedNights: stop.plannedNights ?? null });
+    const oldById = new Map((previousPlan?.stops || []).map(stop => [stop.id, stop]));
+    const changes = [];
+    (nextPlan?.stops || []).forEach(stop => {
+      const old = oldById.get(stop.id);
+      if (!old || old.arrivalDate !== stop.arrivalDate || old.departureDate !== stop.departureDate || old.plannedNights !== stop.plannedNights) {
+        changes.push({ stopId: stop.id, name: stop.name, change: old ? 'changed' : 'added', before: old ? dates(old) : null, after: dates(stop) });
+      }
+    });
+    oldById.forEach(old => {
+      if (!(nextPlan?.stops || []).some(stop => stop.id === old.id)) changes.push({ stopId: old.id, name: old.name, change: 'removed', before: dates(old), after: null });
+    });
+    return changes;
+  }
+
+  /**
+   * Guards for "Update this itinerary": read only planning data from a mapped
+   * planning file and check it belongs to this trip. Throws an Error with the
+   * message the UI shows. `trip` is { id, settings, waypoints: [{ id }], journal: [{ id }] }.
+   */
+  function preparePlanningUpdate(data, trip) {
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !trip?.id || data.rideTripId !== trip.id) throw new Error('Choose the mapped planning file for this Ride trip. Its Ride trip ID must match the open trip.');
+    const source = data.itinerary || data.settings?.itinerary;
+    if (!source || !Array.isArray(source.stops)) throw new Error('This file needs a dated itinerary.');
+    const result = recalculate(source);
+    if (result.conflicts.length) throw new Error(result.conflicts[0].message);
+    const waypointIds = new Set((trip.waypoints || []).map(waypoint => String(waypoint.id)));
+    const journalIds = new Set((trip.journal || []).map(entry => String(entry.id)));
+    if (data.waypoints !== undefined && !Array.isArray(data.waypoints)) throw new Error('File waypoints must be an array.');
+    if ((data.waypoints || []).some(waypoint => !waypointIds.has(String(waypoint?.id)))) throw new Error('The file contains a waypoint outside the open Ride trip.');
+    if (data.journal !== undefined && !Array.isArray(data.journal)) throw new Error('File journal entries must be an array.');
+    if ((data.journal || []).some(entry => !journalIds.has(String(entry?.id)))) throw new Error('The file contains a journal note outside the open Ride trip.');
+    for (const stop of result.itinerary.stops) {
+      if (!stop.waypointId || !waypointIds.has(String(stop.waypointId))) throw new Error(`${stop.name}: waypoint does not belong to the open Ride trip.`);
+      for (const key of ['fromWaypointId', 'toWaypointId']) if (stop.leg?.[key] && !waypointIds.has(String(stop.leg[key]))) throw new Error(`${stop.name}: leg waypoint does not belong to the open Ride trip.`);
+      if (stop.privateJournalRefs !== undefined && (!Array.isArray(stop.privateJournalRefs) || stop.privateJournalRefs.some(id => !journalIds.has(String(id))))) throw new Error(`${stop.name}: private note does not belong to the open Ride trip.`);
+    }
+    result.anchorChanges = fixedAnchorChanges(trip.settings?.itinerary, result.itinerary);
+    return result;
+  }
+
+  /**
+   * Everything the "Update this itinerary" preview shows, as data: the plan
+   * that would be saved, totals, stop date changes, fixed-date commitment
+   * changes, draft changes, conflicts, warnings and validation errors.
+   * Throws (like preparePlanningUpdate) when a guard refuses the file.
+   */
+  function planningUpdatePreview(data, trip) {
+    const result = preparePlanningUpdate(data, trip);
+    const previous = trip.settings?.itinerary;
+    const validation = validate(result.itinerary);
+    return {
+      itinerary: result.itinerary,
+      totals: result.totals,
+      startDate: result.itinerary.startDate,
+      endDate: result.itinerary.stops.at(-1)?.departureDate ?? null,
+      stopChanges: stopDateChanges(previous, result.itinerary),
+      anchorChanges: result.anchorChanges,
+      draftChanges: draftChanges(previous, result.itinerary),
+      conflicts: result.conflicts,
+      warnings: result.warnings,
+      validationErrors: validation.errors,
+      canApply: validation.valid && !result.conflicts.length,
+    };
+  }
+
+  return { normalize, validate, recalculate, previewExtendStay, fuelForDistance, addDays, validDate,
+    fixedAnchorChanges, draftChanges, stopDateChanges, preparePlanningUpdate, planningUpdatePreview };
+})(); })(typeof window !== 'undefined' ? window : globalThis);

@@ -288,42 +288,13 @@
       this.openPreview(model().recalculate(plan), 'Review dates and fuel');
     },
 
-    /** Read only planning data; never pass this file to the trip importer. */
+    /** Read only planning data; never pass this file to the trip importer. Guards live in RideItinerary (shared with the Worker). */
     prepareFileUpdate(data, trip) {
-      if (!data || typeof data !== 'object' || Array.isArray(data) || !trip?.id || data.rideTripId !== trip.id) throw new Error('Choose the mapped planning file for this Ride trip. Its Ride trip ID must match the open trip.');
-      const source = data.itinerary || data.settings?.itinerary;
-      if (!source || !Array.isArray(source.stops)) throw new Error('This file needs a dated itinerary.');
-      const result = model().recalculate(source);
-      if (result.conflicts.length) throw new Error(result.conflicts[0].message);
-      const waypointIds = new Set((trip.waypoints || []).map(waypoint => waypoint.id));
-      const journalIds = new Set((trip.journal || []).map(entry => entry.id));
-      if (data.waypoints !== undefined && !Array.isArray(data.waypoints)) throw new Error('File waypoints must be an array.');
-      if ((data.waypoints || []).some(waypoint => !waypointIds.has(waypoint.id))) throw new Error('The file contains a waypoint outside the open Ride trip.');
-      if (data.journal !== undefined && !Array.isArray(data.journal)) throw new Error('File journal entries must be an array.');
-      if ((data.journal || []).some(entry => !journalIds.has(entry.id))) throw new Error('The file contains a journal note outside the open Ride trip.');
-      for (const stop of result.itinerary.stops) {
-        if (!stop.waypointId || !waypointIds.has(stop.waypointId)) throw new Error(`${stop.name}: waypoint does not belong to the open Ride trip.`);
-        for (const key of ['fromWaypointId', 'toWaypointId']) if (stop.leg?.[key] && !waypointIds.has(stop.leg[key])) throw new Error(`${stop.name}: leg waypoint does not belong to the open Ride trip.`);
-        if (stop.privateJournalRefs !== undefined && (!Array.isArray(stop.privateJournalRefs) || stop.privateJournalRefs.some(id => !journalIds.has(id)))) throw new Error(`${stop.name}: private note does not belong to the open Ride trip.`);
-      }
-      result.anchorChanges = this.fixedAnchorChanges(trip.settings?.itinerary, result.itinerary);
-      return result;
+      return model().preparePlanningUpdate(data, trip);
     },
 
     fixedAnchorChanges(previousPlan, nextPlan) {
-      const previous = new Map((previousPlan?.stops || []).map(stop => [stop.id, stop]));
-      const next = new Map((nextPlan?.stops || []).map(stop => [stop.id, stop]));
-      const anchor = stop => stop?.fixedDate ? { date: stop.fixedDate, mode: stop.anchorMode || 'arrival' } : null;
-      const changes = [];
-      for (const id of new Set([...previous.keys(), ...next.keys()])) {
-        const before = anchor(previous.get(id));
-        const after = anchor(next.get(id));
-        if (JSON.stringify(before) !== JSON.stringify(after)) changes.push({
-          stopId: id, name: next.get(id)?.name || previous.get(id)?.name,
-          before, after, removedStop: !next.has(id),
-        });
-      }
-      return changes;
+      return model().fixedAnchorChanges(previousPlan, nextPlan);
     },
 
     async previewFileUpdate(file) {
@@ -342,23 +313,7 @@
     },
 
     draftChanges(previousPlan, plan) {
-      const changes = [];
-      const oldStops = new Map((previousPlan?.stops || []).map(stop => [stop.id, stop]));
-      const fields = ['title', 'name', 'type', 'dueDate', 'date', 'scheduledDate', 'targetDate', 'localTime', 'time', 'timeZone', 'url', 'sourceUrl', 'draft', 'draftText', 'text', 'content', 'description', 'notes', 'status'];
-      const signature = item => JSON.stringify(fields.map(key => item?.[key] ?? null));
-      for (const stop of plan.stops) for (const key of ['outreach', 'work']) {
-        const oldItems = oldStops.get(stop.id)?.[key] || [];
-        const newItems = stop[key] || [];
-        const oldById = new Map(oldItems.map((item, index) => [item.id || `item-${index}`, item]));
-        newItems.forEach((item, index) => {
-          const itemId = item.id || `item-${index}`;
-          const old = oldById.get(itemId);
-          oldById.delete(itemId);
-          if (signature(old) !== signature(item)) changes.push({ town: stop.name, previous: old, item });
-        });
-        oldById.forEach(previous => changes.push({ town: stop.name, previous, item: null }));
-      }
-      return changes;
+      return model().draftChanges(previousPlan, plan);
     },
 
     openPreview(result, title, options = {}) {
@@ -368,16 +323,10 @@
       el('itineraryPreviewTitle').textContent = title;
       const body = el('itineraryPreviewBody');
       body.replaceChildren(textNode('p', `${dateLabel(result.itinerary.startDate)} → ${dateLabel(result.itinerary.stops.at(-1)?.departureDate)} · ${result.totals?.nights || 0} nights · ${money(result.totals?.fuelCost)} fuel`));
-      const oldById = new Map((trip.settings?.itinerary?.stops || []).map(stop => [stop.id, stop]));
       const list = textNode('ul', '', 'itinerary-change-list');
-      result.itinerary.stops.forEach(stop => {
-        const old = oldById.get(stop.id);
-        if (!old || old.arrivalDate !== stop.arrivalDate || old.departureDate !== stop.departureDate || old.plannedNights !== stop.plannedNights) {
-          list.append(textNode('li', `${stop.name}: ${old ? `${dateRange(old)} → ` : ''}${dateRange(stop)}`));
-        }
-      });
-      oldById.forEach(old => {
-        if (!result.itinerary.stops.some(stop => stop.id === old.id)) list.append(textNode('li', `${old.name}: ${dateRange(old)} → removed from planning`));
+      model().stopDateChanges(trip.settings?.itinerary, result.itinerary).forEach(change => {
+        if (change.change === 'removed') list.append(textNode('li', `${change.name}: ${dateRange(change.before)} → removed from planning`));
+        else list.append(textNode('li', `${change.name}: ${change.before ? `${dateRange(change.before)} → ` : ''}${dateRange(change.after)}`));
       });
       if (list.childElementCount) body.append(list);
       if (options.planningFileUpdate) {
