@@ -22,6 +22,7 @@ import { CheckinsHandler } from './checkins.js';
 import { ItineraryWriteHandler } from './itinerary-write.js';
 import { CompanionLiveHandler } from './companion-live.js';
 import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
+import { handleMcpRequest, mcpEnabled } from './mcp.js';
 
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
@@ -305,7 +306,21 @@ function addSecurityHeaders(response) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    
+
+    // MCP endpoint (personal access tokens with mcp.connect only). While
+    // MCP_ENABLED is not "true" it is not routed at all, so /mcp stays the
+    // same plain 404 it has always been.
+    if (url.pathname === '/mcp' && mcpEnabled(env)) {
+      try {
+        return await handleMcpRequest(request, env, ctx);
+      } catch (error) {
+        console.error('MCP error:', error?.message || error);
+        return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' } }), {
+          status: 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+        });
+      }
+    }
+
     // Handle API routes first
     if (url.pathname.startsWith('/api/')) {
       try {
