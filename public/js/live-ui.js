@@ -12,7 +12,9 @@
     'places:rw': 'Read and edit My Places',
     'fuel:rw': 'Read and add fuel fill-ups',
     'checkins:rw': 'Read and add check-ins and last location',
-    'ridelogs:read': 'Read ride logs'
+    'ridelogs:read': 'Read ride logs',
+    'account.read': 'See your Ride name and email',
+    'mcp.connect': 'Allow AI apps to connect (MCP) with this token'
   };
   const DEFAULT_SCOPES = ['trips:read', 'fuel:rw', 'checkins:rw', 'places:rw', 'ridelogs:read'];
 
