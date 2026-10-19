@@ -17,6 +17,9 @@ const baseRules = {
 };
 
 export default [
+  // Local wrangler dev bundles (git-ignored) are build output, not source.
+  { ignores: ['.wrangler/**'] },
+
   // Recommended base rules everywhere
   js.configs.recommended,
 
