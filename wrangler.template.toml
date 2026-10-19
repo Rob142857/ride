@@ -28,3 +28,6 @@ bucket_name = "ride-attachments"
 ENVIRONMENT = "production"
 BASE_URL = "https://your-domain.example.com"
 ADMIN_EMAILS = "admin@example.com"
+# MCP server at /mcp (personal access tokens with the mcp.connect scope).
+# "false" keeps /mcp a plain 404. See docs/mcp.md before turning it on.
+MCP_ENABLED = "false"
