@@ -108,7 +108,7 @@ const sessions = {
     return res.json;
   };
   // Waypoint routes (waypoints:rw) are covered in scripts/token-waypoints-test.js.
-  const ALL = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read'];
+  const ALL = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read', 'account.read', 'mcp.connect'];
   const fillPath = '/api/trips/owner-trip/fuel-fills';
 
   // --- Anonymous: 401 on every new or newly scoped route; nothing written ---

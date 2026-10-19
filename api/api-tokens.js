@@ -16,7 +16,10 @@ import { jsonResponse, errorResponse, generateId, parseBody, requireAuth, BASE_U
 import { safeJsonParse } from './handler-utils.js';
 
 export const TOKEN_PREFIX = 'ride_pat_';
-export const TOKEN_SCOPES = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read'];
+// Colon scopes are the original REST names. Dot scopes follow the shared MCP
+// convention (<area>.<verb>): `account.read` lets an AI app see who the token
+// acts for, and `mcp.connect` is the opt-in that lets a token call /mcp at all.
+export const TOKEN_SCOPES = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read', 'account.read', 'mcp.connect'];
 export const MAX_ACTIVE_TOKENS = 20;
 export const MAX_EXPIRY_DAYS = 365;
 export const DEFAULT_EXPIRY_DAYS = 90;
@@ -102,7 +105,7 @@ function publicToken(row) {
   };
 }
 
-async function audit(env, { tokenId, userId, method, route, status }) {
+export async function audit(env, { tokenId, userId, method, route, status }) {
   try {
     await env.RIDE_TRIP_PLANNER_DB.prepare(
       'INSERT INTO api_token_audit (id, token_id, user_id, method, route, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
@@ -113,7 +116,7 @@ async function audit(env, { tokenId, userId, method, route, status }) {
 }
 
 /** Fixed one-minute window counter in D1. Returns the count for this window. */
-async function countRequest(env, tokenId) {
+export async function countRequest(env, tokenId) {
   const windowStart = Math.floor(Date.now() / 60000) * 60;
   const row = await env.RIDE_TRIP_PLANNER_DB.prepare(
     `INSERT INTO api_token_rate (token_id, window_start, count) VALUES (?, ?, 1)
@@ -130,12 +133,13 @@ async function countRequest(env, tokenId) {
 }
 
 /**
- * Authenticate a personal access token for one scope. Sets context.user and
- * context.apiToken, or returns a 401/403/429 Response.
+ * Look up a personal access token and its owner, live, on every request.
+ * Returns { row, user, scopes } or { status, message } when it must be refused.
+ * No rate limiting or scope check here: callers add their own.
  */
-async function authenticatePat(context, secret, scope) {
-  const { env } = context;
-  if (!TOKEN_PATTERN.test(secret)) return errorResponse('Invalid or expired token', 401);
+export async function verifyPat(env, secret) {
+  const invalid = { status: 401, message: 'Invalid or expired token' };
+  if (!TOKEN_PATTERN.test(secret)) return invalid;
   const hash = await sha256Hex(secret);
   let row;
   try {
@@ -144,17 +148,37 @@ async function authenticatePat(context, secret, scope) {
     ).bind(hash).first();
   } catch (error) {
     console.error('Token lookup failed:', error?.message || error);
-    return errorResponse('Invalid or expired token', 401);
+    return invalid;
   }
-  if (!row || !timingSafeEqualText(row.token_hash, hash)) return errorResponse('Invalid or expired token', 401);
-  if (row.revoked_at) return errorResponse('Invalid or expired token', 401);
+  if (!row || !timingSafeEqualText(row.token_hash, hash)) return invalid;
+  if (row.revoked_at) return invalid;
   const expires = Date.parse(row.expires_at);
-  if (!Number.isFinite(expires) || expires <= Date.now()) return errorResponse('Invalid or expired token', 401);
+  if (!Number.isFinite(expires) || expires <= Date.now()) return invalid;
 
   // SELECT * so older databases without a status column still work.
   const user = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM users WHERE id = ?').bind(row.user_id).first();
-  if (!user) return errorResponse('Invalid or expired token', 401);
-  if (['banned', 'blocked', 'suspended', 'paused'].includes(user.status)) return errorResponse('Account is not active', 403);
+  if (!user) return invalid;
+  if (['banned', 'blocked', 'suspended', 'paused'].includes(user.status)) return { status: 403, message: 'Account is not active' };
+  const scopes = safeJsonParse(row.scopes, []);
+  return { row, user, scopes: Array.isArray(scopes) ? scopes : [] };
+}
+
+/** Record that a token was used (non-blocking where the platform allows). */
+export async function touchToken(context, tokenId) {
+  const touch = context.env.RIDE_TRIP_PLANNER_DB.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?')
+    .bind(nowIso(), tokenId).run().catch(error => console.error('Token touch failed:', error?.message || error));
+  if (context.ctx?.waitUntil) context.ctx.waitUntil(touch); else await touch;
+}
+
+/**
+ * Authenticate a personal access token for one scope. Sets context.user and
+ * context.apiToken, or returns a 401/403/429 Response.
+ */
+async function authenticatePat(context, secret, scope) {
+  const { env } = context;
+  const verified = await verifyPat(env, secret);
+  if (verified.status) return errorResponse(verified.message, verified.status);
+  const { row, scopes } = verified;
 
   const count = await countRequest(env, row.id);
   if (count > RATE_LIMIT_PER_MINUTE) {
@@ -163,16 +187,13 @@ async function authenticatePat(context, secret, scope) {
     return response;
   }
 
-  const scopes = safeJsonParse(row.scopes, []);
-  if (!Array.isArray(scopes) || !scopes.includes(scope)) {
+  if (!scopes.includes(scope)) {
     return jsonResponse({ error: 'This token does not have the required scope', required_scope: scope }, 403);
   }
 
   context.user = { id: row.user_id };
   context.apiToken = { id: row.id, scopes };
-  const touch = env.RIDE_TRIP_PLANNER_DB.prepare('UPDATE api_tokens SET last_used_at = ? WHERE id = ?')
-    .bind(nowIso(), row.id).run().catch(error => console.error('Token touch failed:', error?.message || error));
-  if (context.ctx?.waitUntil) context.ctx.waitUntil(touch); else await touch;
+  await touchToken(context, row.id);
   return null;
 }
 
