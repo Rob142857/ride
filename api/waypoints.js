@@ -56,6 +56,12 @@ export const WaypointsHandler = {
     if (ifMatch === null) return preconditionRequiredResponse();
     if (Number(trip.version ?? 0) !== ifMatch) return conflictResponse(trip);
 
+    // The waypoint must belong to this trip: never read or echo another trip's row.
+    const existing = await env.RIDE_TRIP_PLANNER_DB.prepare(
+      'SELECT id FROM waypoints WHERE id = ? AND trip_id = ?'
+    ).bind(params.id, params.tripId).first();
+    if (!existing) return errorResponse('Waypoint not found', 404);
+
     const updates = [];
     const values = [];
 
@@ -73,7 +79,7 @@ export const WaypointsHandler = {
       ).bind(...values).run();
     }
 
-    const waypoint = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM waypoints WHERE id = ?').bind(params.id).first();
+    const waypoint = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM waypoints WHERE id = ? AND trip_id = ?').bind(params.id, params.tripId).first();
     const tripState = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT version, updated_at FROM trips WHERE id = ?').bind(params.tripId).first();
 
     return jsonResponse({ waypoint, trip_version: tripState?.version ?? 0, trip_updated_at: tripState?.updated_at ?? null });
