@@ -158,7 +158,7 @@ Object.assign(App, {
        sort_order: insertIndex
      };
 
-     let serverWaypoint = null;
+     let serverWaypoint;
      try {
        const res = await API.waypoints.add(this.currentTrip.id, payload, { headers: this.getTripIfMatchHeaders() });
        this.applyTripMetaFromResponse(this.currentTrip, res);

@@ -36,12 +36,12 @@
   "author": "Robert Evans - Objective Artefacts Australia",
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
-    "@eslint/js": "^9.0",
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "1.64.1",
-    "eslint": "^9.0.0",
+    "eslint": "^10.13.0",
     "leaflet": "1.9.4",
     "leaflet-routing-machine": "3.2.12",
     "sharp": "^0.35.5",
-    "wrangler": "^4.151.0"
+    "wrangler": "^4.151.3"
   }
 }

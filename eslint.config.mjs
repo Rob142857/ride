@@ -1,5 +1,5 @@
 // eslint.config.mjs — minimal flat config for Ride
-// Works with ESLint v9+
+// Works with ESLint v9+ (verified on v10)
 
 import js from '@eslint/js';
 
