@@ -21,7 +21,7 @@ async function timedFetch(label, url, options = {}) {
   });
   const elapsedMs = Math.round(performance.now() - started);
   const text = await response.text();
-  let body = null;
+  let body;
   try {
     body = text ? JSON.parse(text) : null;
   } catch (_) {
