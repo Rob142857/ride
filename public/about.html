@@ -15,7 +15,8 @@
   <link rel="icon" href="/icons/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700;800&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700;800&display=swap"></noscript>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -26,7 +27,7 @@
       --border-glass: rgba(255,255,255,0.08);
       --text-primary: #f0f2f5;
       --text-secondary: rgba(255,255,255,0.6);
-      --text-muted: rgba(255,255,255,0.4);
+      --text-muted: rgba(255,255,255,0.6);
       --accent: #60a5fa;
       --accent-warm: #f59e0b;
       --accent-green: #34d399;
@@ -48,6 +49,8 @@
     }
 
     a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
+    p a { text-decoration: underline; text-underline-offset: 2px; }
+    a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
     a:hover { color: #93c5fd; }
 
     /* ---- Ambient background ---- */
@@ -409,6 +412,7 @@
     </div>
   </nav>
 
+  <main id="main">
   <!-- Hero -->
   <section class="hero">
     <div class="container">
@@ -425,7 +429,7 @@
 
       <!-- Hero screenshot / app preview -->
       <div class="hero-screenshot">
-        <img src="/images/product/newTripMapView.png" alt="Ride app — map view with waypoints and route">
+        <img src="/images/product/newTripMapView.webp" width="1396" height="901" fetchpriority="high" alt="Ride app — map view with waypoints and route">
       </div>
     </div>
   </section>
@@ -554,27 +558,27 @@
 
       <div class="gallery-grid">
         <div class="gallery-item">
-          <img src="/images/product/newTripMapView.png" alt="New trip with map view">
+          <img src="/images/product/newTripMapView.webp" width="1396" height="901" loading="lazy" decoding="async" alt="New trip with map view">
           <figcaption>Map overview</figcaption>
         </div>
         <div class="gallery-item">
-          <img src="/images/product/addWaypointView.png" alt="Adding a waypoint to a trip">
+          <img src="/images/product/addWaypointView.webp" width="1391" height="897" loading="lazy" decoding="async" alt="Adding a waypoint to a trip">
           <figcaption>Add waypoints</figcaption>
         </div>
         <div class="gallery-item">
-          <img src="/images/product/googleMapsHelperForWaypoints.png" alt="Search for places with Google Maps integration">
+          <img src="/images/product/googleMapsHelperForWaypoints.webp" width="832" height="849" loading="lazy" decoding="async" alt="Search for places with Google Maps integration">
           <figcaption>Place search</figcaption>
         </div>
         <div class="gallery-item">
-          <img src="/images/product/journalEntryView.png" alt="Journal entry with notes and photos">
+          <img src="/images/product/journalEntryView.webp" width="501" height="671" loading="lazy" decoding="async" alt="Journal entry with notes and photos">
           <figcaption>Trip journal</figcaption>
         </div>
         <div class="gallery-item">
-          <img src="/images/product/navigationTurnbyTurnView.png" alt="Turn-by-turn navigation on the map">
+          <img src="/images/product/navigationTurnbyTurnView.webp" width="1407" height="909" loading="lazy" decoding="async" alt="Turn-by-turn navigation on the map">
           <figcaption>Turn-by-turn routing</figcaption>
         </div>
         <div class="gallery-item">
-          <img src="/images/product/mobileNavigationView.png" alt="Mobile navigation view">
+          <img src="/images/product/mobileNavigationView.webp" width="446" height="837" loading="lazy" decoding="async" alt="Mobile navigation view">
           <figcaption>Mobile ride mode</figcaption>
         </div>
       </div>
@@ -683,6 +687,7 @@
       </div>
     </div>
   </section>
+  </main>
 
   <!-- Footer -->
   <footer class="site-footer">
