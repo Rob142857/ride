@@ -670,15 +670,15 @@
       -webkit-text-fill-color: transparent;
       background-clip: text;
       -webkit-text-stroke: 0.45px rgba(67, 56, 202, 0.28);
-      text-shadow:01px 0 rgba(255, 255, 255, 0.55),0018px rgba(124, 58, 237, 0.18);
-      filter: drop-shadow(01px 1px rgba(0, 0, 0, 0.12));
+      text-shadow:0 1px 0 rgba(255, 255, 255, 0.55),0 0 18px rgba(124, 58, 237, 0.18);
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.12));
       animation: wordmark-shimmer 6s ease-in-out infinite;
       transition: filter 0.4s ease, transform 0.4s ease;
     }
 
     .footer-brand-text:hover {
       animation-duration: 2s;
-      filter: drop-shadow(0010px rgba(124, 58, 237, 0.25));
+      filter: drop-shadow(0 0 10px rgba(124, 58, 237, 0.25));
       transform: scale(1.05);
     }
 
@@ -1356,6 +1356,12 @@
       .route-meta-small {
         font-size: .75rem;
       }
+    }
+    /* Phone polish (24 Oct 2026): 44px tap targets on the shared trip page */
+    @media (max-width: 767px) {
+      .map-btn { min-height: 44px; padding: 8px 12px; }
+      .leaflet-control-zoom a { width: 44px !important; height: 44px !important; line-height: 44px !important; }
+      .error-cta { display: inline-flex; align-items: center; min-height: 44px; }
     }
   </style>
 </head>
