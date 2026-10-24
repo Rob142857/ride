@@ -650,7 +650,7 @@ body:has(.modal:not(.hidden)) .install-banner {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   overflow: hidden;
-  box-shadow: 0 4px16px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
 
 .leaflet-bottom.leaflet-left .leaflet-control-zoom a {
@@ -679,7 +679,7 @@ body:has(.modal:not(.hidden)) .install-banner {
   color: rgba(255,255, 255, 0.55) !important;
   font-size:9px;
   border-radius: 6px;
-  padding: 3px6px;
+  padding: 3px 6px;
   border: none !important;
   white-space: nowrap;
   overflow: hidden;
@@ -3942,5 +3942,248 @@ body:has(.modal:not(.hidden)) .install-banner {
   /* While a route choice is on offer it takes line 2; the stats come back after. */
   .topbar-title:has(.route-choice-panel:not(.hidden)) .trip-stats {
     display: none;
+  }
+}
+
+/* ── Phone polish, every surface (24 Oct 2026) ──
+   Same principles as the header: nothing overlaps or clips, one line of text never
+   collides with another, tap targets are at least 44px, long names ellipsize or wrap,
+   dialogs and panels stay inside the screen and clear of the notch, home bar and bottom nav.
+   Guarded by e2e/mobile/surfaces.spec.mjs. */
+@media (max-width: 767px) {
+  /* Header: the stat pills are a nice-to-have. Smaller on phones; the cost pill
+     is dropped on very narrow ones so nothing is cut off mid-pill. */
+  .trip-stat-pill {
+    font-size: 0.68rem;
+    padding: 1px 6px;
+  }
+  .trip-stats .trip-stat-pill:nth-child(n+3) {
+    display: none;
+  }
+  @media (min-width: 400px) {
+    .trip-stats .trip-stat-pill:nth-child(3) {
+      display: inline-block;
+    }
+  }
+
+  /* 44px tap targets */
+  .icon-btn,
+  .modal-close,
+  #closeItineraryBtn,
+  .heading-help,
+  .heading-refresh {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .heading-help,
+  .heading-refresh {
+    width: 44px;
+    height: 44px;
+  }
+  .modal-close {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+  .toolbar-btn,
+  .primary-btn,
+  .cancel-btn,
+  .secondary-btn,
+  .modal-actions button,
+  .itinerary-stop .itinerary-extend,
+  .itinerary-map-link,
+  #itineraryImportBtn,
+  #itineraryUpdateBtn,
+  #itineraryBackupBtn {
+    min-height: 44px;
+  }
+  .menu-list button {
+    min-height: 48px;
+  }
+  .itinerary-content summary,
+  .modal-content summary {
+    display: list-item;
+    min-height: 44px;
+    padding-block: 11px;
+    line-height: 22px;
+    box-sizing: border-box;
+  }
+  .leaflet-bottom.leaflet-left .leaflet-control-zoom a {
+    width: 44px !important;
+    height: 44px !important;
+    line-height: 44px !important;
+    font-size: 22px;
+  }
+  .leaflet-control-layers-toggle {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  .link-btn,
+  .trip-actions .link-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  /* Waypoint rows: name gets the full width, buttons sit on their own line. */
+  .waypoint-item {
+    display: grid;
+    grid-template-columns: 28px 36px minmax(0, 1fr);
+    grid-template-areas:
+      "handle icon info"
+      "actions actions actions";
+    align-items: start;
+    column-gap: 8px;
+    row-gap: 4px;
+  }
+  .waypoint-handle {
+    grid-area: handle;
+    height: 36px;
+  }
+  .waypoint-icon {
+    grid-area: icon;
+    width: 36px;
+    height: 36px;
+  }
+  .waypoint-info {
+    grid-area: info;
+    min-width: 0;
+    padding-top: 2px;
+  }
+  .waypoint-name,
+  .waypoint-address,
+  .waypoint-notes {
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .waypoint-actions {
+    grid-area: actions;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .waypoint-actions button {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Dialogs: inside the screen, clear of the notch and home bar. */
+  .modal {
+    padding: max(12px, var(--safe-area-top)) max(12px, env(safe-area-inset-right, 0px)) max(12px, var(--safe-area-bottom)) max(12px, env(safe-area-inset-left, 0px));
+  }
+  .modal-content {
+    padding: 18px 16px;
+    max-height: calc(100vh - 24px - var(--safe-area-top) - var(--safe-area-bottom));
+    max-height: calc(100dvh - 24px - var(--safe-area-top) - var(--safe-area-bottom));
+    overscroll-behavior: contain;
+  }
+  #waypointModal .modal-content {
+    margin: 0;
+  }
+  .modal-header h3,
+  .modal-header h2 {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .modal-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .modal-actions .primary-btn,
+  .modal-actions .cancel-btn {
+    flex: 1 1 120px;
+  }
+}
+
+@media (max-width: 767px) {
+  .user-dropdown-actions button,
+  .danger-btn,
+  .confirm-input {
+    min-height: 44px;
+  }
+  .modal-content .live-more summary,
+  .modal-content .saved-place-more summary {
+    min-height: 44px;
+  }
+  .itinerary-content .itinerary-stop .itinerary-extend,
+  .itinerary-content .itinerary-map-link {
+    min-height: 44px;
+  }
+  .ride-banner-exit {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Cover focus: label, hint and picker stack instead of squeezing into one row. */
+  .field-row:has(.cover-focus-picker) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .cover-focus-picker img[src=""],
+  .cover-focus-picker img:not([src]) {
+    display: none;
+  }
+  /* Trips list: a long name ellipsizes instead of running under the status pill. */
+  .trip-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .waypoints-toolbar .toolbar-btn {
+    min-width: 44px;
+  }
+  .ride-overlay .ride-banner-exit {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 767px) {
+  /* "Attach a file" rows: label, button and hint stack; the button never wraps its own label. */
+  .field-row:has(.pill-actions) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .secondary-btn,
+  .toolbar-btn,
+  .primary-btn {
+    white-space: nowrap;
+  }
+  .modal-content.live-modal {
+    max-height: calc(100vh - 24px - var(--safe-area-top) - var(--safe-area-bottom));
+    max-height: calc(100dvh - 24px - var(--safe-area-top) - var(--safe-area-bottom));
+  }
+  .live-modal .modal-subtitle {
+    margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Side menu: scrolls on short screens and stays clear of the home bar. */
+  #sideMenu {
+    overflow-y: auto;
+    padding-bottom: var(--safe-area-bottom);
+    max-width: 88vw;
+  }
+  /* Toast: wraps instead of running off the screen. */
+  #toast {
+    max-width: calc(100vw - 32px);
+    padding: 12px 18px;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Keep the Drop and Search labels at 360px; there is room on their row. */
+  .waypoints-toolbar .toolbar-btn.primary span,
+  .waypoints-toolbar #searchWaypointPlaceBtn span {
+    display: inline;
   }
 }
