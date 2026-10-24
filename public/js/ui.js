@@ -623,15 +623,20 @@ const UI = {
     const distance = trip?.route?.distance;
     const time = trip?.route?.time;
 
-    const parts =[];
-    if (typeof distance === 'number') parts.push(this.formatDistance(distance));
-    if (typeof time === 'number') parts.push(this.formatDuration(time));
+    // Header pills stay short so all three fit on a phone; the full values are in the title.
+    const parts = [];
+    if (typeof distance === 'number') parts.push([this.formatDistanceShort(distance), this.formatDistance(distance)]);
+    if (typeof time === 'number') parts.push([this.formatDurationShort(time), this.formatDuration(time)]);
 
     const fuelCost = this.calcFuelCost(distance, trip);
-    if (fuelCost !== null) parts.push(`$${fuelCost}`);
+    if (fuelCost !== null) {
+      const n = Number(fuelCost);
+      const short = Number.isFinite(n) && n >= 100 ? `$${Math.round(n).toLocaleString('en-AU')}` : `$${fuelCost}`;
+      parts.push([short, `$${fuelCost} fuel (estimate)`]);
+    }
 
     el.innerHTML = parts.length
-      ? parts.map((p) => `<span class="trip-stat-pill">${p}</span>`).join('')
+      ? parts.map(([short, full]) => `<span class="trip-stat-pill" title="${full}">${short}</span>`).join('')
       : '';
   },
 
@@ -694,6 +699,20 @@ const UI = {
     if (meters === undefined || meters === null) return '';
     if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
     return `${Math.round(meters)} m`;
+  },
+
+  /** Header pill: whole km once a trip is 100 km or more, e.g. "7,955 km". */
+  formatDistanceShort(meters) {
+    if (meters === undefined || meters === null) return '';
+    if (meters >= 100000) return `${Math.round(meters / 1000).toLocaleString('en-AU')} km`;
+    return this.formatDistance(meters);
+  },
+
+  /** Header pill: whole hours once a trip is 10 h or more, e.g. "108 h". */
+  formatDurationShort(seconds) {
+    if (seconds === undefined || seconds === null) return '';
+    if (seconds >= 36000) return `${Math.round(seconds / 3600)} h`;
+    return this.formatDuration(seconds);
   },
 
   formatDuration(seconds) {

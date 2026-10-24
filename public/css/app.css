@@ -3882,3 +3882,65 @@ body:has(.modal:not(.hidden)) .install-banner {
     display: none;
   }
 }
+
+/* ── Phone header (24 Oct 2026) ──
+   On narrow screens the stat pills (flex-shrink: 0) squeezed the trip name to zero width,
+   overlapped the "Trip loaded" label and slid under the right-hand buttons.
+   Phone layout: logo | name on line 1, stat pills on line 2; the label is redundant there. */
+@media (max-width: 767px) {
+  .topbar-title {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 8px;
+    row-gap: 3px;
+    align-items: center;
+    align-content: center;
+    overflow: hidden;
+  }
+  .topbar-logo-icon,
+  .topbar-logo {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .topbar-trip-info {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+  .trip-label {
+    display: none;
+  }
+  #tripTitle {
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+  .trip-stats {
+    grid-column: 2;
+    grid-row: 2;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow: hidden;
+    margin-left: 0;
+    gap: 4px;
+  }
+  .trip-stats:empty {
+    display: none;
+  }
+  .trip-stat-pill {
+    white-space: nowrap;
+    flex-shrink: 0;
+    line-height: 1.5;
+  }
+  .route-choice-panel {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+    min-width: 0;
+    overflow-x: auto;
+  }
+  /* While a route choice is on offer it takes line 2; the stats come back after. */
+  .topbar-title:has(.route-choice-panel:not(.hidden)) .trip-stats {
+    display: none;
+  }
+}

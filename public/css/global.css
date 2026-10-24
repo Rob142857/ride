@@ -86,7 +86,9 @@ body {
 /* Utility Classes */
 .antialiased { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 .geistsans_47a3c9f1-module__2HyNMa__variable { font-family: var(--font-sans); }
-.geistmono_cfbefb1d-module__tUxLBG__variable { font-family: var(--font-mono); }
+/* Was font-family: var(--font-mono). On <body> (with the sans class) it won the cascade and set the whole
+   app in monospace, though Inter is what the design and fonts load for. Mono stays available via var(--font-mono). */
+.geistmono_cfbefb1d-module__tUxLBG__variable { }
 .min-h-screen { min-height: 100vh; }
 .bg-\[\#faf9f8\] { background: var(--neutral-50); }
 .bg-neutral-100 { background: var(--neutral-100); }
