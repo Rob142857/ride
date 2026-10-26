@@ -43,7 +43,8 @@ function buildDatabase() {
     CREATE TABLE waypoints (id TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
       name TEXT NOT NULL, lat REAL NOT NULL, lng REAL NOT NULL, sort_order INTEGER DEFAULT 0);
     CREATE TABLE journal_entries (id TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-      title TEXT, content TEXT, is_private INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')));
+      waypoint_id TEXT, title TEXT, content TEXT, is_private INTEGER DEFAULT 1, tags TEXT, location TEXT,
+      created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')));
     CREATE TABLE attachments (id TEXT PRIMARY KEY, trip_id TEXT, storage_key TEXT, created_at TEXT);
     CREATE TABLE route_data (id TEXT PRIMARY KEY, trip_id TEXT, coordinates TEXT, steps TEXT, distance REAL, duration REAL);
     CREATE TABLE alternative_routes (id TEXT PRIMARY KEY, trip_id TEXT, route_index INTEGER, name TEXT, summary TEXT, color TEXT,
@@ -108,7 +109,7 @@ const sessions = {
     return res.json;
   };
   // Waypoint routes (waypoints:rw) are covered in scripts/token-waypoints-test.js.
-  const ALL = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read', 'account.read', 'mcp.connect'];
+  const ALL = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read', 'journal:write', 'account.read', 'mcp.connect'];
   const fillPath = '/api/trips/owner-trip/fuel-fills';
 
   // --- Anonymous: 401 on every new or newly scoped route; nothing written ---
@@ -178,11 +179,29 @@ const sessions = {
   // --- A token is refused on every non-scoped route (account, auth, writes) ---
   for (const [method, url, body] of [['GET', '/api/auth/me'], ['POST', '/api/user/purge'], ['POST', '/api/trips', { name: 'x' }],
     ['PUT', '/api/trips/owner-trip', { name: 'Hijack' }], ['DELETE', '/api/trips/owner-trip'], ['POST', '/api/trips/owner-trip/share'],
-    ['POST', '/api/trips/owner-trip/journal', { title: 'x' }], ['GET', '/api/admin/users'], ['GET', '/api/trips/owner-trip/alternatives']]) {
+    ['DELETE', '/api/trips/owner-trip/journal/owner-note'], ['GET', '/api/admin/users'], ['GET', '/api/trips/owner-trip/alternatives']]) {
     const res = await call(method, url, { token: allToken, body });
     assert.equal(res.status, 403, `${method} ${url} must refuse a token (got ${res.status})`);
   }
   assert.equal(count("SELECT COUNT(*) AS n FROM trips WHERE id = 'owner-trip' AND name = 'Sample loop'"), 1);
+  assert.equal(count("SELECT COUNT(*) AS n FROM journal_entries WHERE id = 'owner-note'"), 1, 'a token cannot delete journal entries');
+
+  // --- journal:write: add and edit own entries only; other scopes are refused ---
+  const journalPath = '/api/trips/owner-trip/journal';
+  const noJournal = (await createToken(['trips:read', 'checkins:rw'], { name: 'No journal' })).secret;
+  assert.equal((await call('POST', journalPath, { token: noJournal, body: { title: 'x' } })).status, 403);
+  assert.equal((await call('PUT', `${journalPath}/owner-note`, { token: noJournal, body: { title: 'x' } })).status, 403);
+  const journalToken = (await createToken(['journal:write'], { name: 'Journal agent' })).secret;
+  const addedNote = await call('POST', journalPath, { token: journalToken, body: { title: 'Invented entry', content: 'Invented text' } });
+  assert.equal(addedNote.status, 201, JSON.stringify(addedNote.json));
+  assert.equal(addedNote.json.entry.is_private, 1, 'token entries default to private');
+  assert.equal((await call('POST', journalPath, { token: journalToken, body: { title: { bad: 1 } } })).status, 400);
+  const editedNote = await call('PUT', `${journalPath}/${addedNote.json.entry.id}`, { token: journalToken, body: { content: 'Edited' } });
+  assert.equal(editedNote.status, 200);
+  assert.equal(editedNote.json.entry.content, 'Edited');
+  assert.equal((await call('PUT', `${journalPath}/other-note`, { token: journalToken, body: { content: 'Hijack' } })).status, 404, 'another trip\'s entry is not found');
+  assert.equal((await call('POST', '/api/trips/other-trip/journal', { token: journalToken, body: { title: 'Hijack' } })).status, 404);
+  assert.equal(count("SELECT COUNT(*) AS n FROM journal_entries WHERE content = 'Hijack' OR title = 'Hijack'"), 0);
 
   // --- Bearer responses carry no CORS; cookie responses keep Ride's own CORS ---
   const viaToken = await call('GET', fillPath, { token: fuelToken, origin: 'https://evil.example' });
@@ -247,7 +266,7 @@ const sessions = {
   assert.equal(tripSettings.itinerary.fuel.litresPer100Km, 10, 'consumption kept');
   assert.equal(tripSettings.keep, 'me', 'other settings kept');
   assert.equal(tripRow.version, 1, 'version bumped so an open editor cannot overwrite the price');
-  const auditRows = db.prepare("SELECT * FROM api_token_audit WHERE method = 'POST'").all();
+  const auditRows = db.prepare("SELECT * FROM api_token_audit WHERE method = 'POST' AND route LIKE '%fuel-fills'").all();
   assert.equal(auditRows.length, 1, 'one audit row per token write');
   assert.equal(auditRows[0].token_id, created.token.id);
   assert.equal(auditRows[0].route, fillPath);

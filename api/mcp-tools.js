@@ -19,6 +19,7 @@ import { WaypointsHandler } from './waypoints.js';
 import { ItineraryWriteHandler } from './itinerary-write.js';
 import { FuelFillsHandler, PAYMENT_METHODS } from './fuel-fills.js';
 import { CheckinsHandler } from './checkins.js';
+import { JournalHandler } from './journal.js';
 import { RideLogsHandler } from './ride-logs.js';
 import { SavedPlacesHandler, PLACE_TYPES } from './saved-places.js';
 import { safeJsonParse } from './handler-utils.js';
@@ -102,6 +103,11 @@ const rideLogSummarySchema = output({
   distance_km: orNull({ type: 'number' }), duration_min: orNull({ type: 'number' }), point_count: { type: 'integer' },
   journal_entry_id: orNull({ type: 'string' })
 }, ['id', 'point_count']);
+const journalSchema = output({
+  id: { type: 'string' }, trip_id: { type: 'string' }, waypoint_id: orNull({ type: 'string' }), title: { type: 'string' },
+  content: { type: 'string' }, is_private: { type: 'boolean' }, tags: list({ type: 'string' }), location: orNull(anyObject),
+  created_at: orNull({ type: 'string' }), updated_at: orNull({ type: 'string' })
+}, ['id', 'trip_id', 'title', 'is_private']);
 const conflictFreeTripVersion = { type: 'integer', description: 'The trip version after this change; pass it as expected_version next time.' };
 
 const fillFields = {
@@ -117,6 +123,12 @@ const placeFields = {
   cost_amount: num(0, 1000000), cost_note: str(200), cost_seen_on: DATE, facilities: list(str(80), { maxItems: 40 }),
   best_time: str(1000), avoid: str(1000), last_visited_on: DATE, source_links: list(str(2000), { maxItems: 20 }),
   trip_id: str(100), waypoint_id: str(100)
+};
+const journalFields = {
+  title: str(500, { minLength: 1 }), content: str(50000),
+  is_private: bool({ description: 'Hide the entry from public share links. add_journal_entry defaults to true.' }),
+  tags: list(str(40), { maxItems: 30 }), waypoint_id: str(100, { description: 'Waypoint this entry belongs to (from list_waypoints)' }),
+  location: input({ lat: LAT, lng: LNG, name: str(200) }, ['lat', 'lng'])
 };
 const waypointFields = {
   name: str(500, { minLength: 1 }), lat: LAT, lng: LNG, type: { type: 'string', enum: WAYPOINT_TYPES },
@@ -196,6 +208,14 @@ function waypointOut(w) {
   return {
     id: String(w.id), name: w.name ?? '', lat: Number(w.lat), lng: Number(w.lng), type: w.type ?? 'stop',
     address: w.address ?? '', notes: w.notes ?? '', sort_order: Number(w.sort_order ?? 0)
+  };
+}
+
+function journalOut(entry) {
+  return {
+    id: String(entry.id), trip_id: String(entry.trip_id), waypoint_id: entry.waypoint_id ?? null, title: entry.title ?? '',
+    content: entry.content ?? '', is_private: !!entry.is_private, tags: Array.isArray(entry.tags) ? entry.tags : [],
+    location: entry.location ?? null, created_at: entry.created_at ?? null, updated_at: entry.updated_at ?? null
   };
 }
 
@@ -626,6 +646,37 @@ export const TOOLS = [
     async run(tc, args) {
       ok(await invoke(tc, CheckinsHandler.remove, { method: 'DELETE', params: { tripId: args.trip_id, id: args.checkin_id } }), { notFound: 'Check-in not found' });
       return { structured: { deleted: true, checkin_id: args.checkin_id }, text: `Deleted check-in ${args.checkin_id}.` };
+    }
+  },
+
+  // ----- journal
+  {
+    name: 'add_journal_entry',
+    title: 'Add a journal entry',
+    description: 'Write a new trip journal entry. Entries are private (hidden from share links) unless you send is_private: false. Read existing entries with get_trip and include ["journal"]. Not safe to retry blindly: check get_trip first if a call timed out. Like any journal change it bumps the trip version, so read get_trip again before a waypoint or itinerary write.',
+    scopes: [['journal.write']],
+    annotations: ADD,
+    inputSchema: input({ trip_id: TRIP_ID, ...journalFields }, ['trip_id', 'title']),
+    outputSchema: output({ entry: journalSchema }, ['entry']),
+    async run(tc, args) {
+      const body = { is_private: true, ...without(args, ['trip_id']) };
+      const json = ok(await invoke(tc, JournalHandler.addJournalEntry, { method: 'POST', params: { tripId: args.trip_id }, body }), { notFound: 'Trip not found' });
+      const entry = journalOut(json.entry);
+      return { structured: { entry }, text: `Added journal entry ${entry.id}${entry.is_private ? ' (private)' : ''}.` };
+    }
+  },
+  {
+    name: 'update_journal_entry',
+    title: 'Update a journal entry',
+    description: 'Edit a trip journal entry. Only the fields you send change; content replaces the whole text. Like any journal change it bumps the trip version, so read get_trip again before a waypoint or itinerary write.',
+    scopes: [['journal.write']],
+    annotations: EDIT,
+    inputSchema: input({ trip_id: TRIP_ID, entry_id: ID, ...without(journalFields, ['waypoint_id']) }, ['trip_id', 'entry_id'], { minProperties: 3 }),
+    outputSchema: output({ entry: journalSchema }, ['entry']),
+    async run(tc, args) {
+      const json = ok(await invoke(tc, JournalHandler.updateJournalEntry, { method: 'PUT', params: { tripId: args.trip_id, id: args.entry_id }, body: without(args, ['trip_id', 'entry_id']) }), { notFound: 'Journal entry not found' });
+      const entry = journalOut(json.entry);
+      return { structured: { entry }, text: `Updated journal entry ${entry.id}.` };
     }
   },
 

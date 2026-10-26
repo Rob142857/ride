@@ -88,6 +88,7 @@ remain valid aliases, so existing tokens keep working.
 | `fuel.read`, `fuel.write` | `fuel:rw` | `get_fuel_status`, `list_fuel_fills`; `add_fuel_fill`, `update_fuel_fill`, `delete_fuel_fill` |
 | `checkins.read`, `checkins.write` | `checkins:rw` | `get_last_location`, `list_checkins`; `add_checkin`, `delete_checkin` |
 | `ridelogs.read` | `ridelogs:read` | `list_ride_logs`, `get_ride_log` |
+| `journal.write` | `journal:write` | `add_journal_entry`, `update_journal_entry` (read entries with `get_trip`, `include: ["journal"]`) |
 | `places.read`, `places.write` | `places:rw` | `list_saved_places`, `get_saved_place`; `save_place`, `update_saved_place`, `delete_saved_place` |
 | `account.read` | `account.read` | `get_my_account` |
 
@@ -119,6 +120,8 @@ R = read only, W = write, D = destructive, I = idempotent.
 | `list_checkins` | R | **`trip_id`**, `limit` (1-500) |
 | `add_checkin` | W | **`trip_id`**, **`lat`**, **`lng`**, `id`, `accuracy_m`, `recorded_at`, `note` (stored with source `agent`) |
 | `delete_checkin` | W, D, I | **`trip_id`**, **`checkin_id`** |
+| `add_journal_entry` | W | **`trip_id`**, **`title`**, `content`, `is_private` (default **true**), `tags`, `waypoint_id`, `location` `{lat, lng, name}` |
+| `update_journal_entry` | W, I | **`trip_id`**, **`entry_id`**, fields to change |
 | `list_ride_logs` | R | **`trip_id`**, `cursor` (summaries only, no GPS points) |
 | `get_ride_log` | R | **`trip_id`**, **`log_id`**, `full` (track simplified to 2,000 points unless true) |
 | `list_saved_places` | R | `type`, `tag`, `near` `{lat, lng, radius_m <= 50000}`, `limit`, `cursor` |
@@ -129,7 +132,7 @@ R = read only, W = write, D = destructive, I = idempotent.
 | `get_my_account` | R | none |
 
 Not exposed over MCP (they stay in the app): creating trips or tokens, deleting trips, share links,
-journal edits, attachments, places search (Google), places import/export and account purge.
+deleting journal entries, attachments, places search (Google), places import/export and account purge.
 
 ### Concurrency: `expected_version`
 

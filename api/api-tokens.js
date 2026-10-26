@@ -19,7 +19,7 @@ export const TOKEN_PREFIX = 'ride_pat_';
 // Colon scopes are the original REST names. Dot scopes follow the shared MCP
 // convention (<area>.<verb>): `account.read` lets an AI app see who the token
 // acts for, and `mcp.connect` is the opt-in that lets a token call /mcp at all.
-export const TOKEN_SCOPES = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read', 'account.read', 'mcp.connect'];
+export const TOKEN_SCOPES = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read', 'journal:write', 'account.read', 'mcp.connect'];
 export const MAX_ACTIVE_TOKENS = 20;
 export const MAX_EXPIRY_DAYS = 365;
 export const DEFAULT_EXPIRY_DAYS = 90;

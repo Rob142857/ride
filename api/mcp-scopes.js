@@ -12,6 +12,7 @@
  *   fuel:rw         -> fuel.read + fuel.write
  *   checkins:rw     -> checkins.read + checkins.write
  *   ridelogs:read   -> ridelogs.read
+ *   journal:write   -> journal.write
  * Dot names pass through unchanged. Unknown names are dropped.
  */
 
@@ -21,7 +22,7 @@ export const MCP_CONNECT_SCOPE = 'mcp.connect';
 export const DOT_SCOPES = [
   'trips.read', 'itinerary.write', 'waypoints.read', 'waypoints.write',
   'places.read', 'places.write', 'fuel.read', 'fuel.write',
-  'checkins.read', 'checkins.write', 'ridelogs.read', 'account.read', MCP_CONNECT_SCOPE
+  'checkins.read', 'checkins.write', 'ridelogs.read', 'journal.write', 'account.read', MCP_CONNECT_SCOPE
 ];
 
 export const SCOPE_ALIASES = Object.freeze({
@@ -31,7 +32,8 @@ export const SCOPE_ALIASES = Object.freeze({
   'places:rw': ['places.read', 'places.write'],
   'fuel:rw': ['fuel.read', 'fuel.write'],
   'checkins:rw': ['checkins.read', 'checkins.write'],
-  'ridelogs:read': ['ridelogs.read']
+  'ridelogs:read': ['ridelogs.read'],
+  'journal:write': ['journal.write']
 });
 
 /** Expand a stored scope list (colon aliases and/or dot names) into a set of dot scopes. */

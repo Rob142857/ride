@@ -107,7 +107,7 @@ const sessions = {
   'paused-session': { user: { id: 'paused' }, expiresAt: Date.now() + 600000 }
 };
 
-const ALL_SCOPES = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read', 'account.read', 'mcp.connect'];
+const ALL_SCOPES = ['trips:read', 'itinerary:write', 'waypoints:rw', 'places:rw', 'fuel:rw', 'checkins:rw', 'ridelogs:read', 'journal:write', 'account.read', 'mcp.connect'];
 
 let worker, mcpTools, schema, db, env, plan, sessionsKv;
 const responses = []; // every JSON-RPC body seen, for the error-code policy check
@@ -405,7 +405,7 @@ test('tools/list: schemas, annotations, caching hints, deterministic and filtere
   const tools = first.json.result.tools;
   assert.equal(first.json.result.cacheScope, 'private');
   assert.ok(Number.isInteger(first.json.result.ttlMs));
-  assert.equal(tools.length, 26);
+  assert.equal(tools.length, 28);
   for (const tool of tools) {
     assert.match(tool.name, /^[a-z_]{1,64}$/);
     assert.ok(tool.description && tool.title);
@@ -598,6 +598,28 @@ test('check-ins: add (source agent), last location, list, delete', async () => {
   assert.equal((await ok('list_checkins', { trip_id: 'trip-1' })).checkins.length, 1);
   assert.equal((await ok('delete_checkin', { trip_id: 'trip-1', checkin_id: 'checkin-test-01' })).deleted, true);
   assert.match((await toolError('add_checkin', { trip_id: 'trip-1', lat: 200, lng: 0 })).content[0].text, /lat/);
+});
+
+test('journal: add (private by default), update, not found, read back with get_trip', async () => {
+  const before = version();
+  const added = await ok('add_journal_entry', { trip_id: 'trip-1', title: 'Invented day', content: 'Invented text', tags: ['test'], location: { lat: -31.2, lng: 150.2 } });
+  assert.equal(added.entry.is_private, true, 'agent entries are private unless asked');
+  assert.deepEqual(added.entry.tags, ['test']);
+  assert.ok(version() > before, 'journal insert bumps the trip version');
+  const shared = await ok('add_journal_entry', { trip_id: 'trip-1', title: 'Shared day', is_private: false });
+  assert.equal(shared.entry.is_private, false);
+  const updated = await ok('update_journal_entry', { trip_id: 'trip-1', entry_id: added.entry.id, content: 'Edited text' });
+  assert.equal(updated.entry.content, 'Edited text');
+  assert.equal(updated.entry.title, 'Invented day');
+  assert.match((await toolError('update_journal_entry', { trip_id: 'trip-1', entry_id: 'no-such-entry', content: 'x' })).content[0].text, /not found/i);
+  assert.match((await toolError('update_journal_entry', { trip_id: 'trip-1', entry_id: 'note-1', title: '' })).content[0].text, /title/i);
+  assert.match((await toolError('add_journal_entry', { trip_id: 'trip-2', title: 'Not mine' })).content[0].text, /not found/i);
+  const read = await ok('get_trip', { trip_id: 'trip-1', include: ['journal'] });
+  assert.ok(read.journal.some(entry => entry.id === added.entry.id && entry.content === 'Edited text'));
+  const denied = await callTool('add_journal_entry', { trip_id: 'trip-1', title: 'X' }, { token: tokens.readOnly });
+  assert.equal(denied.status, 403);
+  assert.deepEqual(denied.json.error.data.required_scopes, ['journal.write']);
+  assert.equal(count("SELECT COUNT(*) AS n FROM journal_entries WHERE title = 'X'"), 0);
 });
 
 test('ride logs: list summaries without tracks, get one simplified or full', async () => {

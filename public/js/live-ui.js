@@ -13,6 +13,7 @@
     'fuel:rw': 'Read and add fuel fill-ups',
     'checkins:rw': 'Read and add check-ins and last location',
     'ridelogs:read': 'Read ride logs',
+    'journal:write': 'Add and edit journal entries',
     'account.read': 'See your Ride name and email',
     'mcp.connect': 'Allow AI apps to connect (MCP) with this token'
   };

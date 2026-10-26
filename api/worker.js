@@ -120,8 +120,8 @@ router.put('/api/saved-places/:id', scoped('places:rw', SavedPlacesHandler.updat
 router.delete('/api/saved-places/:id', scoped('places:rw', SavedPlacesHandler.remove));
 
 // Journal routes (protected)
-router.post('/api/trips/:tripId/journal', requireAuth, JournalHandler.addJournalEntry);
-router.put('/api/trips/:tripId/journal/:id', requireAuth, JournalHandler.updateJournalEntry);
+router.post('/api/trips/:tripId/journal', scoped('journal:write', JournalHandler.addJournalEntry));
+router.put('/api/trips/:tripId/journal/:id', scoped('journal:write', JournalHandler.updateJournalEntry));
 router.delete('/api/trips/:tripId/journal/:id', requireAuth, JournalHandler.deleteJournalEntry);
 
 // Attachment routes (protected for upload/modify, public for viewing public attachments)

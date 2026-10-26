@@ -124,6 +124,7 @@ Token responses carry no CORS headers. Migration: `api/migrations/2026-10-17_tok
 | `fuel:rw` | `GET/POST /api/trips/:tripId/fuel-fills`, `GET/PUT/DELETE .../fuel-fills/:id`, `GET /api/trips/:tripId/fuel-status` |
 | `checkins:rw` | `GET/POST /api/trips/:tripId/checkins`, `DELETE .../checkins/:id`, `GET /api/trips/:tripId/last-location` |
 | `ridelogs:read` | `GET /api/trips/:tripId/ride-logs` |
+| `journal:write` | `POST /api/trips/:tripId/journal`, `PUT .../journal/:id` (deleting stays in the app) |
 
 The newest fill's price becomes the trip's planning `fuel.pricePerLitre` (and bumps the trip version).
 `fuel-status` estimates range left from the last full fill, using the larger of logged ride distance and the

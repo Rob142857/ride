@@ -17,9 +17,11 @@ export const JournalHandler = {
     const trip = await verifyTripOwnership(env, params.tripId, user.id);
     if (!trip) return errorResponse('Trip not found', 404);
 
-    if (!body?.title) {
+    if (!body?.title || typeof body.title !== 'string') {
       return errorResponse('Title is required');
     }
+    // Entries written with an access token are private unless the token asks otherwise.
+    const isPrivate = body.is_private === undefined ? !!context.apiToken : !!body.is_private;
 
     const id = generateId();
 
@@ -32,7 +34,7 @@ export const JournalHandler = {
       body.waypoint_id || null,
       body.title,
       body.content || '',
-      body.is_private ? 1 : 0,
+      isPrivate ? 1 : 0,
       JSON.stringify(body.tags || []),
       body.location ? JSON.stringify(body.location) : null
     ).run();
@@ -57,6 +59,12 @@ export const JournalHandler = {
 
     const trip = await verifyTripOwnership(env, params.tripId, user.id);
     if (!trip) return errorResponse('Trip not found', 404);
+    if (!body || typeof body !== 'object') return errorResponse('Invalid JSON body');
+
+    const existing = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT id FROM journal_entries WHERE id = ? AND trip_id = ?')
+      .bind(params.id, params.tripId).first();
+    if (!existing) return errorResponse('Journal entry not found', 404);
+    if (body.title !== undefined && typeof body.title !== 'string') return errorResponse('Title must be text');
 
     const updates = [];
     const values = [];
