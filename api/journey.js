@@ -10,13 +10,6 @@ import { BASE_URL } from './utils.js';
 import { safeJsonParse } from './handler-utils.js';
 import { expandCoordinates, uniqueRouteChoices } from './route-codec.js';
 
-const DEFAULT_SHARE_SETTINGS = Object.freeze({
-  includeWaypoints: true,
-  includeRoute: true,
-  includePublicNotes: true,
-  includeGallery: true,
-});
-
 export function getJourneySettings(settings) {
   return safeJsonParse(settings || '{}', {});
 }

@@ -21,13 +21,11 @@
   'use strict';
 
   /* ── Configuration ──────────────────────────────────────────────── */
-  const HERO_KEY = 'ride_share_hero_seen';
   const SWIPE_THRESHOLD = 60;
-  const SWIPE_TIME = 400;
 
   /* ── State ──────────────────────────────────────────────────────── */
-  let heroEl, contentEl, mapSection;
-  let touchStartY = 0, touchStartX = 0;
+  let heroEl, contentEl;
+  let touchStartY = 0;
   let touchStartTime = 0;
   let isDismissed = false;
 
@@ -37,9 +35,6 @@
     return false; // Hero is a page header — always show on load
   }
 
-  function markHeroSeen() {
-    // Intentionally disabled — hero must show on every visit
-  }
 
   function dismissHero() {
     if (!heroEl || isDismissed) return;
@@ -71,7 +66,6 @@
 
     heroEl.addEventListener('touchstart', function(e) {
       touchStartY = e.touches[0].clientY;
-      touchStartX = e.touches[0].clientX;
       touchStartTime = Date.now();
     }, { passive: true });
 
@@ -205,7 +199,6 @@
 
   function initSwipeNav() {
     const tabs = document.querySelectorAll('.tab-btn');
-    const panels = document.querySelectorAll('.tab-panel');
     if (tabs.length < 2) return;
 
     let startX = 0, startY = 0;

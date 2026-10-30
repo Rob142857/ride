@@ -146,7 +146,7 @@ Object.assign(App, {
      let insertIndex = ordered.length;
      if (insertAfterWaypointId) {
        const idx = ordered.findIndex(w => w.id === insertAfterWaypointId);
-       if (idx >= 0) insertIndex = idx +1;
+       if (idx >= 0) insertIndex = idx + 1;
      }
 
      const payload = {
@@ -165,7 +165,7 @@ Object.assign(App, {
        serverWaypoint = res?.waypoint;
      } catch (error) {
        console.error('Failed to insert waypoint on route:', error);
-       if (error.status ===409 || error.status === 428) {
+       if (error.status === 409 || error.status === 428) {
          await this.handleTripConflict(error);
        } else {
          UI.showToast('Could not insert route waypoint (not saved)', 'error');
@@ -202,7 +202,7 @@ Object.assign(App, {
      }
 
      this.currentTrip.waypoints = Trip.normalizeWaypointOrder(this.currentTrip.waypoints);
-     if (!this.currentTrip.settings || typeof this.currentTrip.settings !== 'object') this.currentTrip.settings ={};
+     if (!this.currentTrip.settings || typeof this.currentTrip.settings !== 'object') this.currentTrip.settings = {};
      this.currentTrip.settings.waypoint_order = this.currentTrip.waypoints.map(w => w.id);
      this.markTripWritten(this.currentTrip.id);
 

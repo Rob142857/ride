@@ -4,7 +4,7 @@
 import js from '@eslint/js';
 
 const baseRules = {
-  'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+  'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
   'no-console': 'off',
   'eqeqeq': ['warn', 'smart'],
   'no-var': 'warn',
@@ -18,7 +18,8 @@ const baseRules = {
 
 export default [
   // Local wrangler dev bundles (git-ignored) are build output, not source.
-  { ignores: ['.wrangler/**'] },
+  // public/insights.js is the RME Insights snippet, kept in step with that repo (Engineering's lane): not linted here.
+  { ignores: ['.wrangler/**', 'public/insights.js'] },
 
   // Recommended base rules everywhere
   js.configs.recommended,

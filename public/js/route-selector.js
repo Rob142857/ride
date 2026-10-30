@@ -11,7 +11,7 @@
   const DEFAULTS = {
     position: 'top',          // 'top' | 'bottom'
     maxRoutes: 5,
-    formatDistance: (m) => (window.RideUtils?.formatDistance ? RideUtils.formatDistance(m) : `${Math.round((m ||0) / 100) / 10} km`),
+    formatDistance: (m) => (window.RideUtils?.formatDistance ? RideUtils.formatDistance(m) : `${Math.round((m || 0) / 100) / 10} km`),
     formatDuration: (s) => (window.RideUtils?.formatDuration ? RideUtils.formatDuration(s) : `${Math.round((s || 0) / 60)} min`),
   };
 
@@ -27,8 +27,7 @@
 
     let routes = [];
     let selectedIndex = 0;
-    let onSelect =null;
-    let expanded =false;
+    let onSelect = null;
 
     function setRootPosition(el, pos) {
       el.classList.remove('route-selector--top', 'route-selector--bottom');
@@ -57,7 +56,7 @@
 
     function routeLabel(index, routesCount) {
       if (index === 0) return 'Best route';
-      if (routesCount ===2) return 'Alternative';
+      if (routesCount === 2) return 'Alternative';
       return `Alt ${index}`;
     }
 
@@ -151,8 +150,8 @@
     }
 
     function clear() {
-      routes =[];
-      selectedIndex =0;
+      routes = [];
+      selectedIndex = 0;
       root.classList.add('hidden');
       root.innerHTML = '';
     }

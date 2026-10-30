@@ -449,11 +449,10 @@
       }
 
       let synced = 0;
-      let leaseLost = false;
       const renewLease = () => {
         try {
           const lease = JSON.parse(storage.getItem(leaseKey) || 'null');
-          if (lease?.token !== token) { leaseLost = true; return false; }
+          if (lease?.token !== token) return false;
           storage.setItem(leaseKey, JSON.stringify({ token, expiresAt: now() + LEASE_MS }));
           return true;
         } catch (_) { leaseLost = true; return false; }

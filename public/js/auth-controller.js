@@ -235,7 +235,7 @@ Object.assign(App, {
 
   async logout() {
     this.endRideForTripSwitch?.();
-    try { await API.auth.logout(); } catch (e) {}
+    try { await API.auth.logout(); } catch {}
     Storage.clearTrips();
     const dropdown = document.querySelector('.user-dropdown');
     if (dropdown) dropdown.remove();

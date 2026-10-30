@@ -721,7 +721,7 @@ async function recordLogin(env, user, provider, request) {
     await env.RIDE_TRIP_PLANNER_DB.prepare(
       'INSERT INTO login_events (id, user_id, email, provider, provider_id, ip, user_agent, client_hints) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(id, user.id, user.email, provider, user.provider_id || null, ip, userAgent, JSON.stringify(clientHints)).run();
-  } catch (err) {
+  } catch {
     await env.RIDE_TRIP_PLANNER_DB.prepare(
       'INSERT INTO login_events (id, user_id, email, provider, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)'
     ).bind(id, user.id, user.email, provider, ip, userAgent).run();
@@ -785,7 +785,7 @@ async function createOrUpdateUser(db, userData) {
     ).bind(generateId(), id, provider, provider_id, normalizedEmail).run();
 
     return { id, email: normalizedEmail, name, avatar_url, provider, provider_id, last_login: new Date().toISOString() };
-  } catch (err) {
+  } catch {
     // Legacy fallback (no auth_identities table yet): keep one account per email by reusing existing user.
 
     // First try provider+id match

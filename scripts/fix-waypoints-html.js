@@ -92,7 +92,7 @@ const waypointsSection = `<section id="waypointsPanel" class="panel hidden">
 const start = html.indexOf('<section id="waypointsPanel"');
 if (start === -1) throw new Error('waypointsPanel section not found');
 const end = html.indexOf('</section>', start);
-if (end ===-1) throw new Error('waypointsPanel closing tag not found');
+if (end === -1) throw new Error('waypointsPanel closing tag not found');
 const before = html.slice(0, start);
 const after = html.slice(end + '</section>'.length);
 

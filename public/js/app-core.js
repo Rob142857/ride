@@ -38,7 +38,7 @@ const App = {
      this._waypointHistoryIndex = -1;
      if (this.currentTrip?.waypoints) {
        this._waypointHistory.push(this._cloneWaypoints(this.currentTrip.waypoints));
-       this._waypointHistoryIndex =0;
+       this._waypointHistoryIndex = 0;
      }
      this._updateUndoRedoButtons();
    },
@@ -53,8 +53,8 @@ const App = {
        if (!wp || !other) return false;
        return wp.id === other.id &&
          wp.order === other.order &&
-         Math.abs((wp.lat ?? 0) - (other.lat ?? 0)) <1e-8 &&
-         Math.abs((wp.lng ??0) - (other.lng ?? 0)) < 1e-8;
+         Math.abs((wp.lat ?? 0) - (other.lat ?? 0)) < 1e-8 &&
+         Math.abs((wp.lng ?? 0) - (other.lng ?? 0)) < 1e-8;
      });
    },
 
@@ -308,8 +308,6 @@ const App = {
     const coverFileBtn = document.getElementById('tripDetailCoverFileBtn');
     const coverFileName = document.getElementById('tripDetailCoverFileName');
     const coverInput = document.getElementById('tripDetailCover');
-    const focusXInput = document.getElementById('tripDetailCoverFocusX');
-    const focusYInput = document.getElementById('tripDetailCoverFocusY');
 
     if (form) form.addEventListener('submit', e => { e.preventDefault(); this.saveTripDetails(); });
     if (coverFileBtn && coverFileInput) {

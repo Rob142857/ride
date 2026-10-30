@@ -51,101 +51,19 @@
   // ── Helpers ──
   function _fmtDist(m) {
     if (!m) return '0 m';
-    return m >= 10000 ? (Math.round(m/100)/10).toFixed(1).replace(/\.0$/,'') + ' km'
-      : m >= 1000 ? (m/1000).toFixed(1).replace(/\.0$/,'') + ' km'
+    return m >= 10000 ? (Math.round(m / 100) / 10).toFixed(1).replace(/\.0$/,'') + ' km'
+      : m >= 1000 ? (m / 1000).toFixed(1).replace(/\.0$/,'') + ' km'
       : Math.round(m) + ' m';
   }
   function _fmtDur(s) {
     if (!s) return '0 min';
-    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     return h > 0 ? `${h}h ${m}m` : `${m} min`;
   }
   function _authHeaders() {
     if (typeof authHeaders === 'function') return authHeaders();
     const t = localStorage.getItem('ride_auth');
     return t ? { 'Authorization': `Bearer ${t}` } : {};
-  }
-
-  // ── Ensure route-selector container exists inside share-view ──
-  function ensureRouteContainer() {
-    const shareView = document.getElementById('share-view');
-    if (!shareView) return null;
-    let rs = shareView.querySelector('#route-selector');
-    if (!rs) {
-      rs = document.createElement('div');
-      rs.id = 'route-selector';
-      rs.className = 'route-selector';
-      rs.style.display = 'none';
-      const cta = shareView.querySelector('.share-cta');
-      if (cta && cta.nextSibling) {
-        shareView.insertBefore(rs, cta.nextSibling);
-      } else {
-        shareView.appendChild(rs);
-      }
-    }
-    return rs;
-  }
-
-  // ── Portable renderRouteSelector ──
-  function renderRouteSelectorPortable(trip) {
-    const container = ensureRouteContainer() || document.getElementById('route-selector');
-    if (!container) return;
-
-    const allOptions = [trip.route, ...(trip.alternativeRoutes || trip.alt_routes || [])];
-    if (allOptions.length < 2) {
-      container.style.display = 'none';
-      return;
-    }
-
-    const fastest = allOptions.slice().sort((a,b)=>(a.duration||Infinity)-(b.duration||Infinity))[0];
-    const savedIndex = allOptions.findIndex(r => r.saved);
-    const resolvedSavedIndex = savedIndex !== -1 ? savedIndex : (trip.activeRouteIndex ?? trip.active_route_index ?? 0);
-    const isMobile = window.innerWidth <= 768;
-
-    if (isMobile) container.classList.add('route-sheet');
-    else container.classList.remove('route-sheet');
-
-    const handle = isMobile ? '<div class="route-sheet-handle"></div>' : '';
-    container.innerHTML = handle + `<div class="route-selector-title">Route Options</div>` + allOptions.map((opt, idx) => {
-      const isFast = opt === fastest;
-      const isSaved = idx === resolvedSavedIndex;
-      const label = isSaved ? 'Saved' : isFast ? 'Fastest' : 'Alternative';
-      const badgeClass = isSaved ? 'route-saved' : isFast ? 'route-fastest' : 'route-alternative';
-      const summary = `${_fmtDist(opt.distance)} · ${_fmtDur(opt.duration)}`;
-      return `
-        <button class="route-option${idx === (window.activeRouteIndex||0) ? ' is-active' : ''}" data-idx="${idx}" type="button">
-          <div class="route-info">
-            <div class="route-badges">
-              <span class="route-badge ${badgeClass}">${label}</span>
-            </div>
-            <div class="route-summary">${summary}</div>
-          </div>
-          <div class="route-check">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-          </div>
-        </button>
-      `;
-    }).join('');
-
-    container.style.display = 'block';
-    container.querySelectorAll('.route-option').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx, 10);
-        if (idx === (window.activeRouteIndex||0)) return;
-        window.activeRouteIndex = idx;
-
-        // Redraw route line if drawRouteForIndex exists
-        if (typeof drawRouteForIndex === 'function') {
-          drawRouteForIndex(trip, idx, null);
-        }
-        container.querySelectorAll('.route-option').forEach(b => b.classList.toggle('is-active', parseInt(b.dataset.idx,10) === idx));
-
-        // Update map stats if updateTripStatsForRoute exists
-        if (typeof updateTripStatsForRoute === 'function') {
-          updateTripStatsForRoute(trip, idx);
-        }
-      });
-    });
   }
 
   // ── Inject mobile header/back into share-view ──

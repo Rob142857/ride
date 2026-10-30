@@ -220,7 +220,7 @@ const Share = {
       await navigator.clipboard.writeText(text);
       UI.showToast('Link copied to clipboard', 'success');
       window.RideInsights?.track('share_copy');
-    } catch (err) {
+    } catch {
       // Fallback for older browsers
       const input = document.createElement('input');
       input.value = text;

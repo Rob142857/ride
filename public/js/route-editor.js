@@ -14,7 +14,7 @@
 
   const HANDLE_CLASS = 'route-midpoint-handle';
   const CLICK_LINE_CLASS = 'route-click-line';
-  const EPS =1e-12;
+  const EPS = 1e-12;
 
   function create(map, options = {}) {
     if (!map) throw new Error('RouteEditor requires a Leaflet map instance');
@@ -30,7 +30,7 @@
 
     const layerGroup = L.layerGroup({ pane: 'routeEditorPane' }).addTo(map);
     let clickLine = null;
-    let handles =[];
+    let handles = [];
     let lastClickTime = 0;
 
     function isEnabled() {
@@ -70,7 +70,7 @@
       const dx = b.lng - x0;
       const dy = b.lat - y0;
       const len2 = dx * dx + dy * dy;
-      let t = len2 < EPS ?0 : ((x - x0) * dx + (y - y0) * dy) / len2;
+      let t = len2 < EPS ? 0 : ((x - x0) * dx + (y - y0) * dy) / len2;
       t = Math.max(0, Math.min(1, t));
       return {
         lat: y0 + t * dy,
@@ -90,7 +90,7 @@
      * closest to. Returns { startWaypoint, endWaypoint, projected }.
      */
     function findNearestSegment(latlng, orderedWaypoints) {
-      let best =null;
+      let best = null;
       let bestDist = Infinity;
       for (let i = 0; i < orderedWaypoints.length - 1; i++) {
         const a = orderedWaypoints[i];
@@ -187,7 +187,7 @@
       clickLine.on('click', (e) => {
         if (!isEnabled()) return;
         const now = Date.now();
-        if (now - lastClickTime <350) return; // basic double-click guard
+        if (now - lastClickTime < 350) return; // basic double-click guard
         lastClickTime = now;
         const ordered = sortWaypoints(_lastWaypoints);
         if (ordered.length < 2) return;

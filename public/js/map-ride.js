@@ -27,7 +27,7 @@ Object.assign(MapManager, {
   async _releaseWakeLock() {
     document.removeEventListener('visibilitychange', this._onVisibilityChange);
     if (this._wakeLock) {
-      try { await this._wakeLock.release(); } catch (e) { /* ignore */ }
+      try { await this._wakeLock.release(); } catch { /* ignore */ }
       this._wakeLock = null;
     }
   },

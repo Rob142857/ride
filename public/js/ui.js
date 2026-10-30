@@ -33,7 +33,7 @@ const UI = {
     btn.addEventListener('click', async () => {
       try {
         await MapManager.locateUser({ toast: true, animate: true });
-      } catch (err) {
+      } catch {
         // MapManager handles messaging
       }
     });
@@ -161,21 +161,21 @@ const UI = {
     const addPTR = (elementId, view) => {
       const el = document.getElementById(elementId);
       if (!el) return;
-      let startY =0;
+      let startY = 0;
       let pulling = false;
       let triggered = false;
-      const threshold =60;
+      const threshold = 60;
 
       const onStart = (e) => {
-        if (el.scrollTop >0) return;
-        startY = e.touches?.[0]?.clientY ??0;
+        if (el.scrollTop > 0) return;
+        startY = e.touches?.[0]?.clientY ?? 0;
         pulling = true;
         triggered = false;
       };
 
       const onMove = (e) => {
         if (!pulling) return;
-        const currentY = e.touches?.[0]?.clientY ??0;
+        const currentY = e.touches?.[0]?.clientY ?? 0;
         const delta = currentY - startY;
         if (delta > 10 && el.scrollTop <= 0) {
           // Prevent native overscroll bounce while pulling
@@ -656,7 +656,7 @@ const UI = {
     const price = parseFloat(settings.fuelPrice);
     if (!rate || !price || rate <= 0 || price <= 0) return null;
     const km = distanceMeters / 1000;
-    return ((km /100) * rate * price).toFixed(2);
+    return ((km / 100) * rate * price).toFixed(2);
   },
 
   openSettingsModal() {
@@ -718,7 +718,7 @@ const UI = {
   formatDuration(seconds) {
     if (seconds === undefined || seconds === null) return '';
     const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) /60);
+    const minutes = Math.floor((seconds % 3600) / 60);
     if (hours > 0) return `${hours}h ${minutes}m`;
     return `${minutes}m`;
   },
@@ -766,7 +766,7 @@ const UI = {
     const diff = now - date;
 
     // Less than24 hours
-    if (diff <86400000) {
+    if (diff < 86400000) {
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
