@@ -455,7 +455,7 @@
           if (lease?.token !== token) return false;
           storage.setItem(leaseKey, JSON.stringify({ token, expiresAt: now() + LEASE_MS }));
           return true;
-        } catch (_) { leaseLost = true; return false; }
+        } catch (_) { return false; }
       };
       const heartbeat = root.setInterval ? root.setInterval(renewLease, Math.max(10_000, Math.floor(LEASE_MS / 3))) : null;
       try {

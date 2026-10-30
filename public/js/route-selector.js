@@ -63,7 +63,6 @@
     function render(newRoutes = [], newSelectedIndex = 0) {
       routes = newRoutes;
       selectedIndex = newSelectedIndex;
-      expanded = false;
 
       if (!routes.length) {
         clear();
