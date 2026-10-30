@@ -215,7 +215,9 @@ function loadTripController({ updateImpl, getImpl }) {
   const calls = { update: [], get: 0, prompts: 0, toasts: [], loaded: [], refresh: 0 };
   let prompt = null;
   const clock = fakeClock();
-  const window = { RideSaveGuard: Guard, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout };
+  // Fixed jitter (random = 0.5): real Math.random can put the first retry under 800 ms (about 1 run in 5).
+  const SteadyGuard = { ...Guard, createSaveGuard: (opts = {}) => Guard.createSaveGuard({ random: () => 0.5, ...opts }) };
+  const window = { RideSaveGuard: SteadyGuard, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout };
   const App = {
     useCloud: true,
     currentUser: { id: 'u1' },
