@@ -166,7 +166,7 @@ async function invoke(tc, handler, { method = 'GET', params = {}, body, ifMatch,
   const request = new Request(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   const context = { request, env: tc.env, ctx: tc.ctx, params, url, user: { id: tc.userId }, apiToken: { id: tc.tokenId, scopes: tc.tokenScopes } };
   const response = await handler(context);
-  let json = {};
+  let json;
   try { json = await response.json(); } catch { json = {}; }
   return { status: response.status, json: json && typeof json === 'object' ? json : {} };
 }
