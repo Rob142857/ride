@@ -76,11 +76,21 @@ export default [
         showToast: 'readonly',
         drawRouteForIndex: 'readonly',
         updateTripStatsForRoute: 'readonly',
+        RideNavigation: 'readonly',
+        RideBasemaps: 'readonly',
+        Option: 'readonly',
+        TextEncoder: 'readonly',
+        confirm: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        // CommonJS export guard in files shared with the Node tests
+        module: 'readonly',
       },
     },
     rules: {
-      // The project relies on script-tag-loaded globals; undefined checking is too noisy
-      'no-undef': 'off',
+      // On since 30 Oct: catches writes to undeclared names (strict-mode ReferenceErrors).
+      // Script-tag globals are listed above; add new ones there.
+      'no-undef': 'error',
       'no-redeclare': 'off',
       ...baseRules,
     },
