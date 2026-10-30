@@ -1,0 +1,37 @@
+name: CI
+
+# Lint + unit tests on every push and pull request. The tests are plain Node scripts
+# (scripts/*-test.js) with invented data; no secrets and no network needed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx eslint .
+      - name: Unit tests
+        run: |
+          status=0
+          for t in scripts/*-test.js; do
+            echo "::group::$t"
+            node "$t" || { echo "::error file=$t::failed"; status=1; }
+            echo "::endgroup::"
+          done
+          exit $status
