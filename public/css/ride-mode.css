@@ -123,15 +123,16 @@ body.ride-mode .leaflet-control-zoom {
   opacity: 0.5;
 }
 
+/* Glove-sized: the old 32 px exit was too small to hit with riding gloves. */
 .ride-banner-exit {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 56px;
+  height: 56px;
   border: none;
   border-radius: 50%;
   background: rgba(255,255,255,0.15);
   color: #fff;
-  font-size: 16px;
+  font-size: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -155,13 +156,13 @@ body.ride-mode .leaflet-control-zoom {
 }
 
 .ride-fab {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   border: 1px solid rgba(255,255,255,0.15);
   background: rgba(0,0,0,0.7);
   color: #fff;
-  font-size: 20px;
+  font-size: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -296,7 +297,7 @@ body.ride-mode .leaflet-control-zoom {
 }
 
 .ride-feedback-btn {
-  min-height: 32px;
+  min-height: 48px;
   padding: 5px 9px;
   border: 1px solid rgba(255,255,255,0.28);
   border-radius: 7px;
@@ -450,8 +451,8 @@ body.ride-mode .leaflet-control-zoom {
   }
 
   .ride-fab {
-    width: 42px;
-    height: 42px;
-    font-size: 18px;
+    width: 56px;
+    height: 56px;
+    font-size: 22px;
   }
 }
