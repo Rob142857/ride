@@ -536,7 +536,7 @@ export const TOOLS = [
       const range = status.range || {};
       return {
         structured: status,
-        text: range.known ? `About ${range.est_range_left_km} km left (~${range.est_litres_left} L), estimate only.` : `Range unknown: ${range.reason || 'no full-tank fill yet'}.`
+        text: range.known ? `About ${range.est_range_left_km} km left (~${range.est_litres_left} L), estimate only.${range.reserve_litres > 0 ? ` About ${range.est_range_to_reserve_km} km to reserve.` : ''}` : `Range unknown: ${range.reason || 'no full-tank fill yet'}.`
       };
     }
   },

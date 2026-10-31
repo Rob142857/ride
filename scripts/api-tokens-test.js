@@ -370,10 +370,19 @@ const sessions = {
     { filled_at: '2026-01-05T00:00:00Z', full_tank: false, litres: 20 },
     { filled_at: '2026-01-04T00:00:00Z', full_tank: true }
   ], rideLogs: [{ started_at: '2026-01-04T01:00:00Z', distance_meters: 500000 }], plan: null, now: new Date('2026-01-06T00:00:00Z') });
-  assert.equal(est.capacity_litres, 110);
-  assert.equal(est.litres_per_100km, 10.5);
-  assert.equal(est.km_since_full, 500);
-  assert.equal(est.est_litres_left, Math.round(110 - 52.5 + 20));
+  assert.equal(est.known, false, 'no tank size means no range, never a guessed 110 L');
+  assert.equal(est.capacity_litres, null);
+  const bike = fuel.estimateRange({ fills: [
+    { filled_at: '2026-01-04T00:00:00Z', full_tank: true }
+  ], rideLogs: [{ started_at: '2026-01-04T01:00:00Z', distance_meters: 100000 }], plan: { vehicle: { tankLitres: 10, reserveLitres: 1.5, litresPer100Km: 4 } }, now: new Date('2026-01-06T00:00:00Z') });
+  assert.equal(bike.capacity_litres, 10);
+  assert.equal(bike.capacity_source, 'vehicle.tankLitres');
+  assert.equal(bike.full_range_km, 250);
+  assert.equal(bike.est_litres_left, 6);
+  assert.equal(bike.est_range_left_km, 150);
+  assert.equal(bike.est_litres_to_reserve, 4.5);
+  assert.equal(bike.est_range_to_reserve_km, 113);
+  assert.equal(fuel.estimateRange({ fills: [], rideLogs: [], plan: { vehicle: { tankLitres: 10 } } }).known, false);
   assert.equal(fuel.estimateRange({ fills: [], rideLogs: [], plan: null }).known, false);
   assert.equal(fuel.localDate('2026-01-01T22:00:00Z'), '2026-01-02', 'Brisbane date');
 

@@ -46,7 +46,9 @@
     if (!status) return 'Fuel: not loaded yet.';
     const parts = [];
     const range = status.range || {};
-    if (range.known) parts.push(`About ${Number(range.est_range_left_km).toLocaleString('en-AU')} km left (~${range.est_litres_left} L, estimate)`);
+    if (range.known && range.reserve_litres > 0) parts.push(`About ${Number(range.est_range_to_reserve_km).toLocaleString('en-AU')} km to reserve (~${range.est_litres_to_reserve} L, estimate). Fill before then.`);
+    else if (range.known) parts.push(`About ${Number(range.est_range_left_km).toLocaleString('en-AU')} km left (~${range.est_litres_left} L, estimate)`);
+    else if (range.capacity_litres === null) parts.push('Range: this trip has no tank size yet');
     else parts.push('Range: add a full-tank fill to start the estimate');
     if (status.latest_fill) {
       const fill = status.latest_fill;

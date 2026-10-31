@@ -8,7 +8,8 @@ import { jsonResponse, errorResponse, generateId, parseBody } from './utils.js';
 import { safeJsonParse, verifyTripOwnership } from './handler-utils.js';
 
 export const PAYMENT_METHODS = ['card', 'afterpay', 'cash', 'other'];
-export const DEFAULT_CAPACITY_LITRES = 110;
+// No default tank size: a wrong guess (the old 110 L) showed a motorbike thousands of km of range.
+// A trip says its tank in fuelPlan, fuel.tankLitres or vehicle.tankLitres; until then the range is unknown.
 export const DEFAULT_LITRES_PER_100KM = 10.5;
 export const PLAN_TIME_ZONE = 'Australia/Brisbane';
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
@@ -122,6 +123,7 @@ export function localDate(instant, timeZone = PLAN_TIME_ZONE) {
 export function fuelPlanInputs(plan) {
   const fuelPlan = isPlainObject(plan?.fuelPlan) ? plan.fuelPlan : {};
   const fuel = isPlainObject(plan?.fuel) ? plan.fuel : {};
+  const vehicle = isPlainObject(plan?.vehicle) ? plan.vehicle : {};
   const positive = value => (Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null);
   let capacity = positive(fuelPlan.totalCarriedLitres);
   let capacitySource = 'fuelPlan.totalCarriedLitres';
@@ -130,9 +132,13 @@ export function fuelPlanInputs(plan) {
     capacitySource = 'fuelPlan.tankLitres + jerryLitres';
   }
   if (!capacity && positive(fuel.tankLitres)) { capacity = positive(fuel.tankLitres); capacitySource = 'fuel.tankLitres'; }
-  if (!capacity) { capacity = DEFAULT_CAPACITY_LITRES; capacitySource = 'default'; }
-  const consumption = positive(fuel.litresPer100Km) || DEFAULT_LITRES_PER_100KM;
-  return { capacity, capacitySource, consumption, consumptionSource: positive(fuel.litresPer100Km) ? 'fuel.litresPer100Km' : 'default' };
+  if (!capacity && positive(vehicle.tankLitres)) { capacity = positive(vehicle.tankLitres); capacitySource = 'vehicle.tankLitres'; }
+  if (!capacity) { capacity = null; capacitySource = 'none'; }
+  const own = positive(fuel.litresPer100Km) || positive(vehicle.litresPer100Km);
+  const consumption = own || DEFAULT_LITRES_PER_100KM;
+  const reserveRaw = Number(vehicle.reserveLitres);
+  const reserve = capacity && Number.isFinite(reserveRaw) && reserveRaw > 0 && reserveRaw < capacity ? reserveRaw : 0;
+  return { capacity, capacitySource, consumption, consumptionSource: own ? (positive(fuel.litresPer100Km) ? 'fuel.litresPer100Km' : 'vehicle.litresPer100Km') : 'default', reserve };
 }
 
 /** Planned km for travel days after the fill day, up to and including today. */
@@ -158,11 +164,13 @@ export function estimateRange({ fills, rideLogs, plan, now = new Date() }) {
   const inputs = fuelPlanInputs(plan);
   const sorted = [...(fills || [])].sort((a, b) => Date.parse(b.filled_at) - Date.parse(a.filled_at));
   const lastFull = sorted.find(fill => fill.full_tank);
+  if (!inputs.capacity) return { capacity_litres: null, capacity_source: 'none', litres_per_100km: inputs.consumption, consumption_source: inputs.consumptionSource, estimate_only: true, known: false, reason: 'No tank size set for this trip' };
   const base = {
     capacity_litres: inputs.capacity,
     capacity_source: inputs.capacitySource,
     litres_per_100km: inputs.consumption,
     consumption_source: inputs.consumptionSource,
+    reserve_litres: inputs.reserve,
     full_range_km: Math.round(inputs.capacity / inputs.consumption * 100),
     estimate_only: true
   };
@@ -190,7 +198,9 @@ export function estimateRange({ fills, rideLogs, plan, now = new Date() }) {
     km_source: kmSince === 0 ? 'none' : (loggedKm >= plannedKm ? 'ride-logs' : 'planned-route'),
     litres_added_since: round(addedLitres, 1),
     est_litres_left: Math.round(left),
-    est_range_left_km: Math.round(left / inputs.consumption * 100)
+    est_range_left_km: Math.round(left / inputs.consumption * 100),
+    est_litres_to_reserve: round(Math.max(0, left - inputs.reserve), 1),
+    est_range_to_reserve_km: Math.round(Math.max(0, left - inputs.reserve) / inputs.consumption * 100)
   };
 }
 
