@@ -241,7 +241,8 @@ async function syncPlanningPrice(env, userId, tripId) {
   if (!isPlainObject(plan)) return false;
   if (Number(plan.fuel?.pricePerLitre) === newest.price_per_litre) return false;
   const next = { ...settings, itinerary: { ...plan, fuel: { ...(isPlainObject(plan.fuel) ? plan.fuel : {}), pricePerLitre: newest.price_per_litre } } };
-  if (!Number.isFinite(next.itinerary.fuel.litresPer100Km) || next.itinerary.fuel.litresPer100Km <= 0) {
+  const ownUse = Number(next.itinerary.vehicle?.litresPer100Km);
+  if ((!Number.isFinite(next.itinerary.fuel.litresPer100Km) || next.itinerary.fuel.litresPer100Km <= 0) && !(ownUse > 0)) {
     next.itinerary.fuel.litresPer100Km = DEFAULT_LITRES_PER_100KM;
   }
   const result = await env.RIDE_TRIP_PLANNER_DB.prepare(
