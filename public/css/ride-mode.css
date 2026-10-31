@@ -271,6 +271,7 @@ body.ride-mode .leaflet-control-zoom {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
   padding: 7px 9px;
@@ -287,7 +288,14 @@ body.ride-mode .leaflet-control-zoom {
 }
 
 .ride-feedback p {
+  flex: 1 1 140px;
   margin: 0;
+}
+
+/* Narrow phones: with the 56 px exit, keep room for the turn text. */
+@media (max-width: 360px) {
+  .ride-banner-minimal { gap: 8px; }
+  .ride-hud-status { max-width: 84px; }
 }
 
 .ride-feedback-actions {
