@@ -640,16 +640,18 @@ const UI = {
       : '';
   },
 
+  // A trip's own itinerary fuel numbers win over the Settings default.
+  tripFuel(trip = App.currentTrip) {
+    const fuel = trip?.settings?.itinerary?.fuel;
+    const rate = Number(fuel?.litresPer100Km);
+    const price = Number(fuel?.pricePerLitre);
+    return Number.isFinite(rate) && Number.isFinite(price) && rate > 0 && price > 0 ? { rate, price } : null;
+  },
+
   calcFuelCost(distanceMeters, trip = App.currentTrip) {
     if (typeof distanceMeters !== 'number' || distanceMeters <= 0) return null;
-    const fuel = trip?.settings?.itinerary?.fuel;
-    if (fuel) {
-      const rate = Number(fuel.litresPer100Km);
-      const price = Number(fuel.pricePerLitre);
-      if (Number.isFinite(rate) && Number.isFinite(price) && rate > 0 && price > 0) {
-        return (distanceMeters / 1000 / 100 * rate * price).toFixed(2);
-      }
-    }
+    const own = this.tripFuel(trip);
+    if (own) return (distanceMeters / 1000 / 100 * own.rate * own.price).toFixed(2);
     const settings = Storage.load(Storage.KEYS.SETTINGS, {});
     if (!settings.fuelEnabled) return null;
     const rate = parseFloat(settings.fuelRate);
@@ -674,6 +676,21 @@ const UI = {
     fields.style.display = toggle.checked ? '' : 'none';
 
     toggle.onchange = () => { fields.style.display = toggle.checked ? '' : 'none'; };
+
+    // One fuel form at a time: when the open trip has its own numbers, point to the itinerary instead.
+    const own = typeof App !== 'undefined' ? this.tripFuel(App.currentTrip) : null;
+    document.getElementById('fuelTripSection').classList.toggle('hidden', !own);
+    document.getElementById('fuelDefaultSection').classList.toggle('hidden', !!own);
+    if (own) {
+      const shared = !!App.isSharedView;
+      document.getElementById('fuelTripNote').textContent = `This trip's itinerary sets fuel at ${+own.rate.toFixed(1)} L/100 km and $${own.price.toFixed(2)} a litre. ${shared ? 'The trip owner sets these.' : 'Change them in Trip Itinerary.'}`;
+      const editBtn = document.getElementById('fuelTripEditBtn');
+      editBtn.classList.toggle('hidden', shared);
+      editBtn.onclick = () => {
+        modal.classList.add('hidden');
+        document.getElementById('itineraryMenuBtn')?.click();
+      };
+    }
 
     document.getElementById('settingsSave').onclick = () => {
       settings.fuelEnabled = toggle.checked;

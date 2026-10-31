@@ -860,7 +860,12 @@
     <div id="settingsModal" class="modal hidden">
       <div class="modal-content">
         <h3>Settings</h3>
-        <div class="form-section">
+        <div id="fuelTripSection" class="form-section hidden">
+          <span class="toggle-label-text">Fuel cost</span>
+          <p id="fuelTripNote" class="microcopy"></p>
+          <button type="button" id="fuelTripEditBtn" class="secondary-btn">Open Trip Itinerary</button>
+        </div>
+        <div id="fuelDefaultSection" class="form-section">
           <label class="toggle-switch">
             <input type="checkbox" id="fuelToggle" />
             <span class="toggle-track"></span>
