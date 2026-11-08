@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
+const { ReadableStream } = require('node:stream/web');
 
 const repo = path.resolve(__dirname, '..');
 
@@ -33,7 +34,7 @@ function d1(db) {
   };
 }
 
-function buildDatabase() {
+function buildDatabase({ withDevices = true } = {}) {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
   db.exec(`
@@ -48,11 +49,14 @@ function buildDatabase() {
       created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')));
     CREATE TABLE attachments (id TEXT PRIMARY KEY, trip_id TEXT, storage_key TEXT, created_at TEXT);
   `);
-  for (const file of ['2026-06-18_ride_logs.sql', '2026-10-17_saved_places.sql', '2026-10-17_tokens_fuel_checkins.sql', '2026-11-08_devices.sql']) {
+  for (const file of ['2026-06-18_ride_logs.sql', '2026-10-17_saved_places.sql', '2026-10-17_tokens_fuel_checkins.sql']) {
     db.exec(fs.readFileSync(path.join(repo, 'api/migrations', file), 'utf8'));
   }
-  // Idempotent: running the new migration twice is harmless.
-  db.exec(fs.readFileSync(path.join(repo, 'api/migrations/2026-11-08_devices.sql'), 'utf8'));
+  if (withDevices) {
+    // Idempotent: running the new migration twice is harmless.
+    db.exec(fs.readFileSync(path.join(repo, 'api/migrations/2026-11-08_devices.sql'), 'utf8'));
+    db.exec(fs.readFileSync(path.join(repo, 'api/migrations/2026-11-08_devices.sql'), 'utf8'));
+  }
   db.exec(`INSERT INTO users (id, email) VALUES ('owner', 'owner@example.test'), ('other', 'other@example.test');
     INSERT INTO trips (id, user_id, name, settings) VALUES ('owner-trip', 'owner', 'Sample loop', '{}'), ('owner-trip-2', 'owner', 'Second loop', '{}'), ('other-trip', 'other', 'Other loop', '{}');`);
   return db;
@@ -301,8 +305,63 @@ const sessions = {
   assert.equal(db.prepare('SELECT last_battery FROM devices WHERE id = ?').get(deviceId).last_battery, 66);
   assert.equal((await call('GET', '/api/device/osmand?id=ride_dev_nope&lat=1&lon=1')).status, 401);
   assert.equal((await call('GET', `/api/device/osmand?lat=-33&lon=151&timestamp=${stamp}`)).status, 401, 'no id');
-  assert.equal((await call('GET', `/api/device/osmand?id=${encodeURIComponent(secret)}&lat=200&lon=151`)).status, 400, 'bad position');
+  res = await call('GET', `/api/device/osmand?id=${encodeURIComponent(secret)}&lat=200&lon=151`);
+  assert.equal(res.status, 200, 'a rejected OsmAnd fix is still 200, so Traccar Client stops resending it');
+  assert.equal(res.json.accepted, 0);
+  assert.equal(res.json.rejected, 1);
   assert.equal((await call('POST', '/api/device/osmand', { rawBody: '{bad', headers: { 'Content-Type': 'application/json' } })).status, 400);
+
+  // --- Body size: reading stops past 64 KB even without Content-Length ---
+  const streamed = (size) => {
+    let sent = 0;
+    let pulls = 0;
+    const stream = new ReadableStream({
+      pull(controller) {
+        pulls += 1;
+        if (sent >= size) { controller.close(); return; }
+        const chunk = new Uint8Array(Math.min(16384, size - sent)).fill(32);
+        sent += chunk.byteLength;
+        controller.enqueue(chunk);
+      }
+    });
+    return { request: new Request('https://ride.incitat.io/api/device/fixes', { method: 'POST', body: stream, duplex: 'half' }), pulls: () => pulls };
+  };
+  const big = streamed(10 * 1024 * 1024);
+  assert.equal(big.request.headers.get('Content-Length'), null);
+  assert.equal(await devicesModule.boundedText(big.request), null, 'over 64 KB without Content-Length is refused');
+  assert.ok(big.pulls() <= 8, `stopped reading early (${big.pulls()} chunks of 16 KB read)`);
+  assert.equal((await devicesModule.boundedText(streamed(1000).request)).length, 1000, 'a small streamed body is read whole');
+  const bigFixes = streamed(200000).request;
+  const bigHeaders = new Headers({ Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' });
+  res = await worker.fetch(new Request(bigFixes.url, { method: 'POST', headers: bigHeaders, body: bigFixes.body, duplex: 'half' }), env, ctx);
+  assert.equal(res.status, 413, 'streamed oversize body on the ingest route');
+
+  // --- Ingest 500: no CORS, and the log never holds the secret or the query ---
+  {
+    const logged = [];
+    const realError = console.error;
+    console.error = (...args) => logged.push(args.map(String).join(' '));
+    const brokenEnv = { ...env, RIDE_TRIP_PLANNER_DB: { prepare() { throw new Error(`D1 down while reading ${secret}`); } } };
+    try {
+      for (const request of [
+        new Request(`https://ride.incitat.io/api/device/osmand?id=${encodeURIComponent(secret)}&lat=-33&lon=151&batt=77`),
+        new Request('https://ride.incitat.io/api/device/fixes', { method: 'POST', headers: { Authorization: `Bearer ${secret}` }, body: '{"fixes":[]}' })
+      ]) {
+        const broken = await worker.fetch(request, brokenEnv, ctx);
+        assert.equal(broken.status, 500);
+        assert.equal(broken.headers.get('Access-Control-Allow-Origin'), null, 'ingest 500 carries no CORS');
+        assert.deepEqual(await broken.json(), { error: 'Internal server error' });
+      }
+    } finally {
+      console.error = realError;
+    }
+    assert.equal(logged.length, 2, 'each ingest 500 is logged');
+    for (const line of logged) {
+      assert.equal(line.includes(secret.slice(9)), false, 'log never holds the secret');
+      assert.equal(line.includes('lat=') || line.includes('batt=') || line.includes('?'), false, 'log never holds the query');
+      assert.match(line, /Device ingest error on \/api\/device\//);
+    }
+  }
 
   // --- Rate limit: at most 60 posts a minute per device ---
   const second = await call('POST', '/api/devices', { ...owner, body: { name: 'Rate test' } });
@@ -338,6 +397,33 @@ const sessions = {
   assert.equal(count("SELECT COUNT(*) AS n FROM devices WHERE user_id = 'owner'"), 0);
   assert.equal(count('SELECT COUNT(*) AS n FROM device_fixes'), 0);
   assert.equal((await call('POST', fixesPath, { token: rateSecret, body: { fixes: [good()] } })).status, 401);
+
+  // --- Purge still completes on a database without the devices tables ---
+  {
+    const bareDb = buildDatabase({ withDevices: false });
+    const bareEnv = { ...env, RIDE_TRIP_PLANNER_DB: d1(bareDb) };
+    const logged = [];
+    const realError = console.error;
+    console.error = (...args) => logged.push(args.map(String).join(' '));
+    let purged;
+    try {
+      purged = await worker.fetch(new Request('https://ride.incitat.io/api/user/purge', { method: 'POST', headers: { Cookie: 'ride_session=owner-session' } }), bareEnv, ctx);
+    } finally {
+      console.error = realError;
+    }
+    assert.equal(purged.status, 200, 'purge does not 500 without the devices tables');
+    assert.equal(bareDb.prepare("SELECT COUNT(*) AS n FROM trips WHERE user_id = 'owner'").get().n, 0, 'the rest of the purge ran');
+    assert.ok(logged.some(line => line.includes('Device purge failed')), 'the skipped device purge is logged');
+  }
+  // Purge also removes the caller's speedo calibrations (and only theirs).
+  {
+    const calDb = buildDatabase();
+    calDb.exec(`INSERT INTO speedo_calibrations (id, user_id, bike_name, speedo_kmh, gps_kmh, samples) VALUES ('cal1', 'owner', 'Test bike', 100, 94, 10), ('cal2', 'other', 'Other bike', 100, 95, 10)`);
+    const calEnv = { ...env, RIDE_TRIP_PLANNER_DB: d1(calDb) };
+    const purged = await worker.fetch(new Request('https://ride.incitat.io/api/user/purge', { method: 'POST', headers: { Cookie: 'ride_session=owner-session' } }), calEnv, ctx);
+    assert.equal(purged.status, 200);
+    assert.deepEqual(calDb.prepare('SELECT id FROM speedo_calibrations').all().map(r => r.id), ['cal2']);
+  }
 
   // --- Front end: API client paths, describeDevice, markup ---
   const vm = require('node:vm');
@@ -378,6 +464,7 @@ const sessions = {
   assert.ok(fs.readFileSync(path.join(repo, 'public/sw.js'), 'utf8').includes("'/js/devices-ui.js'"));
   const fixtures = fs.readFileSync(path.join(repo, 'e2e/mobile/fixtures.mjs'), 'utf8');
   assert.ok(fixtures.includes("path === '/devices'"), 'mobile suite stubs GET /api/devices');
+  assert.match(html, /Traccar Client version 9 or later/, 'UI recommends the JSON POST client');
 
   console.log('devices-test: all checks passed');
 })().catch(error => {

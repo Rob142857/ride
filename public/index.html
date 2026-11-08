@@ -405,7 +405,8 @@
         <div id="deviceSecretBox" class="token-secret hidden" role="alert">
           <strong>Copy this device secret now. Ride will not show it again.</strong>
           <input id="deviceSecret" type="text" readonly aria-label="New device secret" autocomplete="off" spellcheck="false">
-          <p class="microcopy">Traccar Client on a phone: set the server URL to <code>https://ride.incitat.io/api/device/osmand</code> and the device identifier to this secret.</p>
+          <!-- Traccar Client v9+ sends a JSON POST with the secret in the body. Older Traccar Client and the OsmAnd app put it in the URL (query form); OsmAnd's speed unit is unverified (treated as knots, as Traccar does). -->
+          <p class="microcopy">To test with a phone, use Traccar Client version 9 or later: set the server URL to <code>https://ride.incitat.io/api/device/osmand</code> and the device identifier to this secret. It sends the secret inside the request, not in the web address. Avoid older apps that put it in the address, where logs can keep it.</p>
           <div class="token-secret-actions">
             <button id="deviceSecretCopy" type="button" class="primary-btn">Copy</button>
             <button id="deviceSecretDone" type="button" class="cancel-btn">I've saved it</button>

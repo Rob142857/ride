@@ -21,7 +21,7 @@ import { FuelFillsHandler } from './fuel-fills.js';
 import { CheckinsHandler } from './checkins.js';
 import { ItineraryWriteHandler } from './itinerary-write.js';
 import { CompanionLiveHandler } from './companion-live.js';
-import { DevicesHandler, DeviceIngestHandler } from './devices.js';
+import { DevicesHandler, DeviceIngestHandler, deviceServerError } from './devices.js';
 import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
 import { handleMcpRequest, mcpEnabled } from './mcp.js';
 
@@ -335,6 +335,16 @@ export default {
         return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal error' } }), {
           status: 500, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
         });
+      }
+    }
+
+    // Tracker ingest: its own catch, so a 500 carries no CORS and the log never
+    // holds the device secret (it can be in the OsmAnd query string).
+    if (url.pathname.startsWith('/api/device/')) {
+      try {
+        return await router.handle(request, env, ctx);
+      } catch (error) {
+        return deviceServerError(url.pathname, error);
       }
     }
 

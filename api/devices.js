@@ -114,6 +114,10 @@ export function parseFix(input, nowS = Math.floor(Date.now() / 1000)) {
 //   location.battery.level (0-1), location.is_moving. Negative speed or
 //   heading means "unknown".
 // The id is the device secret here, so it is hashed and looked up.
+// Prefer Traccar Client v9+ (JSON POST, secret in the body): the query form
+// puts the secret in the URL, where request logs can keep it.
+// Unverified: the plain OsmAnd app's speed unit. We treat it as knots, as
+// Traccar does for every query-form client; OsmAnd's own docs don't say.
 // ---------------------------------------------------------------------------
 
 const toNumber = value => (value === undefined || value === null || value === '' ? null : Number(value));
@@ -172,6 +176,16 @@ export function osmandJsonToFix(body, nowS = Math.floor(Date.now() / 1000)) {
 const deviceReply = (data, status = 200) => withoutCors(jsonResponse(data, status));
 const unauthorized = () => deviceReply({ error: 'Unauthorized' }, 401);
 
+/**
+ * A 500 for the ingest routes: no CORS, no detail. The log line names the path
+ * and the error only, never the URL query (the OsmAnd id is the device secret)
+ * or any header.
+ */
+export function deviceServerError(pathname, error) {
+  console.error(`Device ingest error on ${pathname}:`, error?.name || 'Error', String(error?.message || error).replace(/ride_dev_[A-Za-z0-9_-]+/g, 'ride_dev_[redacted]'));
+  return deviceReply({ error: 'Internal server error' }, 500);
+}
+
 /** The device row for a secret, or null (bad format, unknown or revoked). */
 export async function verifyDevice(env, secret) {
   if (typeof secret !== 'string' || !DEVICE_PATTERN.test(secret)) return null;
@@ -223,12 +237,31 @@ async function storeFixes(env, device, rawFixes) {
   };
 }
 
-/** Read a small request body as text, or null when it is too big. */
-async function boundedText(request) {
+/**
+ * Read a small request body as text, or null when it is too big. Stops
+ * reading as soon as it passes MAX_BODY_BYTES, with or without Content-Length.
+ */
+export async function boundedText(request) {
   const declared = Number(request.headers.get('Content-Length') || 0);
   if (declared > MAX_BODY_BYTES) return null;
-  const text = await request.text();
-  return text.length > MAX_BODY_BYTES ? null : text;
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel().catch(error => console.error('Body cancel failed:', error?.message || error));
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
 }
 
 function presentedDeviceSecret(request) {
@@ -285,9 +318,10 @@ export const DeviceIngestHandler = {
     if (!device) return unauthorized();
     const limited = await rateLimited(env, device.id);
     if (limited) return limited;
-    const result = await storeFixes(env, device, [parsed.fix]);
-    if (!result.accepted && !result.duplicates) return deviceReply({ error: 'Invalid position' }, 400);
-    return deviceReply(result);
+    // A rejected fix still gets 200 ({accepted: 0, rejected: 1}): Traccar Client
+    // keeps a fix buffered and resends it until it sees a 200, so a 400 here
+    // would make it retry a bad fix forever.
+    return deviceReply(await storeFixes(env, device, [parsed.fix]));
   }
 };
 
