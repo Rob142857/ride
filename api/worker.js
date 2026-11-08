@@ -79,7 +79,9 @@ router.post('/api/device/osmand', DeviceIngestHandler.osmand);
 // Trip routes (protected). scoped(scope, handler) accepts the owner's session or
 // a personal access token with that scope; plain requireAuth refuses tokens.
 router.get('/api/trips', scoped('trips:read', TripsHandler.listTrips));
-router.post('/api/trips', requireAuth, TripsHandler.createTrip);
+// itinerary:write tokens may also create a new trip (planning only: no edit,
+// delete or sharing of existing trips). Rob's yes, 8 Nov.
+router.post('/api/trips', scoped('itinerary:write', TripsHandler.createTrip));
 router.get('/api/trips/:id', scoped('trips:read', TripsHandler.getTrip));
 router.put('/api/trips/:id/itinerary', scoped('itinerary:write', ItineraryWriteHandler.put));
 router.post('/api/trips/:id/itinerary/preview', scoped('itinerary:write', ItineraryWriteHandler.preview));

@@ -7,7 +7,7 @@
 (() => {
   const SCOPE_LABELS = {
     'trips:read': 'Read trips',
-    'itinerary:write': 'Update the itinerary (planning only)',
+    'itinerary:write': 'Create trips and update the itinerary (planning only)',
     'waypoints:rw': 'Add, edit, reorder and delete map waypoints',
     'places:rw': 'Read and edit My Places',
     'fuel:rw': 'Read and add fuel fill-ups',

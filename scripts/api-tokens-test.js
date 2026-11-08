@@ -177,7 +177,7 @@ const sessions = {
   assert.equal(count('SELECT COUNT(*) AS n FROM api_tokens'), 2, 'no token was minted by a token');
 
   // --- A token is refused on every non-scoped route (account, auth, writes) ---
-  for (const [method, url, body] of [['GET', '/api/auth/me'], ['POST', '/api/user/purge'], ['POST', '/api/trips', { name: 'x' }],
+  for (const [method, url, body] of [['GET', '/api/auth/me'], ['POST', '/api/user/purge'],
     ['PUT', '/api/trips/owner-trip', { name: 'Hijack' }], ['DELETE', '/api/trips/owner-trip'], ['POST', '/api/trips/owner-trip/share'],
     ['DELETE', '/api/trips/owner-trip/journal/owner-note'], ['GET', '/api/admin/users'], ['GET', '/api/trips/owner-trip/alternatives']]) {
     const res = await call(method, url, { token: allToken, body });
@@ -388,6 +388,35 @@ const sessions = {
 
   // --- Itinerary write (settings-only, same guards as the UI import) ---
   const itinToken = (await createToken(['itinerary:write', 'trips:read'], { name: 'Planner' })).secret;
+
+  // --- Create a trip with itinerary:write (Rob, 8 Nov), private, capped per day ---
+  const made = await call('POST', '/api/trips', { token: itinToken, body: { name: 'Day trip (invented)', description: 'Testville to Sampleton' } });
+  assert.equal(made.status, 201, JSON.stringify(made.json));
+  const madeRow = db.prepare('SELECT user_id, is_public FROM trips WHERE id = ?').get(made.json.trip.id);
+  assert.equal(madeRow.user_id, 'owner', 'trip belongs to the token owner');
+  assert.equal(madeRow.is_public, 0, 'token-made trip is private');
+  assert.ok(made.headers.get('Access-Control-Allow-Origin') === null, 'no CORS on token responses');
+  assert.equal(count("SELECT COUNT(*) AS n FROM api_token_audit WHERE route = '/api/trips' AND method = 'POST' AND status = 201"), 1, 'audited');
+  assert.equal((await call('POST', '/api/trips', { token: tripsOnly, body: { name: 'Nope' } })).status, 403, 'trips:read cannot create');
+  assert.equal((await call('POST', '/api/trips', { token: itinToken, body: {} })).status, 400, 'name required');
+  assert.equal((await call('PUT', `/api/trips/${made.json.trip.id}`, { token: itinToken, body: { name: 'Renamed' } })).status, 403, 'token cannot edit trip');
+  assert.equal((await call('DELETE', `/api/trips/${made.json.trip.id}`, { token: itinToken })).status, 403, 'token cannot delete trip');
+  const TOKEN_TRIPS_PER_DAY = 20; // api/trips.js
+  const capToken = (await createToken(['itinerary:write'], { name: 'Cap' }));
+  const capRow = capToken.token;
+  const ins = db.prepare("INSERT INTO api_token_audit (id, token_id, user_id, method, route, status, created_at) VALUES (?, ?, 'owner', 'POST', '/api/trips', 201, ?)");
+  ins.run('cap-old', capRow.id, new Date(Date.now() - 25 * 3600000).toISOString());
+  for (let i = 0; i < TOKEN_TRIPS_PER_DAY - 1; i++) ins.run(`cap-${i}`, capRow.id, new Date().toISOString());
+  assert.equal((await call('POST', '/api/trips', { token: capToken.secret, body: { name: 'Last one today' } })).status, 201, '20th create allowed; 25 h old row ignored');
+  assert.equal((await call('POST', '/api/trips', { token: capToken.secret, body: { name: 'One too many', is_public: 1, short_code: 'mine' } })).status, 429, 'daily cap');
+  const flagged = await call('POST', '/api/trips', { token: itinToken, body: { name: 'Sneaky (invented)', is_public: 1, short_code: 'mine' } });
+  assert.equal(flagged.status, 201);
+  const flaggedRow = db.prepare('SELECT is_public, short_code FROM trips WHERE id = ?').get(flagged.json.trip.id);
+  assert.equal(flaggedRow.is_public, 0, 'is_public in the body is ignored');
+  assert.notEqual(flaggedRow.short_code, 'mine', 'short_code in the body is ignored');
+  // The owner's cookie path: same-origin only, and no daily cap.
+  assert.equal((await call('POST', '/api/trips', { ...ownerSession, origin: 'https://evil.example', body: { name: 'Cross-site' } })).status, 403, 'foreign Origin refused');
+  assert.equal((await call('POST', '/api/trips', { ...ownerSession, origin: 'https://ride.incitat.io', body: { name: 'Owner trip' } })).status, 201, 'owner create works');
   const itinPath = '/api/trips/owner-trip/itinerary';
   const currentVersion = () => db.prepare("SELECT version FROM trips WHERE id = 'owner-trip'").get().version;
   const nextPlan = { ...plan, notes: 'Updated by agent (invented)' };

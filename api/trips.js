@@ -9,6 +9,14 @@ import { serializeOwnedJourney } from './journey.js';
 import { expandCoordinates, encodeRoute, assertRowSize } from './route-codec.js';
 import { validateTripSettings } from './itinerary-validation.js';
 
+/**
+ * A token (an agent) may create this many trips per rolling 24 hours. A soft
+ * guard against a looping agent: counted from the audit rows scoped() writes
+ * after each create, so parallel requests can overshoot a little (the
+ * per-minute token rate limit bounds that).
+ */
+const TOKEN_TRIPS_PER_DAY = 20;
+
 export const TripsHandler = {
   /**
    * List all trips for current user
@@ -43,6 +51,13 @@ export const TripsHandler = {
 
     if (!body?.name) {
       return errorResponse('Trip name is required');
+    }
+    if (context.apiToken) {
+      const since = new Date(Date.now() - 86_400_000).toISOString();
+      const made = await env.RIDE_TRIP_PLANNER_DB.prepare(
+        "SELECT COUNT(*) AS n FROM api_token_audit WHERE token_id = ? AND method = 'POST' AND route = '/api/trips' AND status = 201 AND created_at > ?"
+      ).bind(context.apiToken.id, since).first();
+      if ((made?.n || 0) >= TOKEN_TRIPS_PER_DAY) return errorResponse(`A token can create at most ${TOKEN_TRIPS_PER_DAY} trips a day`, 429);
     }
 
     if (typeof body.name !== 'string' || (body.description !== undefined && typeof body.description !== 'string')) return errorResponse('Trip name and description must be text');
