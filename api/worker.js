@@ -28,7 +28,7 @@ import { handleMcpRequest, mcpEnabled } from './mcp.js';
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-11-02T01';
+const BUILD_ID = '2026-11-08T01';
 
 const router = new Router();
 
