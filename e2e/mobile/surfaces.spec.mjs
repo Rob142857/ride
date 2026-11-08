@@ -183,7 +183,7 @@ async function showModal(page, id) {
 const MODALS = [
   'waypointModal', 'waypointDetailsModal', 'placeSearchModal', 'noteModal', 'shareModal', 'loginModal',
   'tripDetailsModal', 'settingsModal', 'waypointsHelpModal', 'waypointPositionModal', 'tripConflictModal',
-  'savedPlaceModal', 'fuelFillModal', 'accessTokensModal', 'itineraryPreviewModal',
+  'savedPlaceModal', 'fuelFillModal', 'accessTokensModal', 'devicesModal', 'itineraryPreviewModal',
 ];
 
 test.describe('every phone surface is laid out cleanly', () => {

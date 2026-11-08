@@ -35,6 +35,9 @@ export const AccountHandler = {
     await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM fuel_fills WHERE user_id = ?').bind(user.id).run();
     await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM checkins WHERE user_id = ?').bind(user.id).run();
     await env.RIDE_TRIP_PLANNER_DB.prepare('UPDATE api_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').bind(new Date().toISOString(), user.id).run();
+    // Remove trackers and their fixes, so no device keeps posting for this account.
+    await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM device_fixes WHERE device_id IN (SELECT id FROM devices WHERE user_id = ?)').bind(user.id).run();
+    await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM devices WHERE user_id = ?').bind(user.id).run();
 
     // Remove all trips (cascades to child tables via FK)
     await env.RIDE_TRIP_PLANNER_DB.prepare('DELETE FROM trips WHERE user_id = ?').bind(user.id).run();

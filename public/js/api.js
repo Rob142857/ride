@@ -484,6 +484,32 @@ const API = {
     },
   },
 
+  // Bike trackers (session only). The device secret comes back once, on create.
+  devices: {
+    async list() {
+      return API.request('/devices');
+    },
+
+    async create({ name, bikeName, tripId }) {
+      return API.request('/devices', { method: 'POST', body: { name, bike_name: bikeName || null, trip_id: tripId || null } });
+    },
+
+    async update(id, changes) {
+      const data = await API.request(`/devices/${encodeURIComponent(id)}`, { method: 'PUT', body: changes });
+      return data.device;
+    },
+
+    async setArmed(id, armed) {
+      const data = await API.request(`/devices/${encodeURIComponent(id)}/${armed ? 'arm' : 'disarm'}`, { method: 'POST' });
+      return data.device;
+    },
+
+    async revoke(id) {
+      const data = await API.request(`/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return data.device;
+    },
+  },
+
   // Fuel fill-ups and estimated range for a trip
   fuel: {
     async add(tripId, fill) {

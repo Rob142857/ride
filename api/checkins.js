@@ -2,11 +2,13 @@
  * Location check-ins ("I'm here"): one point saved on demand, so the owner
  * does not have to start drive mode just to say where they are. Owner-only and
  * scoped by user_id and trip_id. Last known location is the newest of the
- * latest check-in and the last point of the latest ride log.
+ * latest check-in, the last point of the latest ride log and the latest fix
+ * from a tracker linked to the trip (devices.js).
  */
 import { jsonResponse, errorResponse, generateId, parseBody } from './utils.js';
 import { safeJsonParse, verifyTripOwnership } from './handler-utils.js';
 import { validIsoTime } from './fuel-fills.js';
+import { newestDeviceFix } from './devices.js';
 
 export const CHECKIN_SOURCES = ['ride', 'companion', 'agent', 'api'];
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
@@ -54,7 +56,7 @@ function pointTime(point) {
   return NaN;
 }
 
-/** Newest of the latest check-in and the last fix of the newest ride logs. */
+/** Newest of the latest check-in, the last fix of the newest ride logs and the newest linked tracker fix. */
 export async function lastKnownLocation(env, userId, tripId) {
   const checkin = await env.RIDE_TRIP_PLANNER_DB.prepare(
     `SELECT ${COLUMNS.join(', ')} FROM checkins WHERE trip_id = ? AND user_id = ? ORDER BY recorded_at DESC LIMIT 1`
@@ -80,6 +82,17 @@ export async function lastKnownLocation(env, userId, tripId) {
     if (!best || time > Date.parse(best.at)) {
       best = { source: 'ride-log', lat: point.lat, lng: point.lng, accuracy_m: null, at: new Date(time).toISOString(), note: null, ride_log_id: log.id };
     }
+  }
+  // A tracker linked to this trip. A database without the devices tables
+  // (migration 2026-11-08 not applied yet) must not break live location.
+  let fix = null;
+  try {
+    fix = await newestDeviceFix(env, userId, tripId);
+  } catch (error) {
+    console.error('Device fix lookup failed (live location falls back to check-ins and ride logs):', error?.message || error);
+  }
+  if (fix && (!best || fix.t * 1000 > Date.parse(best.at))) {
+    best = { source: 'device', lat: fix.lat, lng: fix.lng, accuracy_m: fix.accuracy_m ?? null, at: new Date(fix.t * 1000).toISOString(), note: null, device_id: fix.device_id };
   }
   return { last_location: best, last_checkin: serializeCheckin(checkin) };
 }

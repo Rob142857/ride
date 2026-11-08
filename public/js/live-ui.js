@@ -63,7 +63,7 @@
     const last = data?.last_location;
     if (!last) return "Location: no check-in yet. Tap I'm here.";
     const where = `${Number(last.lat).toFixed(3)}, ${Number(last.lng).toFixed(3)}`;
-    const how = last.source === 'checkin' ? 'check-in' : 'drive mode';
+    const how = last.source === 'checkin' ? 'check-in' : last.source === 'device' ? 'tracker' : 'drive mode';
     return `Last seen ${formatAgo(last.at, now)} by ${how} (${where})${last.note ? ` · ${last.note}` : ''}`;
   }
 

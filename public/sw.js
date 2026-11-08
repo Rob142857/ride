@@ -48,6 +48,7 @@ const STATIC_ASSETS = [
   '/js/itinerary-ui.js',
   '/js/saved-places-ui.js',
   '/js/live-ui.js',
+  '/js/devices-ui.js',
   '/js/basemaps.js',
   '/js/map.js',
   '/js/map-ride.js',

@@ -21,6 +21,7 @@ import { FuelFillsHandler } from './fuel-fills.js';
 import { CheckinsHandler } from './checkins.js';
 import { ItineraryWriteHandler } from './itinerary-write.js';
 import { CompanionLiveHandler } from './companion-live.js';
+import { DevicesHandler, DeviceIngestHandler } from './devices.js';
 import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
 import { handleMcpRequest, mcpEnabled } from './mcp.js';
 
@@ -35,6 +36,9 @@ const router = new Router();
 router.options('/api/trips/:id/companion-itinerary', CompanionItineraryHandler.preflight);
 // Companion live API (fuel status, last location, saved places, quick writes): trip.incitat.io only.
 router.options('/api/companion/*', CompanionLiveHandler.preflight);
+
+// Tracker ingest is for devices, never browsers: no CORS on its preflight.
+router.options('/api/device/*', DeviceIngestHandler.preflight);
 
 // CORS preflight for existing Ride API routes
 router.options('*', () => cors());
@@ -58,6 +62,19 @@ router.get('/api/admin/places-usage', requireAdminUser, PlacesHandler.usageStats
 router.get('/api/tokens', ApiTokensHandler.list);
 router.post('/api/tokens', ApiTokensHandler.create);
 router.delete('/api/tokens/:id', ApiTokensHandler.revoke);
+
+// Bike trackers: managed only from a signed-in Ride session (no Authorization
+// header at all). Ingest takes the device's own secret and nothing else.
+router.get('/api/devices', DevicesHandler.list);
+router.post('/api/devices', DevicesHandler.create);
+router.put('/api/devices/:id', DevicesHandler.update);
+router.post('/api/devices/:id/arm', DevicesHandler.arm);
+router.post('/api/devices/:id/disarm', DevicesHandler.disarm);
+router.get('/api/devices/:id/fixes', DevicesHandler.history);
+router.delete('/api/devices/:id', DevicesHandler.revoke);
+router.post('/api/device/fixes', DeviceIngestHandler.fixes);
+router.get('/api/device/osmand', DeviceIngestHandler.osmand);
+router.post('/api/device/osmand', DeviceIngestHandler.osmand);
 
 // Trip routes (protected). scoped(scope, handler) accepts the owner's session or
 // a personal access token with that scope; plain requireAuth refuses tokens.

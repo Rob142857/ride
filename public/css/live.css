@@ -49,3 +49,10 @@
 .token-revoked, .token-expired { opacity: .7; }
 .token-meta { margin: 4px 0 0; font-size: .76rem; color: #b2b7c8; overflow-wrap: anywhere; }
 .token-revoke { margin-top: 8px; min-height: 40px; color: #f3b5b5; border-color: rgba(239, 68, 68, .45); }
+
+/* Settings > Devices (bike trackers). Rows reuse the token-row styles. */
+.device-trip { width: 100%; min-height: 44px; margin-top: 8px; }
+.device-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.device-actions button { min-height: 40px; flex: 1 1 auto; }
+.device-actions .token-revoke { margin-top: 0; }
+.token-secret code { overflow-wrap: anywhere; }

@@ -50,7 +50,7 @@ function buildDatabase() {
     CREATE TABLE alternative_routes (id TEXT PRIMARY KEY, trip_id TEXT, route_index INTEGER, name TEXT, summary TEXT, color TEXT,
       distance_meters REAL, duration_seconds REAL, is_selected INTEGER, is_visible INTEGER, coordinates TEXT, steps TEXT, created_at TEXT);
   `);
-  for (const file of ['2026-06-18_ride_logs.sql', '2026-10-17_saved_places.sql', '2026-10-17_tokens_fuel_checkins.sql']) {
+  for (const file of ['2026-06-18_ride_logs.sql', '2026-10-17_saved_places.sql', '2026-10-17_tokens_fuel_checkins.sql', '2026-11-08_devices.sql']) {
     db.exec(fs.readFileSync(path.join(repo, 'api/migrations', file), 'utf8'));
   }
   const plan = {

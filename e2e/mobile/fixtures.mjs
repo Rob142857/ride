@@ -113,6 +113,7 @@ function apiAnswer(route, { signedIn, apiCalls, state }) {
   if (path.endsWith('/last-location')) return json(200, { last_location: null });
   if (path === '/saved-places') return json(200, { places: [] });
   if (path === '/tokens') return json(200, { tokens: [] });
+  if (path === '/devices' && method === 'GET') return json(200, { devices: [] });
   if (path === '/places/search') return json(200, { results: PLACES });
   return json(404, { error: `No test stub for ${method} ${path}` });
 }

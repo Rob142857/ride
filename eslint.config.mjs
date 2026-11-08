@@ -81,6 +81,7 @@ export default [
         Option: 'readonly',
         TextEncoder: 'readonly',
         confirm: 'readonly',
+        prompt: 'readonly',
         Request: 'readonly',
         Response: 'readonly',
         // CommonJS export guard in files shared with the Node tests

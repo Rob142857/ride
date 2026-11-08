@@ -395,6 +395,37 @@
       </div>
     </div>
 
+    <div id="devicesModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="devicesTitle">
+      <div class="modal-content live-modal">
+        <div class="modal-header">
+          <h3 id="devicesTitle">Devices</h3>
+          <button type="button" class="modal-close" data-close aria-label="Close">×</button>
+        </div>
+        <p class="microcopy">A tracker sends the bike's position to Ride. Link it to a trip and it becomes that trip's live location. Keep its secret private like a password.</p>
+        <div id="deviceSecretBox" class="token-secret hidden" role="alert">
+          <strong>Copy this device secret now. Ride will not show it again.</strong>
+          <input id="deviceSecret" type="text" readonly aria-label="New device secret" autocomplete="off" spellcheck="false">
+          <p class="microcopy">Traccar Client on a phone: set the server URL to <code>https://ride.incitat.io/api/device/osmand</code> and the device identifier to this secret.</p>
+          <div class="token-secret-actions">
+            <button id="deviceSecretCopy" type="button" class="primary-btn">Copy</button>
+            <button id="deviceSecretDone" type="button" class="cancel-btn">I've saved it</button>
+          </div>
+        </div>
+        <form id="deviceForm" novalidate>
+          <label class="field-label" for="deviceName">Name</label>
+          <input id="deviceName" type="text" maxlength="80" placeholder="Bike tracker" required>
+          <label class="field-label" for="deviceBike">Bike (optional)</label>
+          <input id="deviceBike" type="text" maxlength="80" placeholder="e.g. Ténéré 700">
+          <div class="modal-actions">
+            <button id="deviceCreate" type="submit" class="primary-btn">Add device</button>
+          </div>
+        </form>
+        <h4 class="token-list-heading">Your devices</h4>
+        <p id="deviceStatus" class="microcopy" role="status"></p>
+        <div id="deviceList" class="token-list"></div>
+      </div>
+    </div>
+
     <div id="itineraryPreviewModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="itineraryPreviewTitle">
       <div class="modal-content itinerary-preview">
         <h2 id="itineraryPreviewTitle">Review itinerary change</h2>
@@ -883,6 +914,11 @@
           <p class="microcopy">For scripts such as your trip agent. Only you can create or revoke them.</p>
           <button type="button" id="accessTokensBtn" class="secondary-btn">Manage access tokens</button>
         </div>
+        <div class="form-section settings-tokens">
+          <span class="toggle-label-text">Devices</span>
+          <p class="microcopy">Bike trackers, or a phone running Traccar Client. Each has its own secret and can only send its own position.</p>
+          <button type="button" id="devicesBtn" class="secondary-btn">Manage devices</button>
+        </div>
         <div class="form-actions">
           <button type="button" id="settingsCancel" class="secondary-btn">Cancel</button>
           <button type="button" id="settingsSave" class="primary-btn">Save</button>
@@ -999,6 +1035,7 @@
   <script src="js/itinerary-ui.js?v=2026-11-02T01"></script>
   <script src="js/saved-places-ui.js?v=2026-11-02T01"></script>
   <script src="js/live-ui.js?v=2026-11-02T01"></script>
+  <script src="js/devices-ui.js?v=2026-11-02T01"></script>
   
   <!-- Service Worker Registration, Live Update & PWA Install -->
   <script>

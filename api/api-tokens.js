@@ -44,9 +44,14 @@ export async function sha256Hex(text) {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+/** A new secret: prefix + 43 base64url chars (32 CSPRNG bytes). */
+export function generateSecret(prefix) {
+  return prefix + base64url(crypto.getRandomValues(new Uint8Array(32)));
+}
+
 /** A new token: 'ride_pat_' + 43 base64url chars (32 random bytes). */
 export function generateTokenSecret() {
-  return TOKEN_PREFIX + base64url(crypto.getRandomValues(new Uint8Array(32)));
+  return generateSecret(TOKEN_PREFIX);
 }
 
 /** The bearer value when the request presents a personal access token, else null. */
@@ -57,7 +62,7 @@ export function presentedPat(request) {
   return match[1];
 }
 
-function timingSafeEqualText(a, b) {
+export function timingSafeEqualText(a, b) {
   const left = new TextEncoder().encode(a);
   const right = new TextEncoder().encode(b);
   if (left.byteLength !== right.byteLength) return false;
