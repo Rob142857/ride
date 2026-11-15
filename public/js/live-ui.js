@@ -288,7 +288,7 @@
       row.append(head);
       row.append(node('p', `${token.hint} · ${token.scopes.join(', ')}`, 'token-meta'));
       const date = iso => (iso ? new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : 'never');
-      row.append(node('p', `Created ${date(token.created_at)} · last used ${date(token.last_used_at)} · ${token.status === 'revoked' ? `revoked ${date(token.revoked_at)}` : `expires ${date(token.expires_at)}`}`, 'token-meta'));
+      row.append(node('p', `Created ${date(token.created_at)} · last used ${date(token.last_used_at)} · ${token.status === 'revoked' ? `revoked ${date(token.revoked_at)}` : token.status === 'expired' ? `expired ${date(token.expires_at)}` : `expires ${date(token.expires_at)}`}`, 'token-meta'));
       if (token.status === 'active') {
         const revoke = node('button', 'Revoke', 'cancel-btn token-revoke');
         revoke.type = 'button';
