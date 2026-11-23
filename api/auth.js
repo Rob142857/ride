@@ -45,8 +45,13 @@ function isAllowedAdminStatus(status) {
   return ['active', 'paused', 'blocked', 'suspended', 'banned'].includes(status);
 }
 
+// Microsoft sign-in is locked to the RME Solutions tenant (security fix, 23 Nov 2026).
+// On the /common endpoint any tenant can sign in with an email it controls.
+// A self-hoster sets their own tenant here.
+const MICROSOFT_TENANT = 'fc21902f-c839-419c-9567-079c44c3e99c';
+
 // OAuth provider configurations
-const PROVIDERS = {
+export const PROVIDERS = {
   google: {
     authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
@@ -58,13 +63,14 @@ const PROVIDERS = {
       email: data.email,
       name: data.name,
       avatar_url: data.picture,
-      provider_id: data.id
+      provider_id: data.id,
+      email_verified: data.verified_email === true
     })
   },
   
   microsoft: {
-    authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
-    tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    authUrl: `https://login.microsoftonline.com/${MICROSOFT_TENANT}/oauth2/v2.0/authorize`,
+    tokenUrl: `https://login.microsoftonline.com/${MICROSOFT_TENANT}/oauth2/v2.0/token`,
     userUrl: 'https://graph.microsoft.com/v1.0/me',
     scopes: ['openid', 'email', 'profile', 'User.Read'],
     getClientId: (env) => env.MICROSOFT_CLIENT_ID,
@@ -73,7 +79,9 @@ const PROVIDERS = {
       email: data.mail || data.userPrincipalName,
       name: data.displayName,
       avatar_url: null, // MS Graph requires separate call for photo
-      provider_id: data.id
+      provider_id: data.id,
+      // Only our own tenant can sign in, and its mail attribute is set by us.
+      email_verified: true
     })
   }
 };
@@ -231,8 +239,12 @@ export const AuthHandler = {
     const userData = await userResponse.json();
     const parsedUser = provider.parseUser(userData);
     if (!parsedUser?.email) {
-      console.error('OAuth user missing email', providerName, userData);
+      console.error('OAuth user missing email', providerName);
       return Response.redirect(`/?error=no_email`, 302);
+    }
+    if (parsedUser.email_verified !== true) {
+      console.error('OAuth email not verified', providerName);
+      return Response.redirect(`/?error=email_not_verified`, 302);
     }
     const normalizedEmail = parsedUser.email.toLowerCase();
     
