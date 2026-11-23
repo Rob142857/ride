@@ -6,6 +6,9 @@
 import { jsonResponse, errorResponse, generateId, parseBody } from './utils.js';
 import { verifyTripOwnership, parseIfMatchVersion, conflictResponse, preconditionRequiredResponse, safeJsonParse } from './handler-utils.js';
 
+// Fixed waypoint types (same list as the app's import check).
+const WAYPOINT_TYPES = new Set(['stop', 'start', 'end', 'via', 'camp', 'fuel', 'food', 'water', 'scenic', 'rest', 'border', 'hotel', 'poi', 'lodging', 'custom']);
+
 export const WaypointsHandler = {
   /**
    * Add waypoint to trip
@@ -29,6 +32,7 @@ export const WaypointsHandler = {
       'SELECT MAX(sort_order) as max_order FROM waypoints WHERE trip_id = ?'
     ).bind(params.tripId).first();
 
+    if (body.type !== undefined && body.type !== null && body.type !== '' && !WAYPOINT_TYPES.has(body.type)) return errorResponse('Unknown waypoint type', 400);
     const sortOrder = (lastWp?.max_order ?? -1) + 1;
     const id = generateId();
 
@@ -65,6 +69,7 @@ export const WaypointsHandler = {
     const updates = [];
     const values = [];
 
+    if (body.type !== undefined && body.type !== null && !WAYPOINT_TYPES.has(body.type)) return errorResponse('Unknown waypoint type', 400);
     ['name', 'address', 'lat', 'lng', 'type', 'notes', 'sort_order'].forEach(field => {
       if (body[field] !== undefined) {
         updates.push(`${field} = ?`);

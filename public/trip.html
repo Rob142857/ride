@@ -39,11 +39,11 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap"></noscript>
 
-  <link rel="stylesheet" href="css/global.css?v=2026-11-23T01">
-  <link rel="stylesheet" href="css/trip.css?v=2026-11-23T01">
+  <link rel="stylesheet" href="css/global.css?v=2026-11-23T02">
+  <link rel="stylesheet" href="css/trip.css?v=2026-11-23T02">
 <script src="/insights.js" data-app="ride" data-component="planner" data-endpoint="https://events.rmesolutions.com.au/collect" defer></script>
-<script src="js/insights-hook.js?v=2026-11-23T01"></script>
-<script src="js/trip-share-hero.js?v=2026-11-23T01" defer></script>
+<script src="js/insights-hook.js?v=2026-11-23T02"></script>
+<script src="js/trip-share-hero.js?v=2026-11-23T02" defer></script>
 
   <!-- Capture PWA install prompt as early as possible -->
   <script>
@@ -1539,8 +1539,8 @@
   
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/api.js?v=2026-11-23T01"></script>
-  <script src="/js/basemaps.js?v=2026-11-23T01"></script>
+  <script src="/js/api.js?v=2026-11-23T02"></script>
+  <script src="/js/basemaps.js?v=2026-11-23T02"></script>
   
   <script>
     let map = null;
@@ -1725,7 +1725,7 @@
             <div class="waypoint-number">${i + 1}</div>
             <div class="waypoint-info">
               <div class="waypoint-name">${escapeHtml(wp.name)}</div>
-              <div class="waypoint-type">${wp.type || 'Stop'}</div>
+              <div class="waypoint-type">${escapeHtml(wp.type || 'Stop')}</div>
             </div>
           </div>
         `).join('');
@@ -1746,8 +1746,7 @@
       const images = trip.attachments?.filter(a => a.type?.startsWith('image/'));
       if (images?.length) {
         const galleryHtml = images.map(img => `
-          <div class="gallery-item" onclick="openLightbox('${img.url}', '${escapeHtml(img.caption || img.name || '').replace(/'/g, "\\'")}')"> 
-            <img src="${img.url}" alt="${escapeHtml(img.caption || img.name)}" loading="lazy">
+          <div class="gallery-item" data-lightbox-url="${escapeHtml(img.url)}" data-lightbox-caption="${escapeHtml(img.caption || img.name || '')}"><img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.caption || img.name)}" loading="lazy">
             <div class="gallery-item-overlay"></div>
             ${img.caption ? `<div class="gallery-caption">${escapeHtml(img.caption)}</div>` : ''}
           </div>
@@ -1776,8 +1775,7 @@
           const imagesHtml = entryImages.length ? `
             <div class="journal-images${entryImages.length === 1 ? ' single-image' : ''}">
               ${entryImages.map(img => `
-                <div class="journal-image" onclick="openLightbox('${img.url}', '${escapeHtml(img.caption || img.name || '').replace(/'/g, "\\'")}')"> 
-                  <img src="${img.url}" alt="${escapeHtml(img.caption || img.name || '')}" loading="lazy">
+                <div class="journal-image" data-lightbox-url="${escapeHtml(img.url)}" data-lightbox-caption="${escapeHtml(img.caption || img.name || '')}"><img src="${escapeHtml(img.url)}" alt="${escapeHtml(img.caption || img.name || '')}" loading="lazy">
                   ${img.caption ? `<div class="journal-image-caption">${escapeHtml(img.caption)}</div>` : ''}
                 </div>
               `).join('')}
@@ -2068,10 +2066,16 @@
     
     function escapeHtml(text) {
       if (!text) return '';
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+      return String(text)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
+
+    // One click listener for gallery and journal images (replaces inline onclick).
+    document.addEventListener('click', (event) => {
+      const item = event.target.closest && event.target.closest('[data-lightbox-url]');
+      if (item) openLightbox(item.dataset.lightboxUrl, item.dataset.lightboxCaption || '');
+    });
 
     function slugify(text) {
       return (text || 'ride-trip')
@@ -2442,6 +2446,6 @@
       showError();
     }
   </script>
-  <script src="js/share-patch.js?v=2026-11-23T01"></script>
+  <script src="js/share-patch.js?v=2026-11-23T02"></script>
 </body>
 </html>

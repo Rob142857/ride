@@ -28,7 +28,7 @@ import { handleMcpRequest, mcpEnabled } from './mcp.js';
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
 // Updated automatically by deploy script, or manually before shipping.
-const BUILD_ID = '2026-11-23T01';
+const BUILD_ID = '2026-11-23T02';
 
 const router = new Router();
 
@@ -276,18 +276,18 @@ function logShareView(env, ctx, request, shortCode, tripId) {
 function injectMetaTags(html, meta, shortCode) {
   const title = escapeAttr(meta.title);
   const desc = escapeAttr(meta.ogDescription);
-  const image = meta.coverUrl || `${BASE_URL}/icons/og-ride.png`;
-  const pageUrl = `${BASE_URL}/${shortCode}`;
+  const image = escapeAttr(meta.coverUrl || `${BASE_URL}/icons/og-ride.png`);
+  const pageUrl = escapeAttr(`${BASE_URL}/${shortCode}`);
 
-  html = html.replace(/<title>[^<]*<\/title>/, `<title>${title} | Ride</title>`);
-  html = html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/,  `$1${desc}$2`);
-  html = html.replace(/(<meta\s+property="og:title"\s+content=")[^"]*(")/,  `$1${title}$2`);
-  html = html.replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/,  `$1${desc}$2`);
-  html = html.replace(/(<meta\s+property="og:image"\s+content=")[^"]*(")/,  `$1${image}$2`);
-  html = html.replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/,  `$1${pageUrl}$2`);
-  html = html.replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*(")/,  `$1${title}$2`);
-  html = html.replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*(")/,  `$1${desc}$2`);
-  html = html.replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*(")/,  `$1${image}$2`);
+  html = html.replace(/<title>[^<]*<\/title>/, () => `<title>${title} | Ride</title>`);
+  html = html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/,  (m, a, b) => a + desc + b);
+  html = html.replace(/(<meta\s+property="og:title"\s+content=")[^"]*(")/,  (m, a, b) => a + title + b);
+  html = html.replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/,  (m, a, b) => a + desc + b);
+  html = html.replace(/(<meta\s+property="og:image"\s+content=")[^"]*(")/,  (m, a, b) => a + image + b);
+  html = html.replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/,  (m, a, b) => a + pageUrl + b);
+  html = html.replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*(")/,  (m, a, b) => a + title + b);
+  html = html.replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*(")/,  (m, a, b) => a + desc + b);
+  html = html.replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*(")/,  (m, a, b) => a + image + b);
 
   return html;
 }

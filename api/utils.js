@@ -117,6 +117,7 @@ export async function requireAuth(context) {
   
   // Get token from Authorization header or cookie
   let token = null;
+  let fromCookie = false;
   
   const authHeader = request.headers.get('Authorization');
   // Personal access tokens work only on routes wrapped with scoped() in
@@ -132,18 +133,28 @@ export async function requireAuth(context) {
     const match = cookies.match(/ride_session=([^;]+)/);
     if (match) {
       token = match[1];
+      fromCookie = true;
     }
   }
   
   if (!token) {
     return errorResponse('Unauthorized', 401);
   }
-  
+
   // Verify token from KV store
   try {
     const sessionData = await env.RIDE_TRIP_PLANNER_SESSIONS.get(token, 'json');
     if (!sessionData) {
       return errorResponse('Session expired', 401);
+    }
+
+    // Cookie session: writes must come from Ride itself (CSRF guard; SameSite=Lax
+    // does not stop other incitat.io hosts). Browsers always send Origin on cross-origin writes.
+    if (fromCookie && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method.toUpperCase())) {
+      const origin = request.headers.get('Origin');
+      if (origin && origin !== BASE_URL && !(origin === 'https://trip.incitat.io' && new URL(request.url).pathname.startsWith('/api/companion/')) && origin !== new URL(request.url).origin) {
+        return errorResponse('Cross-origin write refused', 403);
+      }
     }
     
     // Check expiry

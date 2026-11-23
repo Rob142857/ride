@@ -9,6 +9,15 @@ import { serializeOwnedJourney } from './journey.js';
 import { expandCoordinates, encodeRoute, assertRowSize } from './route-codec.js';
 import { validateTripSettings } from './itinerary-validation.js';
 
+// Cover images: https URL or Ride's own /api/attachments/ path, max 500 chars. The page
+// escapes it when written into meta tags; this keeps markup and other schemes out.
+function isOwnImageUrl(value) {
+  if (typeof value !== 'string' || value.length > 500) return false;
+  if (/^\/api\/attachments\/[A-Za-z0-9_-]+$/.test(value)) return true;
+  try { return new URL(value).protocol === 'https:'; } catch { return false; }
+}
+
+
 /**
  * A token (an agent) may create this many trips per rolling 24 hours. A soft
  * guard against a looping agent: counted from the audit rows scoped() writes
@@ -154,6 +163,7 @@ export const TripsHandler = {
     }
     if (body.name !== undefined && (typeof body.name !== 'string' || !body.name)) return errorResponse('Trip name must be non-empty text');
     for (const key of ['description', 'public_title', 'public_description', 'public_contact', 'cover_image_url']) if (body[key] !== undefined && body[key] !== null && typeof body[key] !== 'string') return errorResponse(`${key} must be text`);
+    if (body.cover_image_url && !isOwnImageUrl(body.cover_image_url)) return errorResponse('cover_image_url must be an https URL or a Ride attachment');
     let encodedRoute = null;
     if (body.route) {
       try { encodedRoute = encodeRoute(body.route); } catch (error) { return errorResponse(error.message, error.message.includes('row size') ? 413 : 400); }
