@@ -163,7 +163,7 @@ export async function verifyPat(env, secret) {
   // SELECT * so older databases without a status column still work.
   const user = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT * FROM users WHERE id = ?').bind(row.user_id).first();
   if (!user) return invalid;
-  if (['banned', 'blocked', 'suspended', 'paused'].includes(user.status)) return { status: 403, message: 'Account is not active' };
+  if (user.status !== undefined && user.status !== 'active') return { status: 403, message: 'Account is not active' };
   const scopes = safeJsonParse(row.scopes, []);
   return { row, user, scopes: Array.isArray(scopes) ? scopes : [] };
 }

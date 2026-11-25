@@ -48,15 +48,21 @@ for (const s of ['paused', 'suspended']) {
   });
 }
 
-test('gate: no token is 401; missing user row or old schema still passes', async () => {
+test('gate: no token is 401; missing user row passes', async () => {
   const c = ctx('active');
   c.request = new Request('https://ride.incitat.io/api/trips');
   assert.equal((await requireAuth(c)).status, 401);
   assert.equal(await requireAuth(ctx(null, { noRow: true })), undefined);
-  assert.equal(await requireAuth(ctx(null, { dbThrows: true })), undefined);
 });
 
-test('gate: "inactive" (unrecognised) is currently allowed through', async () => {
-  // DELIBERATE pin of today's fail-open behaviour (update this test if the gate is hardened): the gate only blocks banned/blocked/suspended/paused.
-  assert.equal(await requireAuth(ctx('inactive')), undefined);
+for (const s of ['inactive', 'Active', 'active ', '', null, 'xyz']) {
+  test(`gate: unrecognised status ${JSON.stringify(s)} is refused 403 (fail closed)`, async () => {
+    const r = await requireAuth(ctx(s));
+    assert.equal(r.status, 403);
+  });
+}
+
+test('gate: database error fails closed with 503', async () => {
+  const r = await requireAuth(ctx(null, { dbThrows: true }));
+  assert.equal(r.status, 503);
 });

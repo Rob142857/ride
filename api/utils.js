@@ -177,7 +177,14 @@ export async function requireAuth(context) {
       if (row && (row.status === 'suspended' || row.status === 'paused')) {
         return errorResponse('Account temporarily paused. Contact support.', 403);
       }
-    } catch (_) { /* status column may not exist yet */ }
+      // Fail closed: only a known good status gets in (live D1 held only 'active', 26 Nov).
+      if (row && row.status !== 'active') {
+        return errorResponse('Account status not recognised. Contact support.', 403);
+      }
+    } catch (error) {
+      console.error('Account status check failed', error);
+      return errorResponse('Could not verify account. Try again shortly.', 503);
+    }
 
     // Continue to next handler (return nothing)
     return;
