@@ -226,7 +226,9 @@ export async function optionalAuth(context) {
   try {
     const sessionData = await env.RIDE_TRIP_PLANNER_SESSIONS.get(token, 'json');
     if (sessionData && (!sessionData.expiresAt || Date.now() <= sessionData.expiresAt)) {
-      context.user = sessionData.user;
+      // A blocked or paused account must not act as its owner here either: treat as anonymous.
+      const row = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT status FROM users WHERE id = ?').bind(sessionData.user.id).first();
+      context.user = row && row.status !== 'active' ? null : sessionData.user;
     } else {
       context.user = null;
     }
