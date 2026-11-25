@@ -38,7 +38,7 @@ function normalizeAdminStatus(status) {
   if (status === 'suspended') return 'paused';
   if (status === 'banned') return 'blocked';
   if (status === 'paused' || status === 'blocked' || status === 'active') return status;
-  return 'active';
+  return 'unknown'; // never show an unrecognised status as active (state-machine map ride.md #2)
 }
 
 function isAllowedAdminStatus(status) {
