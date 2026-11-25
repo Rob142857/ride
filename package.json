@@ -20,6 +20,7 @@
     "kv:create": "wrangler kv:namespace create RIDE_TRIP_PLANNER_SESSIONS",
     "dev:remote": "wrangler dev --remote --d1=RIDE_TRIP_PLANNER_DB --kv=RIDE_TRIP_PLANNER_SESSIONS --r2=RIDE_TRIP_PLANNER_ATTACHMENTS",
     "smoke": "node scripts/smoke.js",
+    "test:api": "node --test tests/*.test.mjs",
     "test:mobile": "playwright test",
     "test:mobile:update": "playwright test --update-snapshots",
     "test:mobile:report": "playwright show-report playwright-report/mobile",

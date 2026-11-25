@@ -34,7 +34,7 @@ function likeTerm(q) {
   return `%${q.replace(/[\\%_]/g, '\\$&')}%`;
 }
 
-function normalizeAdminStatus(status) {
+export function normalizeAdminStatus(status) {
   if (status === 'suspended') return 'paused';
   if (status === 'banned') return 'blocked';
   if (status === 'paused' || status === 'blocked' || status === 'active') return status;
