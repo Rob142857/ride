@@ -171,6 +171,11 @@ export async function requireAuth(context) {
       const row = await env.RIDE_TRIP_PLANNER_DB.prepare(
         'SELECT status FROM users WHERE id = ?'
       ).bind(sessionData.user.id).first();
+      // Deleted user with a live session: refuse (the session is stale).
+      if (!row) {
+        await env.RIDE_TRIP_PLANNER_SESSIONS.delete(token);
+        return errorResponse('Account not found', 401);
+      }
       if (row && (row.status === 'banned' || row.status === 'blocked')) {
         return errorResponse('Account has been blocked. Contact support.', 403);
       }

@@ -48,11 +48,11 @@ for (const s of ['paused', 'suspended']) {
   });
 }
 
-test('gate: no token is 401; missing user row passes', async () => {
+test('gate: no token is 401; deleted user (no row) is 401', async () => {
   const c = ctx('active');
   c.request = new Request('https://ride.incitat.io/api/trips');
   assert.equal((await requireAuth(c)).status, 401);
-  assert.equal(await requireAuth(ctx(null, { noRow: true })), undefined);
+  assert.equal((await requireAuth(ctx(null, { noRow: true }))).status, 401);
 });
 
 for (const s of ['inactive', 'Active', 'active ', '', null, 'xyz']) {
