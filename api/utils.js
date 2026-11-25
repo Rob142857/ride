@@ -228,7 +228,7 @@ export async function optionalAuth(context) {
     if (sessionData && (!sessionData.expiresAt || Date.now() <= sessionData.expiresAt)) {
       // A blocked or paused account must not act as its owner here either: treat as anonymous.
       const row = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT status FROM users WHERE id = ?').bind(sessionData.user.id).first();
-      context.user = row && row.status !== 'active' ? null : sessionData.user;
+      context.user = row && row.status === 'active' ? sessionData.user : null; // no row = deleted user: anonymous
     } else {
       context.user = null;
     }

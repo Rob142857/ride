@@ -38,7 +38,7 @@ function optCtx(status, { dbThrows = false, noRow = false } = {}) {
     request: new Request('https://ride.incitat.io/api/attachments/a1', { headers: { Cookie: 'ride_session=tok' } }),
     env: {
       RIDE_TRIP_PLANNER_SESSIONS: { get: async () => ({ user: { id: 'u1' }, expiresAt: Date.now() + 60000 }) },
-      RIDE_TRIP_PLANNER_DB: { prepare: () => ({ bind: () => ({ first: async () => { if (dbThrows) throw new Error('db'); return noRow ? null : { status }; } }) }) },
+      RIDE_TRIP_PLANNER_DB: { prepare: () => ({ bind: (id) => ({ first: async () => { if (dbThrows) throw new Error('db'); assert.equal(id, 'u1'); return noRow ? null : { status }; } }) }) },
     },
   };
 }
@@ -61,4 +61,19 @@ test('optionalAuth: database error is anonymous (fail closed)', async () => {
   const c = optCtx(null, { dbThrows: true });
   await optionalAuth(c);
   assert.equal(c.user, null);
+});
+
+test('optionalAuth: deleted user (no row) is anonymous', async () => {
+  const c = optCtx(null, { noRow: true });
+  await optionalAuth(c);
+  assert.equal(c.user, null);
+});
+
+test('optionalAuth: no token and a PAT header are anonymous', async () => {
+  const none = { request: new Request('https://ride.incitat.io/x'), env: {} };
+  await optionalAuth(none);
+  assert.equal(none.user, null);
+  const pat = { request: new Request('https://ride.incitat.io/x', { headers: { Authorization: 'Bearer ' + generateTokenSecret() } }), env: {} };
+  await optionalAuth(pat);
+  assert.equal(pat.user, null);
 });
