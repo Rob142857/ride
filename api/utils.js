@@ -171,6 +171,11 @@ export async function requireAuth(context) {
       const row = await env.RIDE_TRIP_PLANNER_DB.prepare(
         'SELECT status FROM users WHERE id = ?'
       ).bind(sessionData.user.id).first();
+      // Deleted user with a live session: refuse (the session is stale).
+      if (!row) {
+        await env.RIDE_TRIP_PLANNER_SESSIONS.delete(token);
+        return errorResponse('Account not found', 401);
+      }
       if (row && (row.status === 'banned' || row.status === 'blocked')) {
         return errorResponse('Account has been blocked. Contact support.', 403);
       }
@@ -226,7 +231,9 @@ export async function optionalAuth(context) {
   try {
     const sessionData = await env.RIDE_TRIP_PLANNER_SESSIONS.get(token, 'json');
     if (sessionData && (!sessionData.expiresAt || Date.now() <= sessionData.expiresAt)) {
-      context.user = sessionData.user;
+      // A blocked or paused account must not act as its owner here either: treat as anonymous.
+      const row = await env.RIDE_TRIP_PLANNER_DB.prepare('SELECT status FROM users WHERE id = ?').bind(sessionData.user.id).first();
+      context.user = row && row.status === 'active' ? sessionData.user : null; // no row = deleted user: anonymous
     } else {
       context.user = null;
     }
