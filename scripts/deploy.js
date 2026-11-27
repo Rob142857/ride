@@ -15,7 +15,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const WORKER_PATH = path.resolve(__dirname, '..', 'api', 'worker.js');
-const ASSET_PAGES = ['index.html', 'trip.html'].map(file =>
+const ASSET_PAGES = ['index.html', 'trip.html', 'deletion.html'].map(file =>
   path.resolve(__dirname, '..', 'public', file)
 );
 const stampOnly = process.argv.includes('--stamp-only');
