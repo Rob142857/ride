@@ -198,6 +198,25 @@ async function recordCall(env, auth, toolName, args, status) {
   await audit(env, { tokenId: auth.tokenId, userId: auth.userId, method: 'MCP', route: auditRoute(toolName, args), status });
 }
 
+/** Body text, or null as soon as it passes `max` bytes (no Content-Length needed). */
+export async function readBounded(request, max) {
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) { await reader.cancel().catch(() => undefined); return null; }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
+}
+
 export async function handleMcpRequest(request, env, ctx) {
   if (request.method !== 'POST') {
     return new Response(null, { status: 405, headers: { Allow: 'POST', 'Cache-Control': 'no-store' } });
@@ -232,8 +251,9 @@ export async function handleMcpRequest(request, env, ctx) {
   if (contentType !== 'application/json') return json(rpcError(undefined, -32700, 'Content-Type must be application/json'), 415);
   const declared = Number(request.headers.get('Content-Length') || 0);
   if (Number.isFinite(declared) && declared > MAX_MCP_REQUEST_BYTES) return json(rpcError(undefined, -32600, 'Request too large'), 413);
-  const raw = await request.text();
-  if (raw.length > MAX_MCP_REQUEST_BYTES) return json(rpcError(undefined, -32600, 'Request too large'), 413);
+  // Read the body in pieces and stop at the cap: a chunked body with no Content-Length must not be buffered whole.
+  const raw = await readBounded(request, MAX_MCP_REQUEST_BYTES);
+  if (raw === null) return json(rpcError(undefined, -32600, 'Request too large'), 413);
 
   let parsed;
   try { parsed = JSON.parse(raw); } catch { return json(rpcError(null, -32700, 'Parse error'), 400); }
