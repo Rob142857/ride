@@ -228,6 +228,7 @@ body {
   padding: 28px;
   /* Light scrim: the map and the sample route must read plainly behind the card (the card has its own solid background). */
   background: rgba(8, 10, 18, 0.12);
+  overflow-y: auto;
 }
 
 .landing-gate.hidden {

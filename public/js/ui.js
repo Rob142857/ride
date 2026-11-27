@@ -123,21 +123,29 @@ const UI = {
       const b = this._sampleRideCoords[this._sampleRideCoords.length - 1];
       const dot = (p) => L.circleMarker(p, { radius: 7, color: '#fff', weight: 2, fillColor: '#e8445f', fillOpacity: 1, interactive: false });
       this._sampleRideLayer = L.layerGroup([line, dot(a), dot(b)]).addTo(m);
-      // First visit: close the desktop sidebar so the map is the picture (restored on Begin).
-      this._sampleSidebarWasOpen = !document.body.classList.contains('sidebar-collapsed');
-      document.body.classList.add('sidebar-collapsed');
-      m.invalidateSize(false);
-      // Fit the route into the part of the map the welcome card does NOT cover.
-      const card = document.querySelector('#landingGate .landing-gate-card');
-      const r = card ? card.getBoundingClientRect() : null;
-      const mapBox = m.getContainer().getBoundingClientRect();
-      let pad = { paddingTopLeft: [30, 100], paddingBottomRight: [30, 30] };
-      if (r && window.innerWidth < 768) {
-        pad = { paddingTopLeft: [24, 110], paddingBottomRight: [24, Math.max(30, mapBox.bottom - r.top + 16)] };
-      } else if (r) {
-        pad = { paddingTopLeft: [Math.max(30, r.right - mapBox.left + 30), 90], paddingBottomRight: [40, 60] };
-      }
-      m.fitBounds(line.getBounds(), Object.assign({ animate: false }, pad));
+      if (new URLSearchParams(location.search).get('embed') === 'true') { m.removeLayer(this._sampleRideLayer); this._sampleRideLayer = null; this._sampleRideView = null; return; }
+      // First visit, desktop: close the sidebar so the map is the picture (restored on Begin).
+      const desktop = window.innerWidth >= 768;
+      const collapse = desktop && !document.body.classList.contains('sidebar-collapsed');
+      this._sampleSidebarWasOpen = collapse;
+      if (collapse) document.body.classList.add('sidebar-collapsed');
+      // The sidebar slides for 0.35 s and moves the map edge: measure and fit after it settles.
+      const fit = () => {
+        if (!this._sampleRideLayer) return;
+        m.invalidateSize(false);
+        const card = document.querySelector('#landingGate .landing-gate-card');
+        const r = card ? card.getBoundingClientRect() : null;
+        const mapBox = m.getContainer().getBoundingClientRect();
+        let pad = { paddingTopLeft: [30, 100], paddingBottomRight: [30, 30] };
+        if (r && !desktop) {
+          pad = { paddingTopLeft: [24, 110], paddingBottomRight: [24, Math.max(30, mapBox.bottom - r.top + 16)] };
+        } else if (r) {
+          pad = { paddingTopLeft: [Math.max(30, r.right - mapBox.left + 30), 90], paddingBottomRight: [40, 60] };
+        }
+        m.fitBounds(line.getBounds(), Object.assign({ animate: false }, pad));
+        this._sampleFitView = { center: m.getCenter(), zoom: m.getZoom() };
+      };
+      if (collapse) setTimeout(fit, 380); else fit();
     } catch (_) {}
   },
 
@@ -146,13 +154,17 @@ const UI = {
       const m = window.MapManager && MapManager.map;
       if (m && this._sampleRideLayer) m.removeLayer(this._sampleRideLayer);
       this._sampleRideLayer = null;
-      if (this._sampleSidebarWasOpen) document.body.classList.remove('sidebar-collapsed');
+      if (this._sampleSidebarWasOpen) { document.body.classList.remove('sidebar-collapsed'); if (m) setTimeout(() => m.invalidateSize(false), 380); }
       this._sampleSidebarWasOpen = null;
       if (m && this._sampleRideView) {
-        m.setView(this._sampleRideView.center, this._sampleRideView.zoom, { animate: false });
+        // Restore the old view only if nothing else (a loaded trip, a shared link) has moved the map since our fit.
+        const fv = this._sampleFitView; const c = m.getCenter();
+        const untouched = fv && Math.abs(c.lat - fv.center.lat) < 1e-6 && Math.abs(c.lng - fv.center.lng) < 1e-6 && m.getZoom() === fv.zoom;
+        if (untouched) m.setView(this._sampleRideView.center, this._sampleRideView.zoom, { animate: false });
         if (this._sampleRideView.view && this.currentView !== this._sampleRideView.view) this.switchView(this._sampleRideView.view);
       }
       this._sampleRideView = null;
+      this._sampleFitView = null;
     } catch (_) {}
   },
 
