@@ -123,8 +123,21 @@ const UI = {
       const b = this._sampleRideCoords[this._sampleRideCoords.length - 1];
       const dot = (p) => L.circleMarker(p, { radius: 7, color: '#fff', weight: 2, fillColor: '#e8445f', fillOpacity: 1, interactive: false });
       this._sampleRideLayer = L.layerGroup([line, dot(a), dot(b)]).addTo(m);
+      // First visit: close the desktop sidebar so the map is the picture (restored on Begin).
+      this._sampleSidebarWasOpen = !document.body.classList.contains('sidebar-collapsed');
+      document.body.classList.add('sidebar-collapsed');
       m.invalidateSize(false);
-      m.fitBounds(line.getBounds(), { padding: [30, 30], animate: false });
+      // Fit the route into the part of the map the welcome card does NOT cover.
+      const card = document.querySelector('#landingGate .landing-gate-card');
+      const r = card ? card.getBoundingClientRect() : null;
+      const mapBox = m.getContainer().getBoundingClientRect();
+      let pad = { paddingTopLeft: [30, 100], paddingBottomRight: [30, 30] };
+      if (r && window.innerWidth < 768) {
+        pad = { paddingTopLeft: [24, 110], paddingBottomRight: [24, Math.max(30, mapBox.bottom - r.top + 16)] };
+      } else if (r) {
+        pad = { paddingTopLeft: [Math.max(30, r.right - mapBox.left + 30), 90], paddingBottomRight: [40, 60] };
+      }
+      m.fitBounds(line.getBounds(), Object.assign({ animate: false }, pad));
     } catch (_) {}
   },
 
@@ -133,6 +146,8 @@ const UI = {
       const m = window.MapManager && MapManager.map;
       if (m && this._sampleRideLayer) m.removeLayer(this._sampleRideLayer);
       this._sampleRideLayer = null;
+      if (this._sampleSidebarWasOpen) document.body.classList.remove('sidebar-collapsed');
+      this._sampleSidebarWasOpen = null;
       if (m && this._sampleRideView) {
         m.setView(this._sampleRideView.center, this._sampleRideView.zoom, { animate: false });
         if (this._sampleRideView.view && this.currentView !== this._sampleRideView.view) this.switchView(this._sampleRideView.view);

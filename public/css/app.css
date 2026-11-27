@@ -226,7 +226,8 @@ body {
   align-items: center;
   justify-content: center;
   padding: 28px;
-  background: var(--bg-modal-overlay);
+  /* Light scrim: the map and the sample route must read plainly behind the card (the card has its own solid background). */
+  background: rgba(8, 10, 18, 0.12);
 }
 
 .landing-gate.hidden {
@@ -238,13 +239,37 @@ body {
 }
 
 .landing-gate-card {
-  background: rgba(18, 20, 31, 0.78);
+  background: rgba(18, 20, 31, 0.96);
   border: 1px solid var(--border-elegant);
   border-radius: var(--radius);
   box-shadow: var(--shadow-modal);
   padding: 28px 22px;
   text-align: left;
-  backdrop-filter: blur(14px);
+}
+
+.landing-gate-caption {
+  position: absolute;
+  top: 72px;
+  right: 20px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(18, 20, 31, 0.9);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Desktop: card on the left third so the route shows on the right. Phone: bottom sheet. */
+@media (min-width: 768px) {
+  .landing-gate { justify-content: flex-start; padding-left: 6vw; }
+  .landing-gate-shell { width: min(420px, 100%); }
+}
+@media (max-width: 767px) {
+  .landing-gate { align-items: flex-end; padding: 0; }
+  .landing-gate-shell { width: 100%; }
+  .landing-gate-card { border-radius: var(--radius) var(--radius) 0 0; padding: 22px 20px 28px; }
+  .landing-gate-title { font-size: 2.6rem; }
+  .landing-gate-caption { top: 64px; right: auto; left: 16px; }
 }
 
 .landing-gate-kicker {
