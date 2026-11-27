@@ -292,10 +292,11 @@ function injectMetaTags(html, meta, shortCode) {
   return html;
 }
 
-// Content Security Policy for HTML responses
-const CSP = [
+// Content Security Policy for HTML responses.
+// App pages (27 Nov 2026): no inline scripts and no inline event handlers; every script is a file on this origin,
+// unpkg (Leaflet) or the Cloudflare beacon. The admin page still has inline handlers, so it keeps its own policy.
+const CSP_BASE = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://unpkg.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://server.arcgisonline.com https://ride.incitat.io https://lh3.googleusercontent.com https://*.microsoft.com",
@@ -303,14 +304,22 @@ const CSP = [
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self' https://accounts.google.com https://login.microsoftonline.com"
-].join('; ');
+];
+const SCRIPT_SRC_APP = "script-src 'self' https://unpkg.com https://static.cloudflareinsights.com";
+const SCRIPT_SRC_ADMIN = "script-src 'self' 'unsafe-inline' https://unpkg.com https://static.cloudflareinsights.com";
+export const CSP = [CSP_BASE[0], SCRIPT_SRC_APP, "script-src-attr 'none'", ...CSP_BASE.slice(1)].join('; ');
+export const CSP_ADMIN = [CSP_BASE[0], SCRIPT_SRC_ADMIN, ...CSP_BASE.slice(1)].join('; ');
+
+function isAdminPage(pathname) {
+  return /^\/admin(\.html)?\/?$/.test(pathname || '');
+}
 
 /**
  * Add security headers to HTML responses
  */
-function addSecurityHeaders(response) {
+function addSecurityHeaders(response, pathname = '') {
   const headers = new Headers(response.headers);
-  headers.set('Content-Security-Policy', CSP);
+  headers.set('Content-Security-Policy', isAdminPage(pathname) ? CSP_ADMIN : CSP);
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('X-Frame-Options', 'DENY');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -409,7 +418,7 @@ export default {
     const response = await env.ASSETS.fetch(request);
     const ct = response.headers.get('content-type') || '';
     if (ct.includes('text/html')) {
-      return addSecurityHeaders(response);
+      return addSecurityHeaders(response, url.pathname);
     }
     return response;
   }

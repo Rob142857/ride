@@ -44,10 +44,10 @@ Object.assign(UI, {
             <button class="icon-btn waypoint-move" type="button" data-waypoint-move="up" aria-label="Move ${this.escapeHtml(wp.name)} up" title="Move up" ${index === 0 ? 'disabled' : ''}>↑</button>
             <button class="icon-btn waypoint-move" type="button" data-waypoint-move="down" aria-label="Move ${this.escapeHtml(wp.name)} down" title="Move down" ${index === orderedWaypoints.length - 1 ? 'disabled' : ''}>↓</button>
             <button class="icon-btn waypoint-move-position" type="button" data-waypoint-position data-waypoint-name="${this.escapeHtml(wp.name)}" aria-label="Move ${this.escapeHtml(wp.name)} to position" title="Move to position">↕</button>
-            <button class="icon-btn" onclick="MapManager.centerOnWaypoint(App.currentTrip.waypoints.find(w => w.id === '${wp.id}')); event.stopPropagation();" aria-label="Center on map">
+            <button class="icon-btn" type="button" data-waypoint-center="${this.escapeHtml(String(wp.id))}" aria-label="Center on map">
               <svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
             </button>
-            <button class="icon-btn" onclick="App.deleteWaypoint('${wp.id}'); event.stopPropagation();" aria-label="Delete waypoint">
+            <button class="icon-btn" type="button" data-waypoint-delete="${this.escapeHtml(String(wp.id))}" aria-label="Delete waypoint">
               <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
             </button>
           </div>
@@ -81,6 +81,21 @@ Object.assign(UI, {
         if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) return;
         [ids[index], ids[nextIndex]] = [ids[nextIndex], ids[index]];
         App.reorderWaypoints(ids);
+      });
+    });
+
+    // These two used inline onclick attributes; the page CSP no longer allows inline handlers.
+    container.querySelectorAll('[data-waypoint-center]').forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const waypoint = App.currentTrip?.waypoints?.find((w) => String(w.id) === button.dataset.waypointCenter);
+        if (waypoint) MapManager.centerOnWaypoint(waypoint);
+      });
+    });
+    container.querySelectorAll('[data-waypoint-delete]').forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        App.deleteWaypoint(button.dataset.waypointDelete);
       });
     });
 
@@ -375,10 +390,10 @@ Object.assign(UI, {
             </div>
           ` : ''}
           <div class="journal-actions">
-            <button class="icon-btn" onclick="App.pickJournalAttachment('${entry.id}'); event.stopPropagation();" aria-label="Attach file">
+            <button class="icon-btn" type="button" data-journal-attach="${this.escapeHtml(String(entry.id))}" aria-label="Attach file">
               📎
             </button>
-            <button class="icon-btn" onclick="App.deleteJournalEntry('${entry.id}'); event.stopPropagation();" aria-label="Delete entry">
+            <button class="icon-btn" type="button" data-journal-delete="${this.escapeHtml(String(entry.id))}" aria-label="Delete entry">
               <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
             </button>
           </div>
@@ -390,6 +405,19 @@ Object.assign(UI, {
         const id = el.dataset.id;
         if (!id) return;
         App.startEditJournalEntry(id);
+      });
+    });
+
+    container.querySelectorAll('[data-journal-attach]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        App.pickJournalAttachment(btn.dataset.journalAttach);
+      });
+    });
+    container.querySelectorAll('[data-journal-delete]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        App.deleteJournalEntry(btn.dataset.journalDelete);
       });
     });
 

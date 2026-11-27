@@ -59,6 +59,8 @@ export default [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         location: 'readonly',
+        history: 'readonly',
+        TripShareHero: 'readonly',
         // Third-party / cross-script globals
         L: 'readonly',
         // App globals (declared across multiple classic script files)
@@ -194,6 +196,14 @@ export default [
       ...baseRules,
       'no-undef': 'off',
       'no-redeclare': 'off',
+    },
+  },
+
+  {
+    // Node test files use the Workers/Node 18+ Fetch globals.
+    files: ['tests/**/*.mjs'],
+    languageOptions: {
+      globals: { Request: 'readonly', Response: 'readonly', Headers: 'readonly' },
     },
   },
 ];
