@@ -107,17 +107,80 @@ const UI = {
     });
   },
 
+  // Sample ride shown behind the welcome card only (decorative, not a saved trip):
+  // Richmond to Lithgow by the Bells Line of Road, NSW (road-snapped via OSRM, 27 Nov 2026).
+  _sampleRideCoords: [[-33.5979,150.7504],[-33.5870,150.7261],[-33.5728,150.7122],[-33.5711,150.7065],[-33.5586,150.7013],[-33.5511,150.6933],[-33.5468,150.6615],[-33.5475,150.6517],[-33.5398,150.6385],[-33.5421,150.6335],[-33.5180,150.6263],[-33.5196,150.6172],[-33.5152,150.6099],[-33.5154,150.5806],[-33.5023,150.5402],[-33.5036,150.5315],[-33.4969,150.5180],[-33.4974,150.5130],[-33.5035,150.5078],[-33.5084,150.4951],[-33.5172,150.4850],[-33.5173,150.4670],[-33.5282,150.4565],[-33.5308,150.4470],[-33.5369,150.4423],[-33.5381,150.4310],[-33.5360,150.4229],[-33.5390,150.4191],[-33.5437,150.4259],[-33.5488,150.4226],[-33.5498,150.4176],[-33.5455,150.4035],[-33.5503,150.3987],[-33.5446,150.3871],[-33.5710,150.3601],[-33.5715,150.3535],[-33.5653,150.3449],[-33.5576,150.3441],[-33.5530,150.3389],[-33.5406,150.3336],[-33.5319,150.3098],[-33.5263,150.3101],[-33.5187,150.3040],[-33.5192,150.2962],[-33.5120,150.2865],[-33.5115,150.2807],[-33.5040,150.2774],[-33.4971,150.2686],[-33.4881,150.2624],[-33.4805,150.2512],[-33.4719,150.2460],[-33.4739,150.2287],[-33.4794,150.2186],[-33.4773,150.2104],[-33.4845,150.2069],[-33.4837,150.2008],[-33.4872,150.1912],[-33.4779,150.1871],[-33.4767,150.1844],[-33.4721,150.1862],[-33.4698,150.1843],[-33.4773,150.1733],[-33.4811,150.1614],[-33.4850,150.1580]
+],
+
+  _showSampleRide() {
+    try {
+      const m = window.MapManager && MapManager.map;
+      if (!m || this._sampleRideLayer || !window.L) return;
+      this._sampleRideView = { center: m.getCenter(), zoom: m.getZoom(), view: 'trips' }; // the app opens on Trips after the welcome card
+      if (this.currentView !== 'map') this.switchView('map'); // map must be visible behind the card
+      const line = L.polyline(this._sampleRideCoords, { color: '#e8445f', weight: 5, opacity: 0.9, interactive: false });
+      const a = this._sampleRideCoords[0];
+      const b = this._sampleRideCoords[this._sampleRideCoords.length - 1];
+      const dot = (p) => L.circleMarker(p, { radius: 7, color: '#fff', weight: 2, fillColor: '#e8445f', fillOpacity: 1, interactive: false });
+      this._sampleRideLayer = L.layerGroup([line, dot(a), dot(b)]).addTo(m);
+      if (new URLSearchParams(location.search).get('embed') === 'true') { m.removeLayer(this._sampleRideLayer); this._sampleRideLayer = null; this._sampleRideView = null; return; }
+      // First visit, desktop: close the sidebar so the map is the picture (restored on Begin).
+      const desktop = window.innerWidth >= 768;
+      const collapse = desktop && !document.body.classList.contains('sidebar-collapsed');
+      this._sampleSidebarWasOpen = collapse;
+      if (collapse) document.body.classList.add('sidebar-collapsed');
+      // The sidebar slides for 0.35 s and moves the map edge: measure and fit after it settles.
+      const fit = () => {
+        if (!this._sampleRideLayer) return;
+        m.invalidateSize(false);
+        const card = document.querySelector('#landingGate .landing-gate-card');
+        const r = card ? card.getBoundingClientRect() : null;
+        const mapBox = m.getContainer().getBoundingClientRect();
+        let pad = { paddingTopLeft: [30, 100], paddingBottomRight: [30, 30] };
+        if (r && !desktop) {
+          pad = { paddingTopLeft: [24, 110], paddingBottomRight: [24, Math.max(30, mapBox.bottom - r.top + 16)] };
+        } else if (r) {
+          pad = { paddingTopLeft: [Math.max(30, r.right - mapBox.left + 30), 90], paddingBottomRight: [40, 60] };
+        }
+        m.fitBounds(line.getBounds(), Object.assign({ animate: false }, pad));
+        this._sampleFitView = { center: m.getCenter(), zoom: m.getZoom() };
+      };
+      if (collapse) setTimeout(fit, 380); else fit();
+    } catch (_) {}
+  },
+
+  _hideSampleRide() {
+    try {
+      const m = window.MapManager && MapManager.map;
+      if (m && this._sampleRideLayer) m.removeLayer(this._sampleRideLayer);
+      this._sampleRideLayer = null;
+      if (this._sampleSidebarWasOpen) { document.body.classList.remove('sidebar-collapsed'); if (m) setTimeout(() => m.invalidateSize(false), 380); }
+      this._sampleSidebarWasOpen = null;
+      if (m && this._sampleRideView) {
+        // Restore the old view only if nothing else (a loaded trip, a shared link) has moved the map since our fit.
+        const fv = this._sampleFitView; const c = m.getCenter();
+        const untouched = fv && Math.abs(c.lat - fv.center.lat) < 1e-6 && Math.abs(c.lng - fv.center.lng) < 1e-6 && m.getZoom() === fv.zoom;
+        if (untouched) m.setView(this._sampleRideView.center, this._sampleRideView.zoom, { animate: false });
+        if (this._sampleRideView.view && this.currentView !== this._sampleRideView.view) this.switchView(this._sampleRideView.view);
+      }
+      this._sampleRideView = null;
+      this._sampleFitView = null;
+    } catch (_) {}
+  },
+
   showLandingGate() {
     const gate = document.getElementById('landingGate');
     if (gate) {
       this.landingGateLastShown = true;
       gate.classList.remove('hidden');
+      this._showSampleRide();
     }
   },
 
   hideLandingGate() {
     const gate = document.getElementById('landingGate');
     if (gate) gate.classList.add('hidden');
+    this._hideSampleRide();
   },
 
   isLandingGateVisible() {

@@ -213,7 +213,8 @@ const App = {
       }
     } else {
       await this.loadInitialTrip();
-      UI.switchView('trips');
+      // First visit: keep the map (with the sample ride) showing behind the welcome card; Begin returns to Trips.
+      UI.switchView(UI.isLandingGateVisible() ? 'map' : 'trips');
     }
 
     this.refreshTripsList();
