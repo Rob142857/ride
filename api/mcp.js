@@ -30,6 +30,7 @@ export const SUPPORTED_PROTOCOL_VERSIONS = [...MODERN_PROTOCOL_VERSIONS, ...LEGA
 export const SERVER_INFO = { name: 'ride', title: 'Ride', version: '1.0.0-mcp.1' };
 export const CALLS_PER_HOUR = 1000;
 export const WRITES_PER_MINUTE = 20;
+export const HOURLY_RETRY_AFTER_S = 300;
 export const MAX_MCP_REQUEST_BYTES = 16 * 1024 * 1024; // planning files can be large
 const TOOLS_LIST_TTL_MS = 60 * 1000;
 const DISCOVER_TTL_MS = 60 * 60 * 1000;
@@ -242,8 +243,12 @@ export async function handleMcpRequest(request, env, ctx) {
 
   // Shared per-token limits with the REST API: 60 a minute, plus 1000 an hour on /mcp.
   const minute = await countRequest(env, auth.tokenId);
-  if (minute > RATE_LIMIT_PER_MINUTE || (await callsThisHour(env, auth.tokenId)) > CALLS_PER_HOUR) {
+  if (minute > RATE_LIMIT_PER_MINUTE) {
     return json(rpcError(undefined, ERR_RATE_LIMITED, 'Rate limit reached for this token; slow down and retry later'), 429, { 'Retry-After': retryAfterSeconds() });
+  }
+  if ((await callsThisHour(env, auth.tokenId)) > CALLS_PER_HOUR) {
+    // The hourly window rolls, so a one-minute wait would only add refused calls to the count: ask for a longer wait.
+    return json(rpcError(undefined, ERR_RATE_LIMITED, 'Hourly limit reached for this token; retry in a few minutes'), 429, { 'Retry-After': String(HOURLY_RETRY_AFTER_S) });
   }
   await touchToken({ env, ctx }, auth.tokenId);
 
@@ -252,7 +257,9 @@ export async function handleMcpRequest(request, env, ctx) {
   const declared = Number(request.headers.get('Content-Length') || 0);
   if (Number.isFinite(declared) && declared > MAX_MCP_REQUEST_BYTES) return json(rpcError(undefined, -32600, 'Request too large'), 413);
   // Read the body in pieces and stop at the cap: a chunked body with no Content-Length must not be buffered whole.
-  const raw = await readBounded(request, MAX_MCP_REQUEST_BYTES);
+  let raw;
+  try { raw = await readBounded(request, MAX_MCP_REQUEST_BYTES); }
+  catch { return json(rpcError(undefined, -32700, 'The request body could not be read'), 400); }
   if (raw === null) return json(rpcError(undefined, -32600, 'Request too large'), 413);
 
   let parsed;

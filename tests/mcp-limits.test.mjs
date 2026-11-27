@@ -2,7 +2,7 @@
 // Invented tokens and a fake database; nothing real.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleMcpRequest, CALLS_PER_HOUR, WRITES_PER_MINUTE, MAX_MCP_REQUEST_BYTES } from '../api/mcp.js';
+import { handleMcpRequest, readBounded, CALLS_PER_HOUR, WRITES_PER_MINUTE, MAX_MCP_REQUEST_BYTES, HOURLY_RETRY_AFTER_S } from '../api/mcp.js';
 import { generateTokenSecret, sha256Hex, RATE_LIMIT_PER_MINUTE } from '../api/api-tokens.js';
 
 async function setup({ scopes = ['mcp.connect', 'waypoints.write'], minuteStart = 0, writeStart = 0, hour = 0 } = {}) {
@@ -63,7 +63,9 @@ test('the 60th call in a minute is still accepted', async () => {
 
 test('more than 1000 calls in an hour is refused 429', async () => {
   const { env, post } = await setup({ hour: CALLS_PER_HOUR + 1 });
-  assert.equal((await handleMcpRequest(post(list), env, ctx)).status, 429);
+  const res = await handleMcpRequest(post(list), env, ctx);
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get('Retry-After'), String(HOURLY_RETRY_AFTER_S), 'an hourly refusal asks for a longer wait than a minute');
 });
 
 test('exactly 1000 calls in the hour is still accepted', async () => {
@@ -84,7 +86,7 @@ test('a write tool over the per-minute write cap is refused 429 and the refusal 
 test('a read tool is not subject to the write cap', async () => {
   const { env, post } = await setup({ writeStart: WRITES_PER_MINUTE + 5, scopes: ['mcp.connect', 'trips.read'] });
   const res = await handleMcpRequest(post({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'list_trips', arguments: {} } }), env, ctx);
-  assert.notEqual(res.status, 429);
+  assert.equal(res.status, 200);
 });
 
 test('a body declared over the cap is refused 413 before it is read', async () => {
@@ -131,6 +133,27 @@ test('a chunked body over the cap with no Content-Length is cut off and refused 
 
 test('a body just under the cap is read in full', async () => {
   const { env, post } = await setup();
-  const res = await handleMcpRequest(post(JSON.stringify({ ...list, padding: 'x'.repeat(100000) })), env, ctx);
+  const res = await handleMcpRequest(post(JSON.stringify({ ...list, padding: 'x'.repeat(1_000_000) })), env, ctx);
   assert.equal(res.status, 200);
+});
+
+test('readBounded: empty body, multibyte text split across chunks, and cancel on overflow', async () => {
+  assert.equal(await readBounded(new Request('https://ride.incitat.io/mcp', { method: 'POST' }), 10), '');
+  const bytes = new TextEncoder().encode('café ☃ ok'); // multibyte characters
+  const stream = new ReadableStream({ start(c) { for (let i = 0; i < bytes.length; i += 2) c.enqueue(bytes.slice(i, i + 2)); c.close(); } });
+  const req = new Request('https://ride.incitat.io/mcp', { method: 'POST', body: stream, duplex: 'half' });
+  assert.equal(await readBounded(req, 1000), 'café ☃ ok');
+  let cancelled = false;
+  const big = new ReadableStream({ pull(c) { c.enqueue(new Uint8Array(100)); }, cancel() { cancelled = true; } });
+  const over = new Request('https://ride.incitat.io/mcp', { method: 'POST', body: big, duplex: 'half' });
+  assert.equal(await readBounded(over, 450), null);
+  assert.equal(cancelled, true, 'the stream is cancelled once the cap is passed');
+});
+
+test('a body that fails mid-read gives 400, not an uncaught error', async () => {
+  const { env, secret } = await setup();
+  const stream = new ReadableStream({ pull(c) { c.error(new Error('client went away')); } });
+  const req = new Request('https://ride.incitat.io/mcp', { method: 'POST', headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/json' }, body: stream, duplex: 'half' });
+  const res = await handleMcpRequest(req, env, ctx);
+  assert.equal(res.status, 400);
 });

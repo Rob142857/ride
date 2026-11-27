@@ -203,7 +203,7 @@ export default [
     // Node test files use the Workers/Node 18+ Fetch globals.
     files: ['tests/**/*.mjs'],
     languageOptions: {
-      globals: { Request: 'readonly', Response: 'readonly', Headers: 'readonly', ReadableStream: 'readonly' },
+      globals: { Request: 'readonly', Response: 'readonly', Headers: 'readonly', ReadableStream: 'readonly', TextEncoder: 'readonly' },
     },
   },
 ];
