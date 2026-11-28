@@ -24,6 +24,7 @@ import { CompanionLiveHandler } from './companion-live.js';
 import { DevicesHandler, DeviceIngestHandler, deviceServerError } from './devices.js';
 import { cors, jsonResponse, errorResponse, requireAuth, requireAdminUser, optionalAuth, BASE_URL } from './utils.js';
 import { handleMcpRequest, mcpEnabled } from './mcp.js';
+import { handleHealth } from './health.js';
 
 // Build fingerprint — changes on every deploy. Used by service worker and client
 // to detect code updates and trigger cache invalidation + seamless reload.
@@ -161,8 +162,8 @@ router.get('/api/s/:shortCode', ShareHandler.getSharedTrip);
 // Deploy sanity-check endpoint (no auth)
 // Bump DEPLOY_MARKER when you want to verify a new deploy via curl.
 router.get('/api/_deploy', () => {
-  const DEPLOY_MARKER = 'deploy-marker:2025-12-27T00:00Z:waypoint-precondition-v1';
-  return jsonResponse({ ok: true, marker: DEPLOY_MARKER, now: new Date().toISOString() });
+  // The marker is the deploy stamp (BUILD_ID), so it can never go stale by hand.
+  return jsonResponse({ ok: true, marker: `deploy-marker:${BUILD_ID}`, now: new Date().toISOString() });
 });
 
 // Build version endpoint — lightweight, no auth
@@ -334,6 +335,11 @@ function addSecurityHeaders(response, pathname = '') {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // Public health route for the uptime watch: app, ok, version, db only.
+    if (url.pathname === '/health') {
+      return handleHealth(request, env, { version: BUILD_ID });
+    }
 
     // MCP endpoint (personal access tokens with mcp.connect only). While
     // MCP_ENABLED is not "true" it is not routed at all, so /mcp stays the
