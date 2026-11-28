@@ -312,6 +312,9 @@ function addSecurityHeaders(response, pathname = '') {
   headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   // Build fingerprint lets clients detect code updates
   headers.set('X-Build-ID', BUILD_ID);
+  // NOTE: the CSP nonce above changes on every response, so this ETag does not describe the whole response. Do NOT add
+  // 304 / If-None-Match handling for HTML against it: a cached page (old nonce on Cloudflare's snippet) would be paired
+  // with a new header nonce and the snippet would be blocked (a harmless console error, but still wrong).
   headers.set('ETag', `"${BUILD_ID}"`);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }

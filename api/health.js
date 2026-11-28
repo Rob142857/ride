@@ -59,11 +59,11 @@ async function databaseUp(env, timeoutMs) {
 
 export async function handleHealth(request, env, { version, timeoutMs = HEALTH_DB_TIMEOUT_MS, now = Date.now(), store = hits } = {}) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return reply(request, 405, { ok: false }, { Allow: 'GET, HEAD' });
+    return reply(request, 405, { app: 'ride', ok: false }, { Allow: 'GET, HEAD' });
   }
   const client = request.headers.get('CF-Connecting-IP') || 'unknown';
   if (healthRateLimited(client, now, store)) {
-    return reply(request, 429, { ok: false }, { 'Retry-After': '60' });
+    return reply(request, 429, { app: 'ride', ok: false }, { 'Retry-After': '60' });
   }
   const up = await databaseUp(env, timeoutMs);
   return reply(request, up ? 200 : 503, { app: 'ride', ok: up, version, db: up ? 'ok' : 'down' });

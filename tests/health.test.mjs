@@ -82,3 +82,29 @@ test('/api/_deploy marker follows the deploy stamp, not a stale date', async () 
   assert.match(body.marker, /^deploy-marker:\d{4}-\d{2}-\d{2}T\d{2}$/);
   assert.ok(!body.marker.includes('2025-12-27'));
 });
+
+test('405 and 429 bodies carry the app name and ok:false only (Argus reads 429 as rate limited, not down)', async () => {
+  const post = await call('/health', { method: 'POST', ...ip(70) }, { RIDE_TRIP_PLANNER_DB: dbOk });
+  assert.deepEqual(await post.json(), { app: 'ride', ok: false });
+  const store = new Map();
+  const make = () => new Request('https://ride.incitat.io/health', ip(71));
+  for (let i = 0; i < HEALTH_RATE_PER_MINUTE; i += 1) await handleHealth(make(), { RIDE_TRIP_PLANNER_DB: dbOk }, { version: 'v', store });
+  const limited = await handleHealth(make(), { RIDE_TRIP_PLANNER_DB: dbOk }, { version: 'v', store });
+  assert.deepEqual(await limited.json(), { app: 'ride', ok: false });
+});
+
+test('missing binding, missing env, a throw inside prepare, a null row and ok:0 all give 503 down, never a 500', async () => {
+  const req = (n) => new Request('https://ride.incitat.io/health', ip(n));
+  const cases = [
+    {},
+    undefined,
+    { RIDE_TRIP_PLANNER_DB: { prepare: () => { throw new Error('sync boom'); } } },
+    { RIDE_TRIP_PLANNER_DB: { prepare: () => ({ first: async () => null }) } },
+    { RIDE_TRIP_PLANNER_DB: { prepare: () => ({ first: async () => ({ ok: 0 }) }) } }
+  ];
+  for (const [index, env] of cases.entries()) {
+    const res = await handleHealth(req(80 + index), env, { version: 'v', store: new Map() });
+    assert.equal(res.status, 503, 'case ' + index);
+    assert.equal((await res.json()).db, 'down');
+  }
+});
