@@ -7,7 +7,7 @@ Goal: exercise the real Worker, CSP and sign-in cookie without touching producti
 3. Seed a test user, a trip and waypoints; put a session in local KV (`wrangler kv key put <token> --binding RIDE_TRIP_PLANNER_SESSIONS --local --persist-to <dir> --path session.json`, value `{"user":{"id":...,"email":...},"expiresAt":<ms>}`); send it as the `ride_session` cookie. Create a test token with `POST /api/tokens` while signed in, then call `/mcp` with it.
 
 Traps (all local-only):
-- **`export const CSP` / `CSP_ADMIN` in api/worker.js:** the local runtime (workerd) rejects named non-function exports as entrypoints ("Incorrect type for map entry 'CSP'"); production accepts them. That is why step 1 uses a wrapper that re-exports only the default. Fixed for good when the CSP becomes a function in its own file.
+- **Named non-function exports in api/worker.js:** the local runtime (workerd) rejects them as entrypoints ("Incorrect type for map entry '...'"); production tolerates them. `api/worker.js` now exports only its default handler (the CSP lives in `api/csp.js`), so step 1's wrapper is only needed if someone adds a named export again.
 - **`trips.short_code` CHECK uses a long GLOB:** the local SQLite says "LIKE or GLOB pattern too complex" on any insert, so a share code cannot be created. Local workaround: in your scratch copy of the schema only, drop `AND short_code GLOB '...'` from that CHECK, then `POST /api/trips/<id>/share` gives a code and `/<code>` shows the public page.
 - Waypoint `type` must satisfy both the table CHECK and the hardening trigger: use `stop`, `food`, `scenic` or `fuel`.
 - Run the unit tests with `node --test tests/*.test.mjs` (in PowerShell: pass the file list); plain `node --test tests/` fails.

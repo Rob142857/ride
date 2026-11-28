@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { CSP, CSP_ADMIN } from '../api/worker.js';
+import worker from '../api/worker.js';
+import { buildCsp, makeNonce } from '../api/csp.js';
+
+const CSP = buildCsp({ nonce: makeNonce() });
+const CSP_ADMIN = buildCsp({ admin: true });
+const assets = { fetch: async () => new Response('<!doctype html><title>t</title>', { headers: { 'Content-Type': 'text/html' } }) };
+const page = async (path) => worker.fetch(new Request('https://ride.incitat.io' + path), { ASSETS: assets, RIDE_TRIP_PLANNER_DB: {} }, { waitUntil() {} });
 
 const directive = (policy, name) => policy.split('; ').find(d => d.startsWith(name + ' ')) || '';
 
@@ -31,4 +37,36 @@ test('no browser script builds an inline event handler into HTML', () => {
     const js = readFileSync('public/js/' + file, 'utf8');
     assert.ok(!/\son(?:click|change|submit|error|load|input|keydown|keyup)=[^ ]/i.test(js), file + ' builds an inline handler');
   }
+});
+
+test('nonce: two responses for the same page carry different nonces, 128 bits, in the header only', async () => {
+  const one = (await page('/')).headers.get('Content-Security-Policy');
+  const two = (await page('/')).headers.get('Content-Security-Policy');
+  const pick = (policy) => (policy.match(/'nonce-([A-Za-z0-9+/=]+)'/) || [])[1];
+  assert.ok(pick(one) && pick(two), 'nonce present');
+  assert.notEqual(pick(one), pick(two));
+  assert.ok(pick(one).length >= 22, 'at least 128 bits of base64');
+  assert.equal(new Set(Array.from({ length: 200 }, makeNonce)).size, 200);
+});
+
+test('nonce is in script-src of app pages, still no unsafe-inline or unsafe-eval there', async () => {
+  const policy = (await page('/privacy')).headers.get('Content-Security-Policy');
+  const scriptSrc = directive(policy, 'script-src');
+  assert.match(scriptSrc, /'nonce-/);
+  assert.ok(!scriptSrc.includes("'unsafe-inline'") && !scriptSrc.includes("'unsafe-eval'"), scriptSrc);
+  assert.match(directive(policy, 'script-src-attr'), /'none'/);
+});
+
+test('admin page gets NO nonce (a nonce would switch off its unsafe-inline) and keeps unsafe-inline', async () => {
+  for (const path of ['/admin', '/admin.html']) {
+    const policy = (await page(path)).headers.get('Content-Security-Policy');
+    assert.ok(!policy.includes('nonce-'), policy);
+    assert.ok(directive(policy, 'script-src').includes("'unsafe-inline'"));
+  }
+});
+
+test('apart from the nonce, the app policy is the policy we shipped on 28 Nov', () => {
+  const withoutNonce = buildCsp({ nonce: '' });
+  assert.equal(withoutNonce, "default-src 'self'; script-src 'self' https://unpkg.com https://static.cloudflareinsights.com; script-src-attr 'none'; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://server.arcgisonline.com https://ride.incitat.io https://lh3.googleusercontent.com https://*.microsoft.com; connect-src 'self' https://ride.incitat.io https://maps.incitat.io https://unpkg.com https://events.rmesolutions.com.au; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://login.microsoftonline.com");
+  assert.equal(buildCsp({ nonce: 'AAAA' }).replace(" 'nonce-AAAA'", ''), withoutNonce);
 });
